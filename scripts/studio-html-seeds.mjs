@@ -18,7 +18,7 @@ const fixtureDirectory = path.join(seedDirectory, 'fixtures');
 async function loadValidatedSeeds() {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const manifestFailures = validateSeedManifest(manifest, { expectedCount: 14 });
-  if (manifestFailures.length) throw new Error(`Studio HTML seed validation failed:\n- ${manifestFailures.map((issue) => `manifest: ${issue.message}`).join('\n- ')}`);
+  if (manifestFailures.length) throw new Error(`Tapplet HTML seed validation failed:\n- ${manifestFailures.map((issue) => `manifest: ${issue.message}`).join('\n- ')}`);
   const failures = [];
   const records = [];
   const listedFiles = new Set();
@@ -48,7 +48,7 @@ async function loadValidatedSeeds() {
     .filter((entry) => entry.isFile() && entry.name.endsWith('.html'))
     .map((entry) => entry.name);
   sourceFiles.filter((file) => !listedFiles.has(file)).forEach((file) => failures.push(`${file}: HTML source is not listed in the manifest.`));
-  if (failures.length) throw new Error(`Studio HTML seed validation failed:\n- ${failures.join('\n- ')}`);
+  if (failures.length) throw new Error(`Tapplet HTML seed validation failed:\n- ${failures.join('\n- ')}`);
   return { manifest, records };
 }
 
@@ -103,7 +103,7 @@ try {
   if (command === 'validate') {
     const { manifest, records } = await loadValidatedSeeds();
     await verifyFixtures(records);
-    console.log(`Validated ${manifest.seeds.length} self-contained Studio HTML seeds.`);
+    console.log(`Validated ${manifest.seeds.length} self-contained Tapplet HTML seeds.`);
   } else if (command === 'package') await packageFixtures();
   else if (command === 'import') await importSeeds();
   else throw new Error('Usage: node scripts/studio-html-seeds.mjs validate|package|import [--endpoint URL]');

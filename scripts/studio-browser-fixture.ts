@@ -79,7 +79,7 @@ async function prepare(): Promise<void> {
     typeof headRevision?.id !== "string"
   ) {
     throw new Error(
-      "Studio did not return a remixed artifact. Import the curated seeds before preparing the fixture.",
+      "Tapplet did not return a remixed artifact. Import the curated seeds before preparing the fixture.",
     );
   }
 
@@ -97,7 +97,7 @@ async function prepare(): Promise<void> {
       typeof publication?.slug !== "string" ||
       typeof publication.url !== "string"
     ) {
-      throw new Error("Studio did not return a publication URL.");
+      throw new Error("Tapplet did not return a publication URL.");
     }
     const state: FixtureState = {
       artifactId: artifact.id,

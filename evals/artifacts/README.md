@@ -1,4 +1,4 @@
-# Studio HTML artifact corpus evaluation
+# Tapplet HTML artifact corpus evaluation
 
 This evaluation validates the canonical corpus under `examples/studio-html/`.
 It checks manifest completeness and uniqueness,

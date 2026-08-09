@@ -57,14 +57,14 @@ final class ClassroomWidgetsStudioUITests: XCTestCase {
         }
 
         XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
-        app.buttons["Make my widget"].tap()
+        app.buttons["Make my applet"].tap()
         XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
     }
 
     @MainActor
     func testWorkshopAccessCanBeDeferred() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
-        XCTAssertTrue(app.staticTexts["Set up Studio on this iPad"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Set up Tapplet on this iPad"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional."].exists)
         let notNow = app.buttons["Explore examples"]
         XCTAssertTrue(notNow.waitForExistence(timeout: 5))
@@ -72,7 +72,7 @@ final class ClassroomWidgetsStudioUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
         let showSidebar = app.buttons["Show Sidebar"]
         if showSidebar.waitForExistence(timeout: 2) { showSidebar.tap() }
-        XCTAssertTrue(app.staticTexts["Studio access"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tapplet access"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Code needed"].waitForExistence(timeout: 5))
     }
 

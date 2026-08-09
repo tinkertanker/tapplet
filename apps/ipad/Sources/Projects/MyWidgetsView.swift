@@ -9,23 +9,23 @@ struct MyWidgetsView: View {
             VStack(alignment: .leading, spacing: 24) {
                 HStack {
                     PageHeader(
-                        title: "Your widgets",
+                        title: "Your applets",
                         subtitle: "HTML sources are cached on this iPad for offline preview."
                     )
                     Spacer()
-                    Button("Find missing widgets") {
+                    Button("Find missing applets") {
                         Task {
                             do { _ = try await store.restoreFromStudio() }
                             catch { self.error = error.localizedDescription }
                         }
                     }
-                    Button("Make a widget") { store.selectedSection = .make }
+                    Button("Make an applet") { store.selectedSection = .make }
                         .buttonStyle(.borderedProminent)
                 }
 
                 if store.projects.isEmpty {
                     ContentUnavailableView(
-                        "Your widgets will appear here",
+                        "Your applets will appear here",
                         systemImage: "square.stack.3d.up"
                     )
                 } else {
@@ -48,7 +48,7 @@ struct MyWidgetsView: View {
             .padding(32)
         }
         .alert(
-            "Studio could not complete this action",
+            "Tapplet could not complete this action",
             isPresented: Binding(
                 get: { error != nil },
                 set: { if !$0 { error = nil } }

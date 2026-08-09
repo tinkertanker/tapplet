@@ -14,8 +14,8 @@ struct GuidedMakeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 PageHeader(
-                    title: "Plan your classroom widget",
-                    subtitle: "Answer six quick questions. You can review and change every answer before Studio makes your widget.",
+                    title: "Plan your classroom applet",
+                    subtitle: "Answer six quick questions. You can review and change every answer before Tapplet makes your applet.",
                     sticker: .handraise
                 )
 
@@ -141,12 +141,12 @@ struct GuidedMakeView: View {
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(store.isCreatingGuidedDraft ? "Making your widget" : "Check your answers")
+                Text(store.isCreatingGuidedDraft ? "Making your applet" : "Check your answers")
                     .font(StudioTheme.Typography.question)
                 Text(
                     store.isCreatingGuidedDraft
-                        ? "Studio is working from the answers below."
-                        : "Tap any answer to change it, then make your widget. You can keep refining it afterwards."
+                        ? "Tapplet is working from the answers below."
+                        : "Tap any answer to change it, then make your applet. You can keep refining it afterwards."
                 )
                     .foregroundStyle(StudioTheme.mutedInk)
             }
@@ -176,7 +176,7 @@ struct GuidedMakeView: View {
             }
             .background(StudioTheme.canvas, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            Text("The widget will not collect responses, identify students or call external services.")
+            Text("The applet will not collect responses, identify students or call external services.")
                 .font(.footnote)
                 .foregroundStyle(StudioTheme.mutedInk)
 
@@ -207,10 +207,10 @@ struct GuidedMakeView: View {
                     if store.isCreatingGuidedDraft {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Making your widget…")
+                            Text("Making your applet…")
                         }
                     } else {
-                        Text("Make my widget")
+                        Text("Make my applet")
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -232,7 +232,7 @@ struct GuidedMakeView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This usually takes one to two minutes.")
                     .font(.body.weight(.semibold))
-                Text("Your answers are still here and will be used to make your widget. There is nothing else you need to do right now.")
+                Text("Your answers are still here and will be used to make your applet. There is nothing else you need to do right now.")
                     .font(.callout)
                     .foregroundStyle(StudioTheme.mutedInk)
             }
@@ -245,7 +245,7 @@ struct GuidedMakeView: View {
                 .stroke(StudioTheme.border, lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Making your widget. This usually takes one to two minutes. Your answers are still here and will be used to make your widget.")
+        .accessibilityLabel("Making your applet. This usually takes one to two minutes. Your answers are still here and will be used to make your applet.")
     }
 
     private func summaryRow(label: String, value: String, questionIndex: Int) -> some View {

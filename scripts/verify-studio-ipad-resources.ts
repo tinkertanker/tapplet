@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   });
   if (manifestIssues.length > 0 || !sourceManifest.seeds) {
     throw new Error(
-      `The canonical Studio seed manifest is invalid:\n${manifestIssues
+      `The canonical Tapplet seed manifest is invalid:\n${manifestIssues
         .map((issue: { message: string }) => `- ${issue.message}`)
         .join("\n")}`,
     );
@@ -74,10 +74,10 @@ async function main(): Promise<void> {
     ]);
     const validation = validateHtmlArtifact(bundled);
     if (!validation.valid) {
-      throw new Error(`Bundled Studio example ${seed.id} is invalid.`);
+      throw new Error(`Bundled Tapplet example ${seed.id} is invalid.`);
     }
     if (source !== bundled) {
-      throw new Error(`Bundled Studio example ${seed.id} is stale.`);
+      throw new Error(`Bundled Tapplet example ${seed.id} is stale.`);
     }
   }
 
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   );
   if (unexpectedFiles.length > 0 || missingFiles.length > 0) {
     throw new Error(
-      `The bundled Studio gallery has mismatched files: ${[
+      `The bundled Tapplet gallery has mismatched files: ${[
         ...missingFiles.map((file) => `missing ${file}`),
         ...unexpectedFiles.map((file) => `unexpected ${file}`),
       ].join(", ")}.`,
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
   }
 
   process.stdout.write(
-    `Studio iPad resources match all ${sourceManifest.seeds.length} canonical HTML examples.\n`,
+    `Tapplet iPad resources match all ${sourceManifest.seeds.length} canonical HTML examples.\n`,
   );
 }
 

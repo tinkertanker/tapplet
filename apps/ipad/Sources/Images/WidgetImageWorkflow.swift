@@ -261,17 +261,17 @@ enum WidgetImageError: LocalizedError, Equatable {
         case .couldNotReduceSize:
             "This image could not be prepared under the 2 MB classroom limit."
         case .limitReached:
-            "A widget can contain up to three uploaded images."
+            "An applet can contain up to three uploaded images."
         case .descriptionRequired:
             "Describe the image for students, or mark it as decorative."
         case .identifiablePersonDetected:
-            "Choose an image without recognisable people. Studio does not upload pupil or staff photos."
+            "Choose an image without recognisable people. Tapplet does not upload pupil or staff photos."
         case .personalDataDetected:
             "This image appears to contain an email address, Singapore phone number or identity number. Remove personal information before uploading it."
         case .privacyCheckFailed:
-            "Studio could not complete the on-device privacy check for this image. Choose a different image and try again."
+            "Tapplet could not complete the on-device privacy check for this image. Choose a different image and try again."
         case .invalidRestoredAsset:
-            "Studio could not safely restore one of this widget’s images. The local widget was left unchanged."
+            "Tapplet could not safely restore one of this applet’s images. The local applet was left unchanged."
         }
     }
 }

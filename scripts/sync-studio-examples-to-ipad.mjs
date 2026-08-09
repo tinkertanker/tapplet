@@ -17,7 +17,7 @@ const manifest = JSON.parse(
 const manifestIssues = validateSeedManifest(manifest, { expectedCount: 14 });
 if (manifestIssues.length > 0) {
   throw new Error(
-    `Cannot bundle invalid Studio seed manifest:\n${manifestIssues
+    `Cannot bundle invalid Tapplet seed manifest:\n${manifestIssues
       .map((issue) => `- ${issue.message}`)
       .join('\n')}`,
   );
@@ -30,13 +30,13 @@ const records = [];
 for (const seed of manifest.seeds) {
   const sourcePath = path.resolve(sourceDirectory, seed.filename);
   if (path.dirname(sourcePath) !== sourceDirectory) {
-    throw new Error(`Studio seed filename escapes its source directory: ${seed.filename}`);
+    throw new Error(`Tapplet seed filename escapes its source directory: ${seed.filename}`);
   }
   const html = await readFile(sourcePath, 'utf8');
   const validation = validateHtmlArtifact(html);
   if (!validation.valid) {
     throw new Error(
-      `Cannot bundle invalid Studio HTML seed ${seed.id}:\n${validation.issues
+      `Cannot bundle invalid Tapplet HTML seed ${seed.id}:\n${validation.issues
         .map((issue) => `- [${issue.code}] ${issue.message}`)
         .join('\n')}`,
     );
@@ -67,4 +67,4 @@ await writeFile(
   path.join(destinationDirectory, 'manifest.json'),
   `${JSON.stringify(records, null, 2)}\n`,
 );
-process.stdout.write(`Synced ${records.length} Studio HTML examples to the iPad gallery.\n`);
+process.stdout.write(`Synced ${records.length} Tapplet HTML examples to the iPad gallery.\n`);

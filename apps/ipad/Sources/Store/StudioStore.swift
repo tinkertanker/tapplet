@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 enum StudioSection: String, CaseIterable, Identifiable { case explore, make, myWidgets; var id: String { rawValue }
-    var title: String { self == .myWidgets ? "My Widgets" : rawValue.capitalized }
+    var title: String { self == .myWidgets ? "My Applets" : rawValue.capitalized }
     var symbolName: String { self == .explore ? "square.grid.2x2" : self == .make ? "plus.square" : "square.stack.3d.up" }
 }
 enum WorkshopAccessState: Equatable { case checking, registrationRequired, ready }
@@ -77,12 +77,12 @@ struct StudioErrorPresentation { let title, message: String; let requestsWorksho
             workshopAccessState = .registrationRequired
             showsWorkshopAccess = true
             return StudioErrorPresentation(
-                title: "Studio access needed",
+                title: "Tapplet access needed",
                 message: "Enter your workshop code to continue.",
                 requestsWorkshopAccess: true
             )
         }
-        return StudioErrorPresentation(title: "Studio could not complete this action", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
+        return StudioErrorPresentation(title: "Tapplet could not complete this action", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
     }
     func resetGuidedMake() { guidedMakeDraft = .init(); guidedMakeQuestionIndex = 0; guidedMakeResponse = ""; guidedMakeShowsSummary = false }
     func createApprovedBrief(_ brief: GuidedBriefDraft) async throws -> ArtifactProject {
@@ -187,8 +187,8 @@ struct StudioErrorPresentation { let title, message: String; let requestsWorksho
         }
         if failures > 0 {
             recoveryNotice = count > 0
-                ? "Studio restored \(count) widget(s), but could not restore \(failures). Try again later."
-                : "Studio could not restore your widgets. Try again later."
+                ? "Tapplet restored \(count) applet(s), but could not restore \(failures). Try again later."
+                : "Tapplet could not restore your applets. Try again later."
         }
         return count
     }
@@ -258,7 +258,7 @@ struct StudioErrorPresentation { let title, message: String; let requestsWorksho
     private func persist(_ project: ArtifactProject) {
         let name = project.id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? UUID().uuidString
         do { try JSONEncoder().encode(project).write(to: projectDirectory.appending(path: "\(name).json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
-        catch { recoveryNotice = "Studio could not save this widget for offline use." }
+        catch { recoveryNotice = "Tapplet could not save this applet for offline use." }
     }
     private static func loadCachedProjects(from directory: URL) -> [ArtifactProject] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []

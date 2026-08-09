@@ -30,7 +30,7 @@ struct StudioRootView: View {
                         store.requestWorkshopAccess()
                     } label: {
                         HStack {
-                            Label("Studio access", systemImage: "key")
+                            Label("Tapplet access", systemImage: "key")
                             Spacer()
                             Text(workshopAccessLabel)
                                 .font(.caption.weight(.semibold))
@@ -44,7 +44,7 @@ struct StudioRootView: View {
             }
             .scrollContentBackground(.hidden)
             .background(StudioTheme.canvas)
-            .navigationTitle("Classroom Widgets")
+            .navigationTitle("Tapplet")
         } detail: {
             Group {
                 if let project = store.selectedProject {

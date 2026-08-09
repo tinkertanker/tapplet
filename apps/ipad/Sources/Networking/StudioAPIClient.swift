@@ -335,7 +335,7 @@ struct StudioAPIClient: StudioAPI, Sendable {
     private func validate(_ response: HTTPURLResponse, payload: Data) throws {
         guard (200..<300).contains(response.statusCode) else {
             let error = try? JSONDecoder().decode(APIErrorEnvelope.self, from: payload).error
-            throw StudioAPIError.server(response.statusCode, error?.code, error?.message ?? "Studio request failed.")
+            throw StudioAPIError.server(response.statusCode, error?.code, error?.message ?? "Tapplet request failed.")
         }
     }
 
@@ -361,8 +361,8 @@ enum StudioAPIError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .registrationRequired: "Enter your workshop access code before using Studio."
-        case .invalidURL, .invalidResponse, .transport, .decoding, .server: "Studio could not complete this request. Check your connection and try again."
+        case .registrationRequired: "Enter your workshop access code before using Tapplet."
+        case .invalidURL, .invalidResponse, .transport, .decoding, .server: "Tapplet could not complete this request. Check your connection and try again."
         }
     }
     var requiresRegistration: Bool {
