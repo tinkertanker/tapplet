@@ -40,7 +40,7 @@ const statement =
   `${sqlString(codeHash(code))}, ${sqlString(label)}, ${maximumUses}, ${sqlString(expiresAt)}, ${sqlString(createdAt)});`;
 
 const contents = [
-  '# Classroom Widgets Studio class code',
+  '# Tapplet class code',
   `# Class: ${classNumber}`,
   `# Maximum activations: ${maximumUses}`,
   `# Expires: ${expiresAt}`,

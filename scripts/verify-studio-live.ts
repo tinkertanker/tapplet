@@ -117,7 +117,7 @@ async function main() {
     )?.revisionId;
     if (!preferredExampleRevisionId) {
       throw new Error(
-        "No curated example was retrievable. Import the Studio seed corpus before running live verification.",
+        "No curated example was retrievable. Import the Tapplet seed corpus before running live verification.",
       );
     }
 
@@ -201,7 +201,7 @@ async function main() {
         "X-Image-Height": "1024",
         "X-Image-Sha256": createHash("sha256").update(imageBytes).digest("hex"),
         "X-Image-Alt-Base64": Buffer.from(
-          "The Makelet app icon showing interactive activity cards.",
+          "The Tapplet app icon showing interactive activity cards.",
         ).toString("base64"),
         "X-Image-Decorative": "false",
       },
@@ -223,7 +223,7 @@ async function main() {
         {
           method: "POST",
           body: JSON.stringify({
-            instruction: `Add the uploaded image using the exact relative URL assets/${assetId}. Give it the alternative text “The Makelet app icon showing interactive activity cards.”`,
+            instruction: `Add the uploaded image using the exact relative URL assets/${assetId}. Give it the alternative text “The Tapplet app icon showing interactive activity cards.”`,
             expectedHeadRevisionId: returnedToLatest.headRevision.id,
           }),
         },
@@ -342,7 +342,7 @@ async function main() {
     assetId = undefined;
 
     console.log(
-      "Live Makelet flow passed: retrieval, generate, revise, restore, image, publish, extend, report, revoke, delete.",
+      "Live Tapplet flow passed: retrieval, generate, revise, restore, image, publish, extend, report, revoke, delete.",
     );
   } catch (error) {
     const cleanupErrors: string[] = [];
@@ -409,7 +409,7 @@ function stripPngTextMetadata(bytes: Buffer): Buffer {
     const type = bytes.toString("ascii", offset + 4, offset + 8);
     const next = offset + 12 + length;
     if (next > bytes.length)
-      throw new Error("The Makelet icon is not a valid PNG.");
+      throw new Error("The Tapplet icon is not a valid PNG.");
     if (!blocked.has(type)) chunks.push(bytes.subarray(offset, next));
     offset = next;
     if (type === "IEND") break;

@@ -12,4 +12,4 @@ if [[ ! -f node_modules/.package-lock.json ]]; then
   exit 1
 fi
 
-echo "Makelet orb resumed with Node.js $(node --version); no backing services require repair."
+echo "Tapplet orb resumed with Node.js $(node --version); no backing services require repair."

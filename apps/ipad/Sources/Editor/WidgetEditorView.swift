@@ -14,9 +14,9 @@ struct WidgetEditorView: View {
             .padding().background(StudioTheme.surface)
         HStack(spacing: 0) { WidgetPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
             VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { operationError = error.localizedDescription } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(StudioTheme.surface) }
-    }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }.sheet(isPresented: $showShare) { ShareArtifactView(store: store, projectID: projectID) }.alert("Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView("Widget unavailable", systemImage: "exclamationmark.triangle") } }
+    }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }.sheet(isPresented: $showShare) { ShareArtifactView(store: store, projectID: projectID) }.alert("Tapplet could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView("Applet unavailable", systemImage: "exclamationmark.triangle") } }
     private func editor(_ project: ArtifactProject) -> some View { Form {
-        Section("Ask Studio") { TextEditor(text: $prompt).frame(height: 90); Button(working ? "Updating…" : "Make this change") { working = true; Task { defer { working = false }; do { try await store.refine(prompt, projectID: project.id); prompt = "" } catch { operationError = error.localizedDescription } } }.disabled(working || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); Button("Undo") { Task { do { try await store.undo(projectID: project.id) } catch { operationError = error.localizedDescription } } }.disabled(project.source.revision.parentRevisionId == nil) }
+        Section("Ask Tapplet") { TextEditor(text: $prompt).frame(height: 90); Button(working ? "Updating…" : "Make this change") { working = true; Task { defer { working = false }; do { try await store.refine(prompt, projectID: project.id); prompt = "" } catch { operationError = error.localizedDescription } } }.disabled(working || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); Button("Undo") { Task { do { try await store.undo(projectID: project.id) } catch { operationError = error.localizedDescription } } }.disabled(project.source.revision.parentRevisionId == nil) }
         Section("Details") { DetailsFields(store: store, project: project) }
         Section("Images") { ImageManagementView(store: store, projectID: project.id, assets: project.localAssets) }
         Section("History") { ForEach(project.revisions.reversed()) { revision in HStack { VStack(alignment: .leading) { Text(revision.instruction ?? revision.kind.rawValue.capitalized); Text(revision.createdAt).font(.caption).foregroundStyle(.secondary) }; Spacer(); if let url = revision.screenshotUrl { AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.gray.opacity(0.2) }.frame(width: 64, height: 44).clipped() }; Button("Restore") { Task { do { try await store.restore(revision: revision, projectID: project.id) } catch { operationError = error.localizedDescription } } }.disabled(revision.id == project.artifact.headRevisionId) } } }
@@ -55,11 +55,11 @@ private struct ImageManagementView: View {
         if pendingData != nil {
             TextField("Describe this image", text: $description, axis: .vertical)
             Toggle("Decorative image", isOn: $decorative)
-            Button("Upload and ask Studio to insert") { upload() }
+            Button("Upload and ask Tapplet to insert") { upload() }
                 .disabled(!decorative && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         if let error { Text(error).foregroundStyle(StudioTheme.danger) }
-        Text("Images are prepared and checked on this iPad. Studio inserts them through a new revision; the HTML is never edited directly.")
+        Text("Images are prepared and checked on this iPad. Tapplet inserts them through a new revision; the HTML is never edited directly.")
             .font(.footnote).foregroundStyle(.secondary)
         .onChange(of: photo) { _, item in Task { pendingData = try? await item?.loadTransferable(type: Data.self) } }
         .fileImporter(isPresented: $importsFile, allowedContentTypes: [.image]) { result in

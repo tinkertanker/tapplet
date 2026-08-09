@@ -1,6 +1,6 @@
 # Live HTML artifact evaluation
 
-This harness runs the Studio API's production provider, prompts, output checks
+This harness runs the Tapplet API's production provider, prompts, output checks
 and one-repair path against classroom briefs. Each request includes up to two
 reviewed, subject-matched HTML exemplars. `artifact-eval.mjs` adds the seed
 corpus render checks and heuristically checks requested interaction, locale and

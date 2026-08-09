@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     .forEach((file) => failures.push(`${file}: not listed in manifest.`));
   if (failures.length)
     throw new Error(
-      `Studio HTML artifact corpus failed:\n- ${failures.join("\n- ")}`,
+      `Tapplet HTML artifact corpus failed:\n- ${failures.join("\n- ")}`,
     );
   const subjects = new Set(
     manifest.seeds.map((seed: { subject: string }) => seed.subject),

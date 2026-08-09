@@ -27,7 +27,7 @@ const config = {
   seedImportToken: "test-seed-import-token",
 };
 
-describe("Studio API registration and public HTML", () => {
+describe("Tapplet API registration and public HTML", () => {
   let repository: MemoryStudioRepository;
   let app: ReturnType<typeof createStudioApp>;
   let sources: MemorySourceStore;

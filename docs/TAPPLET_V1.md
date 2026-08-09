@@ -1,45 +1,43 @@
-# Classroom Widgets Studio V1
+# Tapplet V1 product contract
 
-Classroom Widgets Studio is an iPad app for making a small, self-contained
-classroom activity and publishing it as one student-facing web link. It is an
-addition to the existing Classroom Widgets teacher and student apps, not a
-replacement for the real-time dashboard.
+Tapplet is an iPad app for making a small, self-contained classroom applet and
+publishing it as one student-facing web link.
 
 The August 2026 pilot targets 10–20 Singapore upper-primary and secondary
-teachers. The app performs generation on the Studio service, so it does not
+teachers. The app performs generation through the Tapplet API, so it does not
 depend on Apple Intelligence.
 
 ## Product promise
 
-> Make the small interactive tool your next lesson needs, then share one link.
+> Make the small interactive applet your next lesson needs, then share one link.
 
-A widget should normally fit one browser viewport and serve one focused
-learning purpose. A short linear story may use two or three screens, but Studio
+An applet should normally fit one browser viewport and serve one focused
+learning purpose. A short linear story may use two or three screens, but Tapplet
 is not intended to generate full webpages, dashboards, lessons, menus or
 multi-activity labs.
 
 Teachers do not need to start from an empty prompt. They can run and remix a
 curated example or answer a short guided interview. Generation uses relevant
 published and curated examples as inspiration, and revision always starts from
-the current HTML rather than recreating the widget from scratch.
+the current HTML rather than recreating the applet from scratch.
 
 ## V1 experience
 
-1. Open **Explore**, **Make** or **My Widgets**.
+1. Open **Explore**, **Make** or **My Applets**.
 2. Run/remix an example, or answer the guided questions and approve the brief.
-3. Generate the widget and interact with it directly in the iPad preview.
-4. Ask Studio for a change. The working preview remains visible while the new
+3. Generate the applet and interact with it directly in the iPad preview.
+4. Ask Tapplet for a change. The working preview remains visible while the new
    revision loads.
 5. Restore any earlier revision if the change is not useful.
 6. Edit project details such as title, summary, subject, level and tags without
    making a model request.
-7. Test the widget full-screen.
+7. Test the applet full-screen.
 8. Publish an unlisted URL, then copy it, show its QR code or use the iPad share
    sheet.
 9. Extend or revoke the publication from the originating device.
 
 Explore contains the reviewed HTML seed catalogue bundled with the app. My
-Widgets stores local project files and synchronises the server-owned revision
+Applets stores local project files and synchronises the server-owned revision
 history. The editor is preview-first: there is no raw syntax tree or structural
 layout editor.
 
@@ -62,13 +60,13 @@ The service applies deterministic checks before saving a generated revision:
 - deterministic text moderation;
 - one bounded model repair when generated output fails the checks.
 
-The generation prompt asks for a compact, touch-first widget, one coherent
+The generation prompt asks for a compact, touch-first applet, one coherent
 interaction system and simple readable JavaScript. The model returns the full
 HTML document plus an optional design card. The card and project metadata help
 future revision, retrieval and remixing; failure to parse the optional card does
 not discard otherwise valid HTML.
 
-Generated JavaScript runs only in the widget's front end. It has no Studio
+Generated JavaScript runs only in the applet's front end. It has no Tapplet
 credentials, cookies or server-side execution path. Student interaction state
 is transient browser state.
 
@@ -79,7 +77,7 @@ SwiftUI iPad app
         |
         | HTTPS: generate, revise, history, images, publish
         v
-Studio API --------> configured text-generation provider
+Tapplet API -------> configured text-generation provider
         |
         +----------> D1 metadata, revisions and retrieval index
         |
@@ -93,10 +91,10 @@ Studio API --------> configured text-generation provider
 
 The iPad app loads artifact HTML directly into a non-persistent `WKWebView`.
 The public URL serves the same immutable source revision directly, with a fixed
-report control added by the service. No separate player or proprietary widget
+report control added by the service. No separate player or proprietary applet
 language sits between the artifact and the browser.
 
-The Studio API remains separate from the Express/Socket.IO classroom server.
+The Tapplet API remains separate from the Express/Socket.IO classroom server.
 It owns model routing, validation and bounded repair, device credentials,
 quotas, images, immutable revision history, publication, expiry, reports and
 revocation.
@@ -142,7 +140,7 @@ authoring and retrieval descriptions, not schema labels that grant special
 capabilities.
 
 Larger activities should be split by learning purpose. For example, a
-qualitative-analysis catalogue becomes separate one-unknown practice widgets;
+qualitative-analysis catalogue becomes separate one-unknown practice applets;
 a simulation should centre on one model with its controls, readouts and graph
 rather than several unrelated activities.
 
@@ -165,7 +163,7 @@ V1 does not provide:
 
 ## Verification gates
 
-- The Studio API tests cover generation failure with no persisted revision,
+- The Tapplet API tests cover generation failure with no persisted revision,
   immutable revisions, optimistic head conflicts, remix lineage, publication
   snapshotting, stable republish slugs, expiry, revocation, quotas, reports,
   image ownership and explicit image liveness.

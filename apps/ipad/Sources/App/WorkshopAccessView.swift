@@ -20,16 +20,16 @@ struct WorkshopAccessView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("This iPad is ready")
                                 .font(.largeTitle.bold())
-                            Text("You can make, share and manage classroom widgets here. Existing student links stay connected to this Studio access.")
+                            Text("You can make, share and manage classroom applets here. Existing student links stay connected to this Tapplet access.")
                                 .foregroundStyle(StudioTheme.mutedInk)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Set up Studio on this iPad")
+                            Text("Set up Tapplet on this iPad")
                                 .font(.largeTitle.bold())
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text("Enter your shared class code to make and share classroom widgets. It does not create an account, and students never need a code or account.")
+                            Text("Enter your shared class code to make and share classroom applets. It does not create an account, and students never need a code or account.")
                                 .font(.body)
                                 .foregroundStyle(StudioTheme.mutedInk)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -72,7 +72,7 @@ struct WorkshopAccessView: View {
                                     ProgressView().tint(.white)
                                     Text("Activating…")
                                 } else {
-                                    Text("Activate Studio")
+                                    Text("Activate Tapplet")
                                 }
                                 Spacer()
                             }
@@ -82,7 +82,7 @@ struct WorkshopAccessView: View {
                         .disabled(isRegistering)
                         .accessibilityIdentifier("activate-workshop-access")
 
-                        Text("Your Studio access stays securely on this iPad. You can explore examples without a code and activate Studio from the sidebar whenever you are ready.")
+                        Text("Your Tapplet access stays securely on this iPad. You can explore examples without a code and activate Tapplet from the sidebar whenever you are ready.")
                             .font(.footnote)
                             .foregroundStyle(StudioTheme.mutedInk)
                             .fixedSize(horizontal: false, vertical: true)
@@ -94,7 +94,7 @@ struct WorkshopAccessView: View {
                 .frame(maxWidth: 620, minHeight: 520, alignment: .topLeading)
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Studio access")
+            .navigationTitle("Tapplet access")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(accessDismissalTitle) {
@@ -132,7 +132,7 @@ struct WorkshopAccessView: View {
         guard !cleanedAccessCode.isEmpty else {
             registrationError = StudioErrorPresentation(
                 title: "Enter your class code",
-                message: "Ask your workshop facilitator for the class code that activates Studio on this iPad.",
+                message: "Ask your workshop facilitator for the class code that activates Tapplet on this iPad.",
                 requestsWorkshopAccess: false
             )
             codeIsFocused = true

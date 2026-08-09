@@ -1,14 +1,23 @@
-# Makelet
+# Tapplet
 
-**Create tiny interactive tools for any lesson.**
+**Create tiny interactive applets for any lesson.**
 
-Makelet is a teacher-facing iPad app for generating, adapting, previewing and
+Tapplet is a teacher-facing iPad app for generating, adapting, previewing and
 sharing self-contained interactive classroom activities. It is an open-source
 project by [Tinkercademy](https://tinkercademy.com).
 
-The iPad app does not run a model locally. It authenticates to the Makelet API,
+The iPad app does not run a model locally. It authenticates to the Tapplet API,
 keeps projects available for offline preview and publishes unlisted links that
 students can open in a browser.
+
+## Why Tapplet?
+
+Tinkercademy co-founders Akmal and YJ were physics teachers who often had to
+search for applets to demonstrate ideas such as kinematics. Tapplet grows out
+of that experience: instead of hunting for the closest existing demo, a
+teacher can make the small interactive tool their lesson needs, directly on an
+iPad. The name combines the touch-first act of tapping with the familiar idea
+of an applet.
 
 ## Repository layout
 
@@ -31,8 +40,8 @@ not also become a production infrastructure migration.
 
 Product and operational details live in:
 
-- [`docs/STUDIO_V1.md`](docs/STUDIO_V1.md) — product and artifact contract;
-- [`docs/STUDIO_PILOT_RUNBOOK.md`](docs/STUDIO_PILOT_RUNBOOK.md) — production
+- [`docs/TAPPLET_V1.md`](docs/TAPPLET_V1.md) — product and artifact contract;
+- [`docs/TAPPLET_PILOT_RUNBOOK.md`](docs/TAPPLET_PILOT_RUNBOOK.md) — production
   provisioning, safety response and rollback;
 - [`services/studio-api/wrangler.jsonc`](services/studio-api/wrangler.jsonc) —
   authoritative non-secret production model and quota configuration.
@@ -222,4 +231,4 @@ with unsafe best-effort deletion or execution of model-generated code.
 
 ## Licence
 
-Makelet is available under the [MIT Licence](LICENSE).
+Tapplet is available under the [MIT Licence](LICENSE).

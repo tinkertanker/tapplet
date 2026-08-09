@@ -72,14 +72,14 @@ struct BriefQuestion: Identifiable, Sendable {
         BriefQuestion(
             id: 2,
             prompt: "What should students do on screen?",
-            supportingText: "Choose one focused interaction. Studio can suggest a suitable format later.",
+            supportingText: "Choose one focused interaction. Tapplet can suggest a suitable format later.",
             placeholder: "Adjust two sliders, predict, then compare",
             suggestions: ["Choose and get feedback", "Match or sort items", "Explore a changing graph"],
             isOptional: false
         ),
         BriefQuestion(
             id: 3,
-            prompt: "What must the widget include?",
+            prompt: "What must the applet include?",
             supportingText: "Add examples, vocabulary, values or instructions. Avoid student names and personal information.",
             placeholder: "Use metres, seconds and Earth gravity",
             suggestions: ["I will add this later", "Use familiar local examples", "Keep the language concise"],
@@ -87,8 +87,8 @@ struct BriefQuestion: Identifiable, Sendable {
         ),
         BriefQuestion(
             id: 4,
-            prompt: "How should the widget respond?",
-            supportingText: "Student widgets work locally and do not collect responses.",
+            prompt: "How should the applet respond?",
+            supportingText: "Student applets work locally and do not collect responses.",
             placeholder: "Reveal a hint, then explain the answer",
             suggestions: ["Immediate explanation", "Hints before answers", "No marking — exploration only"],
             isOptional: false
@@ -96,7 +96,7 @@ struct BriefQuestion: Identifiable, Sendable {
         BriefQuestion(
             id: 5,
             prompt: "How will this fit into the lesson?",
-            supportingText: "A rough duration and mode helps Studio keep the activity focused.",
+            supportingText: "A rough duration and mode helps Tapplet keep the activity focused.",
             placeholder: "Eight minutes, students work in pairs on phones",
             suggestions: ["5 minutes individually", "10 minutes in pairs", "Whole-class discussion"],
             isOptional: false
