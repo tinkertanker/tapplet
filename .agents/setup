@@ -36,7 +36,7 @@ fi
 
 echo "Using Node.js $(node --version) and npm $(npm --version)"
 
-echo "Installing locked npm workspace dependencies..."
-npm ci --legacy-peer-deps --no-audit --no-fund
+echo "Installing locked Makelet dependencies..."
+npm ci --no-audit --no-fund
 
 echo "Orb setup complete."

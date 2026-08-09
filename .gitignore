@@ -1,18 +1,12 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 node_modules
-/.pnp
-.pnp.js
 
 # testing
-/coverage
+coverage
 
-# production
-packages/teacher/build
-dist/
-packages/macos-dashboard/.build/
-.playwright-cli/
+# generated API output and local Cloudflare state
+services/studio-api/dist/
+.wrangler/
 
 # misc
 .DS_Store
@@ -34,10 +28,6 @@ packages/macos-dashboard/.build/
 .env.release.local
 .dev.vars
 
-# Only .example files should be committed
-# .env.example ✓ (committed)
-# .env.production.example ✓ (committed)
-
 # ============================================
 # Logs
 # ============================================
@@ -46,32 +36,17 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 
-# ============================================
-# Secrets (legacy)
-# ============================================
-src/secrets/
-secrets/
-
-.repopromt/
-.clawpatch/
-
 # TypeScript build info (incremental compilation cache)
 *.tsbuildinfo
 
-# Compiled output of packages/student's `tsc -b` step (vite.config.ts -> .js).
-# Must never be committed: Vite prefers .js config over .ts, so a stale
-# compiled copy would silently shadow future config edits.
-packages/student/vite.config.js
-
-# XcodeGen is the source of truth for the Studio project.
+# XcodeGen is the source of truth for the iPad project.
 apps/ipad/*.xcodeproj/
 apps/ipad/build/
 apps/ipad/.derived-data/
 **/xcuserdata/
-.wrangler/
 
-# Local Classroom Widgets Studio access credentials. These are generated for
-# class operations and must never enter source control.
+# Local Makelet access credentials. These are generated for class operations
+# and must never enter source control.
 .studio-class-codes/
 .studio-smoke-token
 

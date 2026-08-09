@@ -1,30 +1,25 @@
 {
-  "name": "classroom-widgets",
-  "version": "0.10.11",
+  "name": "makelet",
+  "version": "0.1.0",
+  "description": "Create tiny interactive tools for any lesson.",
   "private": true,
   "workspaces": [
-    "packages/shared",
-    "packages/teacher",
-    "packages/student",
-    "packages/server",
     "services/studio-api"
   ],
+  "engines": {
+    "node": ">=22.12 <23"
+  },
   "scripts": {
-    "dev": "npm run dev:all",
-    "dev:teacher": "npm run dev -w @classroom-widgets/teacher",
-    "dev:server": "npm run dev -w @classroom-widgets/server",
-    "dev:student": "npm run dev -w @classroom-widgets/student",
-    "dev:studio-api": "npm run dev -w @classroom-widgets/studio-api",
-    "dev:studio": "npm run dev:studio-api",
-    "dev:all": "concurrently -n teacher,server,student -c blue,green,magenta \"npm run dev:teacher\" \"npm run dev:server\" \"npm run dev:student\"",
-    "dev:concurrent": "npm run dev:all",
-    "build": "npm run build --workspaces --if-present",
-    "build:student": "npm run build -w @classroom-widgets/student",
-    "build:all": "npm run build",
-    "test": "npm run test -w @classroom-widgets/teacher",
-    "test:studio": "npm run test:studio-class-code && node --test scripts/studio-html-seeds.test.mjs evals/model/artifact-eval.test.mjs && npm run test -w @classroom-widgets/studio-api",
+    "dev": "npm run dev -w @tinkercademy/makelet-api",
+    "dev:studio-api": "npm run dev",
+    "dev:studio": "npm run dev",
+    "build": "npm run build -w @tinkercademy/makelet-api",
+    "test": "npm run test:studio-class-code && node --test scripts/studio-html-seeds.test.mjs evals/model/artifact-eval.test.mjs && npm run test -w @tinkercademy/makelet-api",
+    "test:studio": "npm test",
     "test:studio-class-code": "node --test scripts/studio-class-code.test.mjs",
-    "verify:studio": "npm run test:studio && npm run typecheck -w @classroom-widgets/studio-api && npm run studio:seeds:validate && npm run eval:artifacts && npm run verify:studio-resources",
+    "typecheck": "npm run typecheck -w @tinkercademy/makelet-api",
+    "verify": "npm test && npm run typecheck && npm run studio:seeds:validate && npm run eval:artifacts && npm run verify:studio-resources",
+    "verify:studio": "npm run verify",
     "verify:studio-resources": "tsx scripts/verify-studio-ipad-resources.ts",
     "studio:seeds:package": "node scripts/studio-html-seeds.mjs package",
     "studio:seeds:validate": "node scripts/studio-html-seeds.mjs validate",
@@ -34,18 +29,12 @@
     "eval:model-moderation": "tsx evals/model/moderation.ts",
     "verify:studio-live": "tsx scripts/verify-studio-live.ts",
     "provision:studio-class": "node scripts/provision-studio-class-code.mjs",
-    "test:build-config": "node scripts/check-root-build-config.cjs",
-    "generate:voice-types": "node scripts/generateVoiceCommandTypes.cjs",
-    "prebuild": "npm run generate:voice-types",
-    "macos:run": "./script/build_and_run.sh",
-    "macos:dmg": "./script/build_macos_release.sh",
+    "db:migrate:local": "npm run db:migrate:local -w @tinkercademy/makelet-api",
     "ipad:generate": "cd apps/ipad && xcodegen generate",
-    "ipad:prepare": "node scripts/sync-studio-examples-to-ipad.mjs && npm run ipad:generate",
-    "server": "npm run start -w @classroom-widgets/server",
-    "install:all": "npm install",
-    "clean": "node scripts/clean-workspaces.cjs"
+    "ipad:prepare": "node scripts/sync-studio-examples-to-ipad.mjs && npm run ipad:generate"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0"
+    "jsdom": "^26.1.0",
+    "tsx": "^4.21.0"
   }
 }
