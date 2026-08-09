@@ -151,7 +151,7 @@ struct AppletPreviewWebView: UIViewRepresentable {
 
 final class AssetSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable {
     static let scheme = "tapplet-preview"
-    static let documentBaseURL = URL(string: "tapplet-preview://document/")!
+    static let documentBaseURL = URL(string: "tapplet-preview://preview/")!
     private let lock = NSLock()
     private var stored: [LocalAppletAssetFile]
 

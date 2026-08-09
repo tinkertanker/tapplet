@@ -16,9 +16,9 @@ final class ArtifactModelsTests: XCTestCase {
         XCTAssertTrue(store.examples.allSatisfy { $0.source.html.contains("<html") })
     }
 
-    func testRelativeAssetURLResolvesThroughControlledPreviewScheme() throws {
+    @MainActor func testRelativeAssetURLResolvesThroughControlledPreviewScheme() throws {
         let url = try XCTUnwrap(URL(string: "assets/image-1", relativeTo: AssetSchemeHandler.documentBaseURL)?.absoluteURL)
-        XCTAssertEqual(url.absoluteString, "tapplet-preview://document/assets/image-1")
+        XCTAssertEqual(url.absoluteString, "tapplet-preview://preview/assets/image-1")
         XCTAssertEqual(AssetSchemeHandler.assetID(from: url), "image-1")
     }
 }
