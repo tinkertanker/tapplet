@@ -118,18 +118,9 @@ revisions are not globally indexed. Retrieval is a rebuildable projection over
 titles, descriptions, subjects, levels, interaction patterns and tags; the HTML
 sources remain authoritative.
 
-The reviewed corpus is deployed through the authenticated seed import route.
-Configure the Worker secret with `wrangler secret put
-STUDIO_SEED_IMPORT_TOKEN`, then import the validated local corpus with:
-
-```bash
-STUDIO_SEED_IMPORT_TOKEN=... npm run studio:seeds:import -- \
-  --endpoint https://<studio-origin>/v1/seeds
-```
-
-The import is idempotent for stable `<seed-id>-seed` revisions, writes each HTML
-source to R2 before updating D1 and marks the retrieval row as curated. The
-scheduled artifact cleanup excludes curated seeds.
+The reviewed corpus is deployed through the authenticated, idempotent seed
+import route. Operational secret configuration and import steps live in the
+pilot runbook.
 
 ## Supported content
 
@@ -158,7 +149,7 @@ V1 does not provide:
 - arbitrary packages, external requests, advertising or tracking;
 - a generic scene, drawing, physics, particle, action or state-machine DSL;
 - raw AST or state-machine authoring;
-- automatic conversion of the previous WidgetSpec experiments;
+- automatic conversion of previous prerelease schema experiments;
 - full laboratory catalogues inside one artifact.
 
 ## Verification gates
@@ -176,7 +167,6 @@ V1 does not provide:
 - Before pilot release, the physical iPad flow must complete generation,
   revision while preserving the old preview, history restore, image use,
   publication in Safari and revocation.
-- Existing web workspaces continue to build and test independently.
 
 This release is a clean pre-launch cutover. Legacy schema drafts and
 publications are reset by migration; no conversion or dual renderer is

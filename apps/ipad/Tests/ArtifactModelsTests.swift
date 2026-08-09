@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClassroomWidgetsStudio
+@testable import Tapplet
 
 final class ArtifactModelsTests: XCTestCase {
     func testArtifactResponseDecodesHeadHTMLAndRevision() throws {
@@ -11,14 +11,14 @@ final class ArtifactModelsTests: XCTestCase {
     }
 
     @MainActor func testBundledHTMLExampleLoads() {
-        let store = StudioStore(storageDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString), bundle: Bundle(for: Self.self))
-        XCTAssertFalse(store.examples.isEmpty)
+        let store = TappletStore(storageDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString), bundle: Bundle(for: TappletStore.self))
+        XCTAssertEqual(store.examples.count, 14)
         XCTAssertTrue(store.examples.allSatisfy { $0.source.html.contains("<html") })
     }
 
     func testRelativeAssetURLResolvesThroughControlledPreviewScheme() throws {
         let url = try XCTUnwrap(URL(string: "assets/image-1", relativeTo: AssetSchemeHandler.documentBaseURL)?.absoluteURL)
-        XCTAssertEqual(url.absoluteString, "classroom-widget://preview/assets/image-1")
+        XCTAssertEqual(url.absoluteString, "tapplet-preview://document/assets/image-1")
         XCTAssertEqual(AssetSchemeHandler.assetID(from: url), "image-1")
     }
 }

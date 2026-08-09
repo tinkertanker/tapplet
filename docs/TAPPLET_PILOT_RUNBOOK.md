@@ -3,9 +3,26 @@
 This is the operator checklist for the August 2026 pilot. It covers Tapplet's
 public API at
 `https://classroom-widgets-studio-api.tinkertanker.workers.dev` and the iPad
-app. Run Cloudflare commands from `services/studio-api`.
+app. Run Cloudflare commands from `services/api`.
 The production resources are in Wrangler's `tinkertanker` profile; keep
 `--profile tinkertanker` on every production command below.
+
+## Import the canonical examples
+
+The source corpus is `apps/ipad/Resources/Examples`. Validate it, configure the
+existing externally managed Worker secret, and run the idempotent import:
+
+```bash
+npm run examples:validate
+cd services/api
+npx wrangler secret put STUDIO_SEED_IMPORT_TOKEN --profile tinkertanker
+cd ../..
+STUDIO_SEED_IMPORT_TOKEN=... npm run examples:import -- \
+  --endpoint https://classroom-widgets-studio-api.tinkertanker.workers.dev/v1/seeds
+```
+
+The importer writes HTML to R2 before updating D1 and marks retrieval rows as
+curated. Never print or commit the token.
 
 ## Roles and response times
 
@@ -35,7 +52,7 @@ The production resources are in Wrangler's `tinkertanker` profile; keep
    Afterwards every pilot iPad receives `DEVICE_REGISTRATION_REQUIRED` and must
    re-register with a new class code; confirm `AI_API_KEY` is also configured.
 4. Provision one shared code for each class with
-   `npm run provision:studio-class -- 1234 30`, replacing `1234` with the
+   `npm run class-access:provision -- 1234 30`, replacing `1234` with the
    four-digit class number and `30` with the required activation limit from 1
    to 100. The generated code contains those four numbers followed by four
    random letters. Its ignored `.studio-class-codes/1234.txt` file has
@@ -43,7 +60,7 @@ The production resources are in Wrangler's `tinkertanker` profile; keep
    the code remains valid until it reaches the configured limit or expires.
 5. Provision class `0000` with a 100-use limit for automated live verification.
    Set `STUDIO_CLASS_ACCESS_CODE` to that code and run
-   `npm run verify:studio-live`. Later runs reuse the ignored, owner-only
+   `npm run verify:live`. Later runs reuse the ignored, owner-only
    `.studio-smoke-token` file.
 6. For external TestFlight or App Store review, place a still-valid multi-use
    workshop code in App Review notes. Verify it immediately before submission

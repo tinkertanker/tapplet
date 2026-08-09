@@ -4,34 +4,28 @@
   "description": "Create tiny interactive applets for any lesson.",
   "private": true,
   "workspaces": [
-    "services/studio-api"
+    "services/api"
   ],
   "engines": {
     "node": ">=22.12 <23"
   },
   "scripts": {
-    "dev": "npm run dev -w @tinkercademy/tapplet-api",
-    "dev:studio-api": "npm run dev",
-    "dev:studio": "npm run dev",
-    "build": "npm run build -w @tinkercademy/tapplet-api",
-    "test": "npm run test:studio-class-code && node --test scripts/studio-html-seeds.test.mjs evals/model/artifact-eval.test.mjs && npm run test -w @tinkercademy/tapplet-api",
-    "test:studio": "npm test",
-    "test:studio-class-code": "node --test scripts/studio-class-code.test.mjs",
-    "typecheck": "npm run typecheck -w @tinkercademy/tapplet-api",
-    "verify": "npm test && npm run typecheck && npm run studio:seeds:validate && npm run eval:artifacts && npm run verify:studio-resources",
-    "verify:studio": "npm run verify",
-    "verify:studio-resources": "tsx scripts/verify-studio-ipad-resources.ts",
-    "studio:seeds:package": "node scripts/studio-html-seeds.mjs package",
-    "studio:seeds:validate": "node scripts/studio-html-seeds.mjs validate",
-    "studio:seeds:import": "node scripts/studio-html-seeds.mjs import",
+    "api:dev": "npm run dev -w @tinkercademy/tapplet-api",
+    "api:build": "npm run build -w @tinkercademy/tapplet-api",
+    "api:test": "npm run test -w @tinkercademy/tapplet-api",
+    "api:typecheck": "npm run typecheck -w @tinkercademy/tapplet-api",
+    "api:db:migrate:local": "npm run db:migrate:local -w @tinkercademy/tapplet-api",
+    "test": "node --test scripts/class-access.test.mjs scripts/examples.test.mjs evals/model/artifact-eval.test.mjs",
+    "verify": "npm test && npm run api:test && npm run api:typecheck && npm run examples:validate && npm run eval:artifacts",
+    "examples:package": "node scripts/examples.mjs package",
+    "examples:validate": "node scripts/examples.mjs validate",
+    "examples:import": "node scripts/examples.mjs import",
     "eval:artifacts": "tsx evals/artifacts/run.ts",
     "eval:model": "tsx evals/model/run.ts",
     "eval:model-moderation": "tsx evals/model/moderation.ts",
-    "verify:studio-live": "tsx scripts/verify-studio-live.ts",
-    "provision:studio-class": "node scripts/provision-studio-class-code.mjs",
-    "db:migrate:local": "npm run db:migrate:local -w @tinkercademy/tapplet-api",
-    "ipad:generate": "cd apps/ipad && xcodegen generate",
-    "ipad:prepare": "node scripts/sync-studio-examples-to-ipad.mjs && npm run ipad:generate"
+    "verify:live": "tsx scripts/verify-live-api.ts",
+    "class-access:provision": "node scripts/provision-class-access.mjs",
+    "ipad:generate": "cd apps/ipad && xcodegen generate"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",

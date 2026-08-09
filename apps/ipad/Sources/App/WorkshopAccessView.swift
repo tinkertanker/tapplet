@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct WorkshopAccessView: View {
-    let store: StudioStore
+    let store: TappletStore
 
     @State private var accessCode = ""
     @State private var isRegistering = false
-    @State private var registrationError: StudioErrorPresentation?
+    @State private var registrationError: TappletErrorPresentation?
     @FocusState private var codeIsFocused: Bool
 
     var body: some View {
@@ -15,13 +15,13 @@ struct WorkshopAccessView: View {
                     if store.workshopAccessState == .ready {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 52))
-                            .foregroundStyle(StudioTheme.accent)
+                            .foregroundStyle(TappletTheme.accent)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 8) {
                             Text("This iPad is ready")
                                 .font(.largeTitle.bold())
                             Text("You can make, share and manage classroom applets here. Existing student links stay connected to this Tapplet access.")
-                                .foregroundStyle(StudioTheme.mutedInk)
+                                .foregroundStyle(TappletTheme.mutedInk)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else {
@@ -31,7 +31,7 @@ struct WorkshopAccessView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("Enter your shared class code to make and share classroom applets. It does not create an account, and students never need a code or account.")
                                 .font(.body)
-                                .foregroundStyle(StudioTheme.mutedInk)
+                                .foregroundStyle(TappletTheme.mutedInk)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
@@ -40,14 +40,14 @@ struct WorkshopAccessView: View {
                             .autocorrectionDisabled()
                             .font(.title3.monospaced().weight(.semibold))
                             .padding(14)
-                            .background(StudioTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
+                            .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
                             .focused($codeIsFocused)
                             .accessibilityIdentifier("workshop-access-code")
                             .disabled(isRegistering)
 
                         Label("Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional.", systemImage: "info.circle")
                             .font(.footnote)
-                            .foregroundStyle(accessCodeIsTooShort ? StudioTheme.danger : StudioTheme.mutedInk)
+                            .foregroundStyle(accessCodeIsTooShort ? TappletTheme.danger : TappletTheme.mutedInk)
 
                         if let registrationError {
                             VStack(alignment: .leading, spacing: 4) {
@@ -56,10 +56,10 @@ struct WorkshopAccessView: View {
                                 Text(registrationError.message)
                                     .font(.callout)
                             }
-                            .foregroundStyle(StudioTheme.danger)
+                            .foregroundStyle(TappletTheme.danger)
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(StudioTheme.dangerSoft, in: RoundedRectangle(cornerRadius: 12))
+                            .background(TappletTheme.dangerSoft, in: RoundedRectangle(cornerRadius: 12))
                             .accessibilityIdentifier("workshop-access-error")
                         }
 
@@ -84,7 +84,7 @@ struct WorkshopAccessView: View {
 
                         Text("Your Tapplet access stays securely on this iPad. You can explore examples without a code and activate Tapplet from the sidebar whenever you are ready.")
                             .font(.footnote)
-                            .foregroundStyle(StudioTheme.mutedInk)
+                            .foregroundStyle(TappletTheme.mutedInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -130,7 +130,7 @@ struct WorkshopAccessView: View {
     private func register() {
         guard !isRegistering else { return }
         guard !cleanedAccessCode.isEmpty else {
-            registrationError = StudioErrorPresentation(
+            registrationError = TappletErrorPresentation(
                 title: "Enter your class code",
                 message: "Ask your workshop facilitator for the class code that activates Tapplet on this iPad.",
                 requestsWorkshopAccess: false
@@ -139,7 +139,7 @@ struct WorkshopAccessView: View {
             return
         }
         guard !accessCodeIsTooShort else {
-            registrationError = StudioErrorPresentation(
+            registrationError = TappletErrorPresentation(
                 title: "Complete the class code",
                 message: "Enter all four numbers and four letters. Your code is still in the field above.",
                 requestsWorkshopAccess: false

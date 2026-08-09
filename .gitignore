@@ -5,7 +5,7 @@ node_modules
 coverage
 
 # generated API output and local Cloudflare state
-services/studio-api/dist/
+services/api/dist/
 .wrangler/
 
 # misc

@@ -1,114 +1,65 @@
 # Tapplet
 
-**Create tiny interactive applets for any lesson.**
+**Create tiny interactive applets for any lesson.** Tapplet is Tinkercademy's teacher-facing, iPad-first SwiftUI app for creating, adapting, previewing and sharing self-contained classroom activities.
 
-Tapplet is a teacher-facing iPad app for generating, adapting, previewing and
-sharing self-contained interactive classroom activities. It is an open-source
-project by [Tinkercademy](https://tinkercademy.com).
+## Architecture
 
-Born from the Tinkercademy co-founders' experience as physics
-teachers searching for kinematics Java applets, Tapplet lets
-teachers create the exact tool a lesson needs. The name combines "tapping" with
-"applet". Amazing!
+- `apps/ipad`: native SwiftUI app and the canonical bundled example corpus at `Resources/Examples`
+- `services/api`: Cloudflare Worker API, D1 migrations and tests
+- `scripts` and `evals`: repository, publication and model-quality tooling
+- `docs`: product contract and pilot operations
 
-The app uses the Tapplet API for generation, keeps projects available for
-offline preview and publishes unlisted links that students can open in a
-browser.
+The app bundles reviewed HTML examples and can browse and run them offline. Saved applets remain available for offline preview. Generation, revision history, restoration from the service, and publication require the API.
 
-## Repository layout
+## Native iPad setup (no Node required)
 
-| Path | Purpose |
-| --- | --- |
-| `apps/ipad` | SwiftUI teacher app |
-| `services/studio-api` | Cloudflare Worker API, D1 migrations and tests |
-| `examples/studio-html` | Canonical reviewed activity corpus |
-| `evals` | Artifact and model evaluation harnesses |
-| `scripts` | Seed, verification and workshop-provisioning tools |
-| `docs` | Product contract and pilot operations |
+Install Xcode and pinned XcodeGen 2.44.1, then:
 
-Some paths and deployed identifiers retain the internal name `Studio` to avoid
-an infrastructure migration.
+```bash
+cd apps/ipad
+xcodegen generate
+cd ../..
+xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
 
-## Setup
+If Node is already installed, `npm run ipad:generate` is an equivalent
+repository-root convenience command. It does not use `node_modules`.
 
-Use Node.js 22.12 or newer on the Node 22 release line.
+Run tests on an available iPad simulator:
+
+```bash
+xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet \
+  -destination 'platform=iOS Simulator,id=<simulator-udid>' \
+  CODE_SIGNING_ALLOWED=NO -only-testing:TappletTests test
+```
+
+Debug defaults to simulator loopback at `http://127.0.0.1:8787`. A physical iPad cannot reach the Mac through loopback: set `TAPPLET_API_BASE_URL` to an address reachable from that iPad. Release defaults to the deployed API. See [`apps/ipad/README.md`](apps/ipad/README.md) for signing and configuration.
+
+## API and repository tooling
+
+Node.js 22 dependencies are only for development, API and repository tooling; they are never bundled into the native app.
 
 ```bash
 npm ci
+cp services/api/.dev.vars.example services/api/.dev.vars
+npm run api:db:migrate:local
+npm run api:dev
+```
+
+Useful commands are `api:dev`, `api:build`, `api:test`, `api:typecheck`, `api:db:migrate:local`, `examples:validate`, `examples:package`, `examples:import`, `eval:artifacts`, `eval:model`, `eval:model-moderation`, `verify:live`, and `class-access:provision`.
+
+Run all offline repository verification with:
+
+```bash
 npm run verify
+npm run api:build
 ```
 
-`npm run verify` runs the offline tests, type checks, seed validation, artifact
-evaluation and iPad resource checks. It does not call the configured model or
-production services.
+`verify` runs root tooling tests, API tests and typechecking, canonical example validation, and artifact evaluation. It deliberately does not claim to compile Swift; native build and tests run separately on macOS CI.
 
-## Build and test the iPad app
-
-Install [XcodeGen](https://github.com/yonaskolb/XcodeGen), then run:
-
-```bash
-npm run ipad:prepare
-```
-
-This copies the reviewed HTML examples into the app and generates
-`apps/ipad/ClassroomWidgetsStudio.xcodeproj`.
-
-Build without signing for a simulator:
-
-```bash
-xcodebuild \
-  -project apps/ipad/ClassroomWidgetsStudio.xcodeproj \
-  -scheme ClassroomWidgetsStudio \
-  -configuration Debug \
-  -destination 'generic/platform=iOS Simulator' \
-  CODE_SIGNING_ALLOWED=NO \
-  build
-```
-
-Run the unit-test target using an installed simulator:
-
-```bash
-xcodebuild \
-  -project apps/ipad/ClassroomWidgetsStudio.xcodeproj \
-  -scheme ClassroomWidgetsStudio \
-  -configuration Debug \
-  -destination 'platform=iOS Simulator,id=<simulator-udid>' \
-  CODE_SIGNING_ALLOWED=NO \
-  -only-testing:ClassroomWidgetsStudioTests \
-  test
-```
-
-The Debug configuration uses `http://127.0.0.1:8787`; Release uses the
-production API. Set `STUDIO_API_BASE_URL` in the process environment to
-override either value, and remove the override before validating a Release
-build.
-
-## Run the API locally
-
-Create a local development configuration from the safe template:
-
-```bash
-cp services/studio-api/.dev.vars.example services/studio-api/.dev.vars
-npm run dev
-```
-
-Never commit `.dev.vars`, class codes, device tokens or production credentials.
-
-Apply D1 migrations to the local Wrangler database with:
-
-```bash
-npm run db:migrate:local
-```
-
-## Documentation
-
-- [`docs/TAPPLET_V1.md`](docs/TAPPLET_V1.md) — product, artifact and system
-  contracts
-- [`docs/TAPPLET_PILOT_RUNBOOK.md`](docs/TAPPLET_PILOT_RUNBOOK.md) — deployment,
-  physical-device acceptance, safety response and rollback
-- [`services/studio-api/wrangler.jsonc`](services/studio-api/wrangler.jsonc) —
-  non-secret production model, quota and binding configuration
+Operational details: [`docs/TAPPLET_PILOT_RUNBOOK.md`](docs/TAPPLET_PILOT_RUNBOOK.md). Product contract: [`docs/TAPPLET_V1.md`](docs/TAPPLET_V1.md).
 
 ## Licence
 
-Tapplet is available under the [MIT Licence](LICENSE).
+[MIT](LICENSE)

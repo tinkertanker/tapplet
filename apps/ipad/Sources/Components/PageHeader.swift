@@ -10,14 +10,14 @@ struct PageHeader: View {
         HStack(alignment: .center, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(StudioTheme.Typography.display)
-                    .foregroundStyle(StudioTheme.ink)
+                    .font(TappletTheme.Typography.display)
+                    .foregroundStyle(TappletTheme.ink)
                 Text(subtitle)
                     .font(.body)
-                    .foregroundStyle(StudioTheme.mutedInk)
+                    .foregroundStyle(TappletTheme.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
                 Capsule()
-                    .fill(StudioTheme.accentBright)
+                    .fill(TappletTheme.accentBright)
                     .frame(width: 42, height: 5)
                     .padding(.top, 4)
                     .accessibilityHidden(true)

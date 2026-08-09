@@ -61,7 +61,7 @@ struct ArtifactProject: Codable, Equatable, Identifiable, Sendable {
     var artifact: Artifact
     var source: ArtifactSource
     var revisions: [ArtifactRevision]
-    var localAssets: [LocalWidgetAssetFile] = []
+    var localAssets: [LocalAppletAssetFile] = []
     var isExample = false
     var id: String { artifact.id }
     var updatedAt: Date {
@@ -80,7 +80,17 @@ struct ExampleArtifact: Codable, Equatable, Identifiable, Sendable {
     var locale: String? = nil
     var learningObjective: String? = nil
     var tags: [String]
-    var htmlFile: String
+    var file: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, summary, subject, level, locale, learningObjective, tags
+        case file = "filename"
+    }
+}
+
+struct ExampleManifest: Codable, Sendable {
+    var schemaVersion: String
+    var seeds: [ExampleArtifact]
 }
 
 struct ExampleSearchDescriptor: Codable, Equatable, Identifiable, Sendable {

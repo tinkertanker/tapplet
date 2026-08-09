@@ -1,4 +1,4 @@
-name: ClassroomWidgetsStudio
+name: Tapplet
 
 options:
   bundleIdPrefix: sg.tinkertanker
@@ -16,7 +16,7 @@ settings:
     DEVELOPMENT_TEAM: PQ6U5ESLN2
 
 targets:
-  ClassroomWidgetsStudio:
+  Tapplet:
     type: application
     platform: iOS
     sources:
@@ -28,7 +28,7 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sg.tinkertanker.ClassroomWidgetsStudio
+        PRODUCT_BUNDLE_IDENTIFIER: sg.tinkertanker.Tapplet
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         VERSIONING_SYSTEM: apple-generic
@@ -39,7 +39,7 @@ targets:
         INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking: true
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Choose classroom images to include in an applet.
         INFOPLIST_KEY_NSCameraUsageDescription: Take a photo of a classroom diagram, worksheet or sketch to include in an applet.
-        INFOPLIST_KEY_StudioAPIBaseURL: "$(STUDIO_API_BASE_URL)"
+        INFOPLIST_KEY_TappletAPIBaseURL: "$(TAPPLET_API_BASE_URL)"
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UIUserInterfaceStyle: Light
         INFOPLIST_KEY_UILaunchScreen_Generation: true
@@ -52,36 +52,36 @@ targets:
         CODE_SIGN_STYLE: Automatic
       configs:
         Debug:
-          STUDIO_API_BASE_URL: http://127.0.0.1:8787
+          TAPPLET_API_BASE_URL: http://127.0.0.1:8787
         Release:
-          STUDIO_API_BASE_URL: https://classroom-widgets-studio-api.tinkertanker.workers.dev
+          TAPPLET_API_BASE_URL: https://classroom-widgets-studio-api.tinkertanker.workers.dev
     scheme:
       testTargets:
-        - ClassroomWidgetsStudioTests
-        - ClassroomWidgetsStudioUITests
+        - TappletTests
+        - TappletUITests
       gatherCoverageData: true
 
-  ClassroomWidgetsStudioTests:
+  TappletTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
     dependencies:
-      - target: ClassroomWidgetsStudio
+      - target: Tapplet
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sg.tinkertanker.ClassroomWidgetsStudioTests
+        PRODUCT_BUNDLE_IDENTIFIER: sg.tinkertanker.TappletTests
         GENERATE_INFOPLIST_FILE: true
 
-  ClassroomWidgetsStudioUITests:
+  TappletUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
       - path: UITests
     dependencies:
-      - target: ClassroomWidgetsStudio
+      - target: Tapplet
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sg.tinkertanker.ClassroomWidgetsStudioUITests
+        PRODUCT_BUNDLE_IDENTIFIER: sg.tinkertanker.TappletUITests
         GENERATE_INFOPLIST_FILE: true
-        TEST_TARGET_NAME: ClassroomWidgetsStudio
+        TEST_TARGET_NAME: Tapplet

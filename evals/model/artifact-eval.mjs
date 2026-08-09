@@ -1,4 +1,4 @@
-import { validateHtmlArtifact } from '../../scripts/lib/studio-html-artifact.mjs';
+import { validateHtmlArtifact } from '../../scripts/lib/html-artifact.mjs';
 
 const INTERACTION_PATTERNS = {
   choice: /<(?:button|select)\b|<input\b[^>]*type=["'](?:radio|checkbox)/i,

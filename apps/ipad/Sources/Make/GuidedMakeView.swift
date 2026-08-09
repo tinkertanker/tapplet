@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct GuidedMakeView: View {
-    let store: StudioStore
+    let store: TappletStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var creationError: StudioErrorPresentation?
+    @State private var creationError: TappletErrorPresentation?
     @FocusState private var responseIsFocused: Bool
 
     private var question: BriefQuestion {
@@ -39,29 +39,29 @@ struct GuidedMakeView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Question \(store.guidedMakeQuestionIndex + 1) of \(BriefQuestion.all.count)")
-                        .font(StudioTheme.Typography.eyebrow)
-                        .foregroundStyle(StudioTheme.mutedInk)
+                        .font(TappletTheme.Typography.eyebrow)
+                        .foregroundStyle(TappletTheme.mutedInk)
                     Spacer()
                     if question.isOptional {
                         Text("Optional")
                             .font(.caption)
-                            .foregroundStyle(StudioTheme.mutedInk)
+                            .foregroundStyle(TappletTheme.mutedInk)
                     }
                 }
                 ProgressView(
                     value: Double(store.guidedMakeQuestionIndex + 1),
                     total: Double(BriefQuestion.all.count)
                 )
-                    .tint(StudioTheme.accent)
+                    .tint(TappletTheme.accent)
             }
 
             VStack(alignment: .leading, spacing: 9) {
                 Text(question.prompt)
-                    .font(StudioTheme.Typography.question)
-                    .foregroundStyle(StudioTheme.ink)
+                    .font(TappletTheme.Typography.question)
+                    .foregroundStyle(TappletTheme.ink)
                 Text(question.supportingText)
                     .font(.body)
-                    .foregroundStyle(StudioTheme.mutedInk)
+                    .foregroundStyle(TappletTheme.mutedInk)
             }
 
             TextEditor(
@@ -74,7 +74,7 @@ struct GuidedMakeView: View {
                 .frame(minHeight: 112)
                 .padding(12)
                 .scrollContentBackground(.hidden)
-                .background(StudioTheme.canvas, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     if store.guidedMakeResponse.isEmpty {
                         Text(question.placeholder)
@@ -92,8 +92,8 @@ struct GuidedMakeView: View {
 
             VStack(alignment: .leading, spacing: 9) {
                 Text("Or start here")
-                    .font(StudioTheme.Typography.eyebrow)
-                    .foregroundStyle(StudioTheme.mutedInk)
+                    .font(TappletTheme.Typography.eyebrow)
+                    .foregroundStyle(TappletTheme.mutedInk)
                 FlowLayout(spacing: 8) {
                     ForEach(question.suggestions, id: \.self) { suggestion in
                         Button(suggestion) {
@@ -135,20 +135,20 @@ struct GuidedMakeView: View {
             }
         }
         .padding(28)
-        .studioCard()
+        .tappletCard()
     }
 
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(store.isCreatingGuidedDraft ? "Making your applet" : "Check your answers")
-                    .font(StudioTheme.Typography.question)
+                    .font(TappletTheme.Typography.question)
                 Text(
                     store.isCreatingGuidedDraft
                         ? "Tapplet is working from the answers below."
                         : "Tap any answer to change it, then make your applet. You can keep refining it afterwards."
                 )
-                    .foregroundStyle(StudioTheme.mutedInk)
+                    .foregroundStyle(TappletTheme.mutedInk)
             }
 
             if store.isCreatingGuidedDraft {
@@ -174,11 +174,11 @@ struct GuidedMakeView: View {
                 Divider()
                 summaryRow(label: "In the lesson", value: store.guidedMakeDraft.classroomFit, questionIndex: 5)
             }
-            .background(StudioTheme.canvas, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             Text("The applet will not collect responses, identify students or call external services.")
                 .font(.footnote)
-                .foregroundStyle(StudioTheme.mutedInk)
+                .foregroundStyle(TappletTheme.mutedInk)
 
             if let creationError {
                 VStack(alignment: .leading, spacing: 4) {
@@ -187,10 +187,10 @@ struct GuidedMakeView: View {
                     Text(creationError.message)
                         .font(.callout)
                 }
-                    .foregroundStyle(StudioTheme.danger)
+                    .foregroundStyle(TappletTheme.danger)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(StudioTheme.dangerSoft, in: RoundedRectangle(cornerRadius: 12))
+                    .background(TappletTheme.dangerSoft, in: RoundedRectangle(cornerRadius: 12))
             }
 
             HStack {
@@ -220,29 +220,29 @@ struct GuidedMakeView: View {
             }
         }
         .padding(28)
-        .studioCard()
+        .tappletCard()
     }
 
     private var generationStatus: some View {
         HStack(alignment: .top, spacing: 14) {
             ProgressView()
                 .controlSize(.large)
-                .tint(StudioTheme.accent)
+                .tint(TappletTheme.accent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
                 Text("This usually takes one to two minutes.")
                     .font(.body.weight(.semibold))
                 Text("Your answers are still here and will be used to make your applet. There is nothing else you need to do right now.")
                     .font(.callout)
-                    .foregroundStyle(StudioTheme.mutedInk)
+                    .foregroundStyle(TappletTheme.mutedInk)
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(StudioTheme.canvas, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(StudioTheme.border, lineWidth: 1)
+                .stroke(TappletTheme.border, lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Making your applet. This usually takes one to two minutes. Your answers are still here and will be used to make your applet.")
@@ -256,28 +256,28 @@ struct GuidedMakeView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(label)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(StudioTheme.mutedInk)
+                        .foregroundStyle(TappletTheme.mutedInk)
                     Text(value)
                         .font(.body)
-                        .foregroundStyle(StudioTheme.ink)
+                        .foregroundStyle(TappletTheme.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Edit answer")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(StudioTheme.accent)
+                        .foregroundStyle(TappletTheme.accent)
                 }
             } else {
                 HStack(alignment: .top, spacing: 20) {
                     Text(label)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(StudioTheme.mutedInk)
+                        .foregroundStyle(TappletTheme.mutedInk)
                         .frame(width: 110, alignment: .leading)
                     Text(value)
                         .font(.body)
-                        .foregroundStyle(StudioTheme.ink)
+                        .foregroundStyle(TappletTheme.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(StudioTheme.mutedInk)
+                        .foregroundStyle(TappletTheme.mutedInk)
                         .padding(.top, 4)
                         .accessibilityHidden(true)
                 }

@@ -8,10 +8,10 @@
 - Preserve behavior and API-contract consistency across the SwiftUI iPad app,
   Cloudflare Worker, D1/R2 storage, scripts, seed corpus and evaluations when a
   change crosses product boundaries.
-- Treat `examples/studio-html` as the canonical curated corpus. Refresh the
-  generated iPad resources with `npm run ipad:prepare` rather than editing the
-  bundled copies independently.
-- Keep deployed Worker, D1, R2 and iOS identifiers stable unless a task
+- Treat `apps/ipad/Resources/Examples` as the one canonical curated corpus.
+  Generate tooling fixtures from it with `npm run examples:package`.
+- Source identities use Tapplet. Deployed Worker URLs/names, D1/R2 resources,
+  bindings and externally configured secret names remain stable unless a task
   explicitly includes a coordinated infrastructure migration.
 - Use explicit types and avoid `any`. Do not edit generated files without
   changing their source of truth.

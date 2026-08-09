@@ -3,10 +3,10 @@ import path from "node:path";
 import {
   validateHtmlArtifact,
   validateSeedManifest,
-} from "../../scripts/lib/studio-html-artifact.mjs";
+} from "../../scripts/lib/html-artifact.mjs";
 
 const repoRoot = path.resolve(process.env.INIT_CWD ?? process.cwd());
-const directory = path.join(repoRoot, "examples", "studio-html");
+const directory = path.join(repoRoot, "apps", "ipad", "Resources", "Examples");
 
 async function main(): Promise<void> {
   const manifest = JSON.parse(

@@ -1,15 +1,15 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { OpenAiCompatibleProvider } from "../../services/studio-api/src/ai/openAiCompatibleProvider";
+import { OpenAiCompatibleProvider } from "../../services/api/src/ai/openAiCompatibleProvider";
 import type {
   DesignCard,
   Exemplar,
   TeacherBrief,
-} from "../../services/studio-api/src/ai/provider";
+} from "../../services/api/src/ai/provider";
 import {
   InvalidModelOutputError,
   validateHtmlOutput,
-} from "../../services/studio-api/src/generation";
+} from "../../services/api/src/generation";
 import { assessArtifact } from "./artifact-eval.mjs";
 
 interface EvalCase {
@@ -59,7 +59,7 @@ function normalise(value: string): string {
 }
 
 async function loadExemplars(): Promise<Exemplar[]> {
-  const directory = resolve(repoRoot, "examples/studio-html");
+  const directory = resolve(repoRoot, "apps/ipad/Resources/Examples");
   const manifest = JSON.parse(
     await readFile(resolve(directory, "manifest.json"), "utf8"),
   ) as SeedManifest;
@@ -142,7 +142,7 @@ async function main() {
   ) as Manifest;
   const seedManifest = JSON.parse(
     await readFile(
-      resolve(repoRoot, "examples/studio-html/manifest.json"),
+      resolve(repoRoot, "apps/ipad/Resources/Examples/manifest.json"),
       "utf8",
     ),
   ) as SeedManifest;

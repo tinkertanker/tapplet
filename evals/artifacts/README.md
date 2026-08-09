@@ -1,6 +1,6 @@
 # Tapplet HTML artifact corpus evaluation
 
-This evaluation validates the canonical corpus under `examples/studio-html/`.
+This evaluation validates the canonical corpus under `apps/ipad/Resources/Examples/`.
 It checks manifest completeness and uniqueness,
 source-file parity, the 200 KB limit, complete inline HTML/CSS/JavaScript,
 locale/title agreement, no external imports or network use, and core subject
