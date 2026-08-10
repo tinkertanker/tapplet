@@ -1,4 +1,454 @@
 import SwiftUI
-struct ExploreView: View { let store: TappletStore; @State private var preview: ArtifactProject?; @State private var error: String?
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 24) { PageHeader(title: "Start with an example", subtitle: "Try a bundled HTML activity, then remix it for your class.", sticker: .greetings); LazyVGrid(columns: [GridItem(.adaptive(minimum: 280))], spacing: 18) { ForEach(store.examples) { project in AppletProjectCard(project: project, primaryTitle: "Try as student", onPrimary: { preview = project }, secondaryTitle: "Make a copy", onSecondary: { Task { do { try await store.remix(project) } catch { self.error = error.localizedDescription } } }) } } }.padding(32) }.fullScreenCover(item: $preview) { StudentPreviewView(project: $0) }.alert("Could not make a copy", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("OK") {} } message: { Text(error ?? "") } }
+
+struct ExploreView: View {
+    let store: TappletStore
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var query = ""
+    @State private var selectedSubjectID: String?
+    @State private var selectedTopicID: String?
+    @State private var copyingProjectIDs: Set<String> = []
+    @State private var preview: ArtifactProject?
+    @State private var error: String?
+
+    private var subjects: [ExampleCatalog.Subject] {
+        ExampleCatalog.subjects(in: store.examples)
+    }
+
+    private var topics: [ExampleCatalog.Topic] {
+        guard let selectedSubjectID else { return [] }
+        return ExampleCatalog.topics(in: store.examples, subjectID: selectedSubjectID)
+    }
+
+    private var filteredProjects: [ArtifactProject] {
+        ExampleCatalog.filteredProjects(
+            store.examples,
+            query: query,
+            subjectID: selectedSubjectID,
+            topicID: selectedTopicID
+        )
+    }
+
+    private var hasActiveFilters: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || selectedSubjectID != nil
+            || selectedTopicID != nil
+    }
+
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 310), spacing: 18)]
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                PageHeader(
+                    title: "Start with an example",
+                    subtitle: "Find a ready-made activity, preview it, then make a copy for your class.",
+                    sticker: .greetings
+                )
+
+                if store.examples.isEmpty {
+                    unavailableState
+                } else {
+                    catalogControls
+                    results
+                }
+            }
+            .padding(32)
+        }
+        .onChange(of: selectedSubjectID) {
+            selectedTopicID = nil
+        }
+        .fullScreenCover(item: $preview) {
+            StudentPreviewView(project: $0)
+        }
+        .alert(
+            "Could not make a copy",
+            isPresented: Binding(
+                get: { error != nil },
+                set: { if !$0 { error = nil } }
+            )
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(error ?? "")
+        }
+    }
+
+    private var catalogControls: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(TappletTheme.mutedInk)
+                    .accessibilityHidden(true)
+                TextField("Search title, subject, topic, or level", text: $query)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .accessibilityLabel("Search examples")
+                    .accessibilityIdentifier("example-search")
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(TappletTheme.mutedInk)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 6)
+            .frame(minHeight: 54)
+            .background(TappletTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(TappletTheme.border, lineWidth: 1)
+            }
+
+            filterGroup(title: "Subject") {
+                CatalogFilterPill(
+                    title: "All",
+                    group: "Subject",
+                    isSelected: selectedSubjectID == nil,
+                    accessibilityIdentifier: "subject-filter-all"
+                ) {
+                    selectedSubjectID = nil
+                }
+                ForEach(subjects) { subject in
+                    CatalogFilterPill(
+                        title: subject.title,
+                        group: "Subject",
+                        isSelected: selectedSubjectID == subject.id,
+                        accessibilityIdentifier: "subject-filter-\(subject.id)"
+                    ) {
+                        selectedSubjectID = subject.id
+                    }
+                }
+            }
+
+            if !topics.isEmpty {
+                filterGroup(title: "Topic") {
+                    CatalogFilterPill(
+                        title: "All topics",
+                        group: "Topic",
+                        isSelected: selectedTopicID == nil,
+                        accessibilityIdentifier: "topic-filter-all"
+                    ) {
+                        selectedTopicID = nil
+                    }
+                    ForEach(topics) { topic in
+                        CatalogFilterPill(
+                            title: topic.title,
+                            group: "Topic",
+                            isSelected: selectedTopicID == topic.id,
+                            accessibilityIdentifier: "topic-filter-\(topic.id)"
+                        ) {
+                            selectedTopicID = topic.id
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func filterGroup<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title)
+                .font(TappletTheme.Typography.eyebrow)
+                .foregroundStyle(TappletTheme.mutedInk)
+            FlowLayout(spacing: 8) {
+                content()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var results: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            resultsHeader
+
+            if filteredProjects.isEmpty {
+                emptyResultsState
+            } else {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                    ForEach(filteredProjects) { project in
+                        let isCopying = copyingProjectIDs.contains(project.id)
+                        AppletProjectCard(
+                            project: project,
+                            primaryTitle: isCopying ? "Making a copy…" : "Make a copy",
+                            onPrimary: { makeCopy(of: project) },
+                            primaryIsLoading: isCopying,
+                            primaryAccessibilityHint: "Creates an editable copy and opens it.",
+                            secondaryTitle: "Preview",
+                            onSecondary: { preview = project },
+                            secondaryAccessibilityHint: "Opens the activity in a full-screen student preview."
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var resultsHeader: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 10) {
+                resultCount
+                clearFiltersButton
+            }
+        } else {
+            HStack {
+                resultCount
+                Spacer()
+                clearFiltersButton
+            }
+        }
+    }
+
+    private var resultCount: some View {
+        Text("\(filteredProjects.count) \(filteredProjects.count == 1 ? "example" : "examples")")
+            .font(TappletTheme.Typography.section)
+            .foregroundStyle(TappletTheme.ink)
+    }
+
+    @ViewBuilder
+    private var clearFiltersButton: some View {
+        if hasActiveFilters {
+            Button {
+                clearFilters()
+            } label: {
+                Label("Clear search and filters", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.plain)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(TappletTheme.accent)
+            .accessibilityIdentifier("clear-example-filters")
+        }
+    }
+
+    private var emptyResultsState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "magnifyingglass")
+                .font(.largeTitle)
+                .foregroundStyle(TappletTheme.mutedInk)
+                .accessibilityHidden(true)
+            Text("No examples found")
+                .font(TappletTheme.Typography.question)
+                .foregroundStyle(TappletTheme.ink)
+            Text("Try another search or clear your filters.")
+                .foregroundStyle(TappletTheme.mutedInk)
+                .multilineTextAlignment(.center)
+            Button("Clear search and filters") {
+                clearFilters()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 52)
+    }
+
+    private var unavailableState: some View {
+        ContentUnavailableView(
+            "Examples are unavailable",
+            systemImage: "square.grid.2x2",
+            description: Text("Tapplet could not load its bundled activities.")
+        )
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 52)
+    }
+
+    private func makeCopy(of project: ArtifactProject) {
+        guard copyingProjectIDs.insert(project.id).inserted else { return }
+        Task {
+            defer { copyingProjectIDs.remove(project.id) }
+            do {
+                try await store.remix(project)
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func clearFilters() {
+        query = ""
+        selectedSubjectID = nil
+        selectedTopicID = nil
+    }
+}
+
+private struct CatalogFilterPill: View {
+    let title: String
+    let group: String
+    let isSelected: Bool
+    let accessibilityIdentifier: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.bold())
+                        .accessibilityHidden(true)
+                }
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(isSelected ? TappletTheme.filterSelection : TappletTheme.ink)
+            .padding(.horizontal, 15)
+            .frame(minHeight: 44)
+            .background(
+                isSelected ? TappletTheme.filterSelectionSoft : TappletTheme.surface,
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .stroke(
+                        isSelected ? TappletTheme.filterSelection.opacity(0.35) : TappletTheme.border,
+                        lineWidth: 1
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(group), \(title)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+struct ExampleCatalog {
+    struct Subject: Identifiable, Equatable {
+        let id: String
+        let title: String
+    }
+
+    struct Topic: Identifiable, Equatable {
+        let id: String
+        let subjectID: String
+        let title: String
+        let tagKeys: Set<String>
+    }
+
+    private static let knownSubjects = [
+        Subject(id: "mathematics", title: "Mathematics"),
+        Subject(id: "science", title: "Science"),
+        Subject(id: "english", title: "English"),
+        Subject(id: "humanities", title: "Humanities"),
+        Subject(id: "languages", title: "Languages"),
+        Subject(id: "other", title: "Classroom"),
+        Subject(id: "unspecified", title: "Other")
+    ]
+
+    private static let curatedTopics = [
+        Topic(id: "fractions", subjectID: "mathematics", title: "Fractions", tagKeys: ["fractions", "equivalence"]),
+        Topic(id: "geometry-measurement", subjectID: "mathematics", title: "Geometry & measurement", tagKeys: ["perimeter", "rectangles"]),
+        Topic(id: "algebra", subjectID: "mathematics", title: "Algebra", tagKeys: ["algebra", "linear functions"]),
+        Topic(id: "graphs", subjectID: "mathematics", title: "Graphs", tagKeys: ["graphs"]),
+        Topic(id: "scientific-inquiry", subjectID: "science", title: "Scientific inquiry", tagKeys: ["science inquiry", "variables", "fair test"]),
+        Topic(id: "biology", subjectID: "science", title: "Biology", tagKeys: ["biology", "cells", "organelles"]),
+        Topic(id: "writing", subjectID: "english", title: "Writing", tagKeys: ["writing", "paragraphs", "cohesion"]),
+        Topic(id: "persuasion", subjectID: "english", title: "Persuasion", tagKeys: ["persuasion", "rhetoric", "audience"]),
+        Topic(id: "geography", subjectID: "humanities", title: "Geography", tagKeys: ["geography", "urban flooding", "mangroves", "fieldwork"]),
+        Topic(id: "history-sources", subjectID: "humanities", title: "History & sources", tagKeys: ["history", "singapore", "self government", "sources", "corroboration"]),
+        Topic(id: "bahasa-melayu", subjectID: "languages", title: "Bahasa Melayu", tagKeys: ["bahasa melayu", "kosa kata", "padanan"]),
+        Topic(id: "routines-participation", subjectID: "other", title: "Routines & participation", tagKeys: ["routines", "timer", "randomiser", "traffic light"])
+    ]
+
+    static func subjects(in projects: [ArtifactProject]) -> [Subject] {
+        let representedIDs = Set(projects.map(subjectID(for:)))
+        let known = knownSubjects.filter { representedIDs.contains($0.id) }
+        let knownIDs = Set(knownSubjects.map(\.id))
+        let unknown = representedIDs
+            .subtracting(knownIDs)
+            .map { Subject(id: $0, title: displayName($0)) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        return known + unknown
+    }
+
+    static func topics(in projects: [ArtifactProject], subjectID: String) -> [Topic] {
+        let subjectProjects = projects.filter { self.subjectID(for: $0) == subjectID }
+        return curatedTopics.filter { topic in
+            topic.subjectID == subjectID
+                && subjectProjects.contains { matches($0, topic: topic) }
+        }
+    }
+
+    static func filteredProjects(
+        _ projects: [ArtifactProject],
+        query: String,
+        subjectID: String?,
+        topicID: String?
+    ) -> [ArtifactProject] {
+        let terms = normalize(query).split(whereSeparator: \.isWhitespace)
+        let selectedTopic = topicID.flatMap { id in curatedTopics.first { $0.id == id } }
+        guard topicID == nil || selectedTopic != nil else { return [] }
+
+        return projects.filter { project in
+            if let subjectID, self.subjectID(for: project) != subjectID {
+                return false
+            }
+            if let selectedTopic, !matches(project, topic: selectedTopic) {
+                return false
+            }
+            guard !terms.isEmpty else { return true }
+            let searchableText = searchText(for: project)
+            return terms.allSatisfy { searchableText.contains($0) }
+        }
+    }
+
+    private static func subjectID(for project: ArtifactProject) -> String {
+        guard let subject = project.artifact.subject else { return "unspecified" }
+        let normalized = normalize(subject)
+        return normalized.isEmpty ? "unspecified" : normalized
+    }
+
+    private static func matches(_ project: ArtifactProject, topic: Topic) -> Bool {
+        let tags = Set(project.artifact.tags.map(normalize))
+        return !tags.isDisjoint(with: topic.tagKeys)
+    }
+
+    private static func searchText(for project: ArtifactProject) -> String {
+        let artifact = project.artifact
+        let topicTitles = curatedTopics
+            .filter { $0.subjectID == subjectID(for: project) && matches(project, topic: $0) }
+            .map(\.title)
+            .joined(separator: " ")
+        return normalize([
+            artifact.title,
+            artifact.summary,
+            artifact.learningObjective ?? "",
+            subjectTitle(for: subjectID(for: project)),
+            displayName(artifact.level ?? ""),
+            topicTitles,
+            artifact.tags.joined(separator: " ")
+        ].joined(separator: " "))
+    }
+
+    private static func subjectTitle(for id: String) -> String {
+        knownSubjects.first { $0.id == id }?.title ?? displayName(id)
+    }
+
+    private static func displayName(_ value: String) -> String {
+        normalize(value).capitalized
+    }
+
+    private static func normalize(_ value: String) -> String {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
 }

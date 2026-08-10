@@ -99,8 +99,7 @@ struct GuidedMakeView: View {
                         Button(suggestion) {
                             addSuggestion(suggestion)
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
+                        .buttonStyle(TappletSecondaryButtonStyle(borderShape: .capsule))
                         .controlSize(.large)
                         .font(.subheadline)
                         .accessibilityHint(
@@ -116,13 +115,13 @@ struct GuidedMakeView: View {
 
             HStack {
                 Button("Back") { moveBack() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(TappletSecondaryButtonStyle())
                     .controlSize(.large)
                     .disabled(store.guidedMakeQuestionIndex == 0)
                 Spacer()
                 if question.isOptional && cleanResponse.isEmpty {
                     Button("Skip") { moveForward() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(TappletSecondaryButtonStyle())
                         .controlSize(.large)
                 }
                 Button(store.guidedMakeQuestionIndex == BriefQuestion.all.count - 1 ? "Review answers" : "Continue") {
@@ -197,7 +196,7 @@ struct GuidedMakeView: View {
                 Button("Change answers") {
                     editAnswer(at: 0)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(TappletSecondaryButtonStyle())
                 .controlSize(.large)
                 .disabled(store.isCreatingGuidedDraft)
                 Spacer()
@@ -357,7 +356,7 @@ struct GuidedMakeView: View {
     }
 }
 
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(
@@ -376,30 +375,46 @@ private struct FlowLayout: Layout {
         cache: inout ()
     ) {
         let result = layout(proposal: proposal, subviews: subviews)
-        for (index, point) in result.points.enumerated() {
-            subviews[index].place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y), proposal: .unspecified)
+        for (index, placement) in result.placements.enumerated() {
+            subviews[index].place(
+                at: CGPoint(
+                    x: bounds.minX + placement.point.x,
+                    y: bounds.minY + placement.point.y
+                ),
+                proposal: placement.proposal
+            )
         }
     }
 
-    private func layout(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, points: [CGPoint]) {
+    private func layout(
+        proposal: ProposedViewSize,
+        subviews: Subviews
+    ) -> (size: CGSize, placements: [(point: CGPoint, proposal: ProposedViewSize)]) {
         let maxWidth = proposal.width ?? .infinity
-        var points: [CGPoint] = []
+        var placements: [(point: CGPoint, proposal: ProposedViewSize)] = []
         var x: CGFloat = 0
         var y: CGFloat = 0
         var rowHeight: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let idealSize = subview.sizeThatFits(.unspecified)
+            let subviewProposal = idealSize.width > maxWidth
+                ? ProposedViewSize(width: maxWidth, height: nil)
+                : ProposedViewSize.unspecified
+            let size = subview.sizeThatFits(subviewProposal)
             if x + size.width > maxWidth, x > 0 {
                 x = 0
                 y += rowHeight + spacing
                 rowHeight = 0
             }
-            points.append(CGPoint(x: x, y: y))
+            placements.append((CGPoint(x: x, y: y), subviewProposal))
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
 
-        return (CGSize(width: maxWidth.isFinite ? maxWidth : x, height: y + rowHeight), points)
+        return (
+            CGSize(width: maxWidth.isFinite ? maxWidth : x, height: y + rowHeight),
+            placements
+        )
     }
 }

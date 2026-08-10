@@ -22,3 +22,86 @@ final class ArtifactModelsTests: XCTestCase {
         XCTAssertEqual(AssetSchemeHandler.assetID(from: url), "image-1")
     }
 }
+
+final class ExampleCatalogTests: XCTestCase {
+    @MainActor
+    func testSearchMatchesNormalizedMetadataAcrossFields() {
+        let examples = bundledExamples()
+
+        XCTAssertEqual(
+            ids(in: examples, matching: "upper primary fractions"),
+            ["fraction-equivalence-diagnostic"]
+        )
+        XCTAssertEqual(
+            ids(in: examples, matching: "urban flooding"),
+            ["catchment-under-pressure"]
+        )
+        XCTAssertEqual(
+            ids(in: examples, matching: "secondary geography"),
+            ["catchment-under-pressure"]
+        )
+        XCTAssertEqual(
+            ids(in: examples, matching: "bahasa melayu"),
+            ["malay-classroom-vocabulary-match"]
+        )
+        XCTAssertEqual(
+            ids(in: examples, matching: "geometry measurement"),
+            ["fixed-perimeter-rectangle-explorer"]
+        )
+    }
+
+    @MainActor
+    func testSubjectAndTopicFiltersPreserveCuratedOrder() {
+        let examples = bundledExamples()
+
+        XCTAssertEqual(
+            ExampleCatalog.filteredProjects(
+                examples,
+                query: "secondary",
+                subjectID: "humanities",
+                topicID: "geography"
+            ).map(\.id),
+            ["catchment-under-pressure"]
+        )
+        XCTAssertEqual(
+            ExampleCatalog.filteredProjects(
+                examples,
+                query: "",
+                subjectID: "humanities",
+                topicID: "history-sources"
+            ).map(\.id),
+            ["singapore-self-government-timeline", "source-reliability-check"]
+        )
+    }
+
+    @MainActor
+    func testCatalogDerivesOnlyRepresentedSubjectsAndTopics() {
+        let examples = bundledExamples()
+
+        XCTAssertEqual(
+            ExampleCatalog.subjects(in: examples).map(\.title),
+            ["Mathematics", "Science", "English", "Humanities", "Languages", "Classroom"]
+        )
+        XCTAssertEqual(
+            ExampleCatalog.topics(in: examples, subjectID: "humanities").map(\.title),
+            ["Geography", "History & sources"]
+        )
+    }
+
+    @MainActor
+    private func bundledExamples() -> [ArtifactProject] {
+        TappletStore(
+            storageDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString),
+            bundle: Bundle(for: TappletStore.self)
+        ).examples
+    }
+
+    private func ids(in examples: [ArtifactProject], matching query: String) -> [String] {
+        ExampleCatalog.filteredProjects(
+            examples,
+            query: query,
+            subjectID: nil,
+            topicID: nil
+        ).map(\.id)
+    }
+}

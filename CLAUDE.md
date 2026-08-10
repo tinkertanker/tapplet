@@ -19,5 +19,7 @@
   verification before finishing.
 - Do not discard unrelated worktree changes. Keep commits atomic and stage
   files explicitly.
+- For first-party product UI, follow the current colour roles and accessibility
+  constraints in [`docs/DESIGN.md`](docs/DESIGN.md).
 - Keep topic-specific documentation in [`docs/`](docs/). Use
   [`README.md`](README.md) and `package.json` for project setup and commands.

@@ -154,7 +154,7 @@ struct TappletRootView: View {
         switch store.workshopAccessState {
         case .checking: TappletTheme.mutedInk
         case .registrationRequired: TappletTheme.mutedInk
-        case .ready: TappletTheme.accent
+        case .ready: TappletTheme.mutedInk
         }
     }
 }

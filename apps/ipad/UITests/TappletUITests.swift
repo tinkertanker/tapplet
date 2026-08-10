@@ -6,7 +6,9 @@ final class TappletUITests: XCTestCase {
         let app = launchApp()
         XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Catchment Under Pressure — Runoff Lab"].exists)
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Try as student'")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Make a copy'")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch.exists)
+        XCTAssertTrue(app.buttons["subject-filter-mathematics"].exists)
     }
 
     @MainActor
@@ -20,7 +22,7 @@ final class TappletUITests: XCTestCase {
     func testExamplePreviewRendersInPortraitAndFullScreen() {
         XCUIDevice.shared.orientation = .portrait
         let app = launchApp()
-        let preview = app.buttons.matching(NSPredicate(format: "label == 'Try as student'")).firstMatch
+        let preview = app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch
         XCTAssertTrue(preview.waitForExistence(timeout: 8))
         preview.tap()
 
@@ -31,6 +33,26 @@ final class TappletUITests: XCTestCase {
         )
 
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testExploreSearchAndFiltersCanBeCleared() {
+        let app = launchApp()
+        let search = app.textFields["example-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 8))
+        search.tap()
+        search.typeText("fractions")
+
+        XCTAssertTrue(app.staticTexts["Fraction Equivalence Detective — Three Clues"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["Linear Function Explorer — Gradient and Intercept"].exists)
+
+        search.tap()
+        search.typeText(" nonsense")
+        XCTAssertTrue(app.staticTexts["No examples found"].waitForExistence(timeout: 3))
+        app.buttons["clear-example-filters"].tap()
+
+        XCTAssertTrue(app.staticTexts["14 examples"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Linear Function Explorer — Gradient and Intercept"].exists)
     }
 
     @MainActor
