@@ -16,18 +16,6 @@
       "designCard": {"layout": "split control-and-visualisation", "accent": "sky", "interaction": "predict, manipulate, explain"}
     },
     {
-      "id": "classroom-routines-toolkit",
-      "filename": "classroom-routines-toolkit.html",
-      "title": "Classroom Routines Toolkit — Ready to Learn",
-      "summary": "A timer, no-repeat discussion randomiser, readiness checklist and confidence signal.",
-      "subject": "other", "level": "other", "locale": "en-SG",
-      "learningObjective": "Follow a short classroom routine and communicate readiness for the next step.",
-      "tags": ["routines", "timer", "randomiser", "traffic-light"],
-      "interactionPattern": "multi-tool-dashboard",
-      "descriptor": "Four focused classroom utilities with explicit pause and reset controls.",
-      "designCard": {"layout": "four-card dashboard", "accent": "indigo", "interaction": "time, choose, check, signal"}
-    },
-    {
       "id": "cool-box-fair-test-lab", "filename": "cool-box-fair-test-lab.html",
       "title": "Cool Box Fair-Test Lab — Variable Planner",
       "summary": "Classify variables, diagnose confounds and sequence a repaired insulation test.",
@@ -36,6 +24,18 @@
       "tags": ["science-inquiry", "variables", "fair-test"], "interactionPattern": "classify-diagnose-sequence",
       "descriptor": "A three-stage investigation planner using selects, checks and touch-friendly reorder controls.",
       "designCard": {"layout": "two-column lab sheet", "accent": "indigo", "interaction": "classify, select, reorder"}
+    },
+    {
+      "id": "cut-extra-words",
+      "filename": "cut-extra-words.html",
+      "title": "Cut extra words",
+      "summary": "Edit a school canteen rule by removing waffle while keeping its action, place, timing and reason.",
+      "subject": "english", "level": "secondary", "locale": "en-SG",
+      "learningObjective": "Edit a paragraph for concision without removing the facts needed to understand its rule and reason.",
+      "tags": ["editing", "concision", "word-choice"],
+      "interactionPattern": "tap-to-edit-diagnostic",
+      "descriptor": "A single tappable paragraph with a live word count and feedback about load-bearing facts.",
+      "designCard": {"layout": "typographic editing surface", "accent": "ink", "interaction": "strike, count, justify"}
     },
     {
       "id": "fixed-perimeter-rectangle-explorer", "filename": "fixed-perimeter-rectangle-explorer.html",
@@ -68,26 +68,6 @@
       "designCard": {"layout": "equation controls beside graph", "accent": "indigo", "interaction": "predict, vary, infer"}
     },
     {
-      "id": "malay-classroom-vocabulary-match", "filename": "malay-classroom-vocabulary-match.html",
-      "title": "Padankan Perkataan di Bilik Darjah — Latihan Kosa Kata",
-      "summary": "Aktiviti dwibahasa untuk memadankan kosa kata kelas dan mengasingkan perbuatan daripada benda.",
-      "subject": "languages", "level": "upper-primary", "locale": "ms-SG",
-      "learningObjective": "Padankan kata nama dan kata kerja Melayu dengan maksud bahasa Inggeris serta bezakan perbuatan dan benda.",
-      "tags": ["bahasa-melayu", "kosa-kata", "padanan"], "interactionPattern": "matching-and-sorting-selects",
-      "descriptor": "Latihan Bahasa Melayu dua peringkat dengan maklum balas dan petunjuk morfologi.",
-      "designCard": {"layout": "dua kad latihan", "accent": "sage", "interaction": "padan, asingkan, semak"}
-    },
-    {
-      "id": "mangrove-zonation-hotspots", "filename": "mangrove-zonation-hotspots.html",
-      "title": "Explore a Mangrove Shore — Tidal Transect",
-      "summary": "Explore changing shore conditions and adaptations in an asset-free mangrove cross-section.",
-      "subject": "humanities", "level": "upper-primary", "locale": "en-SG",
-      "learningObjective": "Describe shore zonation and relate mangrove adaptations to tidal and muddy conditions.",
-      "tags": ["geography", "mangroves", "adaptation"], "interactionPattern": "diagram-hotspots",
-      "descriptor": "A CSS-drawn shore profile with five progressive, resettable reveal points.",
-      "designCard": {"layout": "full-width illustrated transect", "accent": "teal", "interaction": "tap, reveal, compare"}
-    },
-    {
       "id": "market-street-field-notes", "filename": "market-street-field-notes.html",
       "title": "Market Street Field Notes — Evidence First",
       "summary": "Separate observations from interpretations and build a responsible evidence-led conclusion.",
@@ -96,6 +76,18 @@
       "tags": ["geography", "fieldwork", "evidence"], "interactionPattern": "sort-select-sequence",
       "descriptor": "A compact field notebook combining classification, corroboration and conclusion ordering.",
       "designCard": {"layout": "two-column field notebook", "accent": "sage", "interaction": "sort, test, order"}
+    },
+    {
+      "id": "mean-and-median",
+      "filename": "mean-and-median.html",
+      "title": "Mean and median",
+      "summary": "Drag a score on a dot plot and see why one extreme value pulls the mean more than the median.",
+      "subject": "mathematics", "level": "upper-primary", "locale": "en-SG",
+      "learningObjective": "Compare how an extreme score affects the mean and median and explain the difference.",
+      "tags": ["mean", "median", "data"],
+      "interactionPattern": "dragging-dot-plot-diagnosis",
+      "descriptor": "A touch-first dot plot where moving scores changes mean and median markers live.",
+      "designCard": {"layout": "full-width dot plot", "accent": "cobalt", "interaction": "drag, observe, explain"}
     },
     {
       "id": "paragraph-structure-sequencer", "filename": "paragraph-structure-sequencer.html",
@@ -128,16 +120,6 @@
       "designCard": {"layout": "full-width cell diagram", "accent": "sage", "interaction": "tap, reveal, compare"}
     },
     {
-      "id": "singapore-self-government-timeline", "filename": "singapore-self-government-timeline.html",
-      "title": "Road to Self-Government — Singapore Timeline",
-      "summary": "Sequence major post-war constitutional developments and match each to historical significance.",
-      "subject": "humanities", "level": "secondary", "locale": "en-SG",
-      "learningObjective": "Sequence Singapore's path to internal self-government and connect events to significance.",
-      "tags": ["history", "singapore", "self-government"], "interactionPattern": "timeline-and-matching",
-      "descriptor": "A reorderable four-event chronology paired with significance matching.",
-      "designCard": {"layout": "timeline beside significance", "accent": "rose", "interaction": "order, match, interpret"}
-    },
-    {
       "id": "source-reliability-check", "filename": "source-reliability-check.html",
       "title": "Can We Trust This Source? — Corroboration Check",
       "summary": "Evaluate a campaign claim through provenance, purpose and independent corroboration.",
@@ -146,6 +128,30 @@
       "tags": ["history", "sources", "corroboration"], "interactionPattern": "source-evaluation-diagnostic",
       "descriptor": "A source card followed by purpose, evidence and historical-vocabulary checks.",
       "designCard": {"layout": "source banner and three checks", "accent": "terracotta", "interaction": "question, corroborate, judge"}
+    },
+    {
+      "id": "town-council-budget",
+      "filename": "town-council-budget.html",
+      "title": "Share the town budget",
+      "summary": "Split a fixed town-council budget and inspect the service trade-offs created by each mix.",
+      "subject": "civics", "level": "secondary", "locale": "en-SG",
+      "learningObjective": "Explain how allocating a fixed public budget creates trade-offs between service outcomes.",
+      "tags": ["civics", "budgets", "trade-offs"],
+      "interactionPattern": "constrained-allocation-live-meters",
+      "descriptor": "A fixed $100,000 town-council allocation with linked service meters and a trade-off check.",
+      "designCard": {"layout": "single allocation workspace", "accent": "ochre", "interaction": "allocate, compare, explain"}
+    },
+    {
+      "id": "where-the-shadow-falls",
+      "filename": "where-the-shadow-falls.html",
+      "title": "Where does the shadow fall?",
+      "summary": "Predict a shadow's direction and length, then drag a lamp to test the straight-line light model.",
+      "subject": "science", "level": "upper-primary", "locale": "en-SG",
+      "learningObjective": "Predict and explain how a lamp's position changes a shadow's direction and length.",
+      "tags": ["light", "shadows", "prediction"],
+      "interactionPattern": "drag-scene-prediction",
+      "descriptor": "A draggable lamp and fixed object in SVG with live shadow direction and length.",
+      "designCard": {"layout": "single SVG scene", "accent": "ochre", "interaction": "predict, drag, compare"}
     }
   ]
 }
