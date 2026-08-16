@@ -12,6 +12,10 @@ final class GuidedBriefTests: XCTestCase {
             "Explain a key idea in their own words"
         )
         XCTAssertEqual(
+            BriefQuestion.all[2].placeholder,
+            "Choose, predict, then compare what happens"
+        )
+        XCTAssertEqual(
             BriefQuestion.all[3].placeholder,
             "Use the terms and examples from this lesson"
         )

@@ -9,7 +9,7 @@ struct AppletProjectCard: View {
     var primaryAccessibilityHint: String? = nil
     var secondaryTitle: String? = nil
     var onSecondary: (() -> Void)? = nil
-    var secondaryIsLoading = false
+    var secondaryIsLoading: Bool = false
     var secondaryAccessibilityHint: String? = nil
     var onDelete: (() -> Void)? = nil
 

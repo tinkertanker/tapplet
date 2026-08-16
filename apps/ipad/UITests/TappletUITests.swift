@@ -32,7 +32,7 @@ final class TappletUITests: XCTestCase {
             "The bundled HTML artifact should render, not a blank web view."
         )
         XCTAssertTrue(
-            app.staticTexts["Catchment Under Pressure — Runoff Lab"].waitForExistence(timeout: 3),
+            app.navigationBars.staticTexts["Catchment Under Pressure — Runoff Lab"].waitForExistence(timeout: 3),
             "The preview chrome should keep the full activity title readable."
         )
 
@@ -94,7 +94,7 @@ final class TappletUITests: XCTestCase {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional."].exists)
-        let explore = app.buttons["Explore examples"]
+        let explore: XCUIElement = app.buttons["Explore examples"]
         XCTAssertTrue(explore.waitForExistence(timeout: 5))
         explore.tap()
         XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
@@ -161,6 +161,11 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Your applets will appear here"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Make one from a short plan, or copy an example from Explore."].exists)
         XCTAssertTrue(app.buttons["Restore applets"].exists)
+        app.buttons["empty-start-with-example"].tap()
+        XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
+
+        selectSidebarItem(label: "My Applets", in: app)
+        XCTAssertTrue(app.buttons["empty-make-applet"].waitForExistence(timeout: 5))
         app.buttons["empty-make-applet"].tap()
         XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitForExistence(timeout: 5))
     }
