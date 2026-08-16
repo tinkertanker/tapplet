@@ -2,32 +2,16 @@ import SwiftUI
 
 struct MyAppletsView: View {
     let store: TappletStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var error: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack {
-                    PageHeader(
-                        title: "Your applets",
-                        subtitle: "HTML sources are cached on this iPad for offline preview."
-                    )
-                    Spacer()
-                    Button("Find missing applets") {
-                        Task {
-                            do { _ = try await store.restoreFromTapplet() }
-                            catch { self.error = error.localizedDescription }
-                        }
-                    }
-                    Button("Make an applet") { store.selectedSection = .make }
-                        .buttonStyle(.borderedProminent)
-                }
+                header
 
                 if store.projects.isEmpty {
-                    ContentUnavailableView(
-                        "Your applets will appear here",
-                        systemImage: "square.stack.3d.up"
-                    )
+                    emptyState
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 280))], spacing: 18) {
                         ForEach(store.projects.sorted { $0.updatedAt > $1.updatedAt }) { project in
@@ -57,6 +41,108 @@ struct MyAppletsView: View {
             Button("OK") {}
         } message: {
             Text(error ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        if dynamicTypeSize.isAccessibilitySize || store.projects.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                PageHeader(
+                    title: "My Applets",
+                    subtitle: "Copies and applets you make stay on this iPad so you can preview them offline.",
+                    sticker: store.projects.isEmpty ? .happy : nil
+                )
+                if !store.projects.isEmpty {
+                    headerActions(expanded: true)
+                }
+            }
+        } else {
+            HStack(alignment: .top, spacing: 16) {
+                PageHeader(
+                    title: "My Applets",
+                    subtitle: "Copies and applets you make stay on this iPad so you can preview them offline."
+                )
+                Spacer(minLength: 12)
+                headerActions(expanded: false)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func headerActions(expanded: Bool) -> some View {
+        if expanded {
+            VStack(alignment: .leading, spacing: 10) {
+                restoreButton
+                    .frame(maxWidth: .infinity)
+                makeButton
+                    .frame(maxWidth: .infinity)
+            }
+        } else {
+            HStack(spacing: 10) {
+                restoreButton
+                makeButton
+            }
+        }
+    }
+
+    private var makeButton: some View {
+        Button("Make an applet") { store.selectedSection = .make }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityIdentifier("my-applets-make")
+    }
+
+    private var restoreButton: some View {
+        Button {
+            restoreApplets()
+        } label: {
+            HStack(spacing: 8) {
+                if store.isRestoringFromTapplet {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                }
+                Text(store.isRestoringFromTapplet ? "Restoring…" : "Restore applets")
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(TappletTheme.accent)
+        .frame(minHeight: 44)
+        .disabled(store.isRestoringFromTapplet)
+        .accessibilityIdentifier("restore-applets")
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Text("Your applets will appear here")
+                .font(TappletTheme.Typography.question)
+                .foregroundStyle(TappletTheme.ink)
+                .multilineTextAlignment(.center)
+            Text("Make one from a short plan, or copy an example from Explore.")
+                .foregroundStyle(TappletTheme.mutedInk)
+                .multilineTextAlignment(.center)
+            Button("Make an applet") { store.selectedSection = .make }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityIdentifier("empty-make-applet")
+            Button("Start with an example") { store.selectedSection = .explore }
+                .buttonStyle(TappletSecondaryButtonStyle())
+                .controlSize(.large)
+                .accessibilityIdentifier("empty-start-with-example")
+            restoreButton
+        }
+        .frame(maxWidth: .infinity)
+        .padding(28)
+        .tappletCard()
+        .padding(.top, 8)
+    }
+
+    private func restoreApplets() {
+        Task {
+            do { _ = try await store.restoreFromTapplet() }
+            catch { self.error = error.localizedDescription }
         }
     }
 }

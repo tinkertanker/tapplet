@@ -62,6 +62,8 @@ struct TappletRootView: View {
                 }
             }
             .background(TappletTheme.canvas)
+            .navigationTitle(detailTitle)
+            .navigationBarTitleDisplayMode(.inline)
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: store.selectedSection) {
@@ -136,6 +138,10 @@ struct TappletRootView: View {
             guard let notice else { return }
             UIAccessibility.post(notification: .announcement, argument: notice)
         }
+    }
+
+    private var detailTitle: String {
+        store.selectedProject == nil ? store.selectedSection.title : ""
     }
 
     private var workshopAccessValue: String {

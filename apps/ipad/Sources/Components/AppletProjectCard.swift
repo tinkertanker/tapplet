@@ -9,6 +9,7 @@ struct AppletProjectCard: View {
     var primaryAccessibilityHint: String? = nil
     var secondaryTitle: String? = nil
     var onSecondary: (() -> Void)? = nil
+    var secondaryIsLoading: Bool = false
     var secondaryAccessibilityHint: String? = nil
     var onDelete: (() -> Void)? = nil
 
@@ -83,11 +84,19 @@ struct AppletProjectCard: View {
 
         if let secondaryTitle, let onSecondary {
             Button(action: onSecondary) {
-                Text(secondaryTitle)
-                    .frame(maxWidth: expanded ? .infinity : nil)
+                HStack(spacing: 8) {
+                    if secondaryIsLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
+                    }
+                    Text(secondaryTitle)
+                }
+                .frame(maxWidth: expanded ? .infinity : nil)
             }
                 .buttonStyle(TappletSecondaryButtonStyle())
                 .controlSize(.large)
+                .disabled(secondaryIsLoading)
                 .accessibilityHint(secondaryAccessibilityHint ?? "")
         }
 

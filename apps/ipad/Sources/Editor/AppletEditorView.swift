@@ -10,7 +10,7 @@ struct AppletEditorView: View {
     @State private var previewError: String?
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } ?? store.examples.first { $0.id == projectID } }
     var body: some View { if let project { VStack(spacing: 0) {
-        HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { showShare = true }.buttonStyle(.borderedProminent) } }
+        HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { showShare = true }.buttonStyle(.borderedProminent) } }
             .padding().background(TappletTheme.surface)
         HStack(spacing: 0) { AppletPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
             VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { operationError = error.localizedDescription } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
@@ -89,7 +89,7 @@ private struct DetailsFields: View { let store: TappletStore; let project: Artif
 }
 
 struct StudentPreviewView: View { let project: ArtifactProject; @Environment(\.dismiss) var dismiss
-    var body: some View { NavigationStack { AppletPreviewWebView(source: project.source, localAssets: project.localAssets).navigationTitle(project.artifact.title).toolbar { Button("Done") { dismiss() } } } }
+    var body: some View { NavigationStack { AppletPreviewWebView(source: project.source, localAssets: project.localAssets).navigationTitle(project.artifact.title).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .principal) { Text(project.artifact.title).font(.headline).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8).frame(maxWidth: 420).accessibilityAddTraits(.isHeader) }; Button("Done") { dismiss() } } } }
 }
 
 private struct ShareArtifactView: View { let store: TappletStore; let projectID: String; @Environment(\.dismiss) var dismiss; @State private var working = false; @State private var error: String?

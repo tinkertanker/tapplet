@@ -26,28 +26,46 @@ struct WorkshopAccessView: View {
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Set up Tapplet on this iPad")
+                            Text("Browse examples on this iPad")
                                 .font(.largeTitle.bold())
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text("Enter your shared class code to make and share classroom applets. It does not create an account, and students never need a code or account.")
+                            Text("You can preview ready-made activities now. Enter a class code only when you want to make or share applets. It does not create an account, and students never need a code or account.")
                                 .font(.body)
                                 .foregroundStyle(TappletTheme.mutedInk)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
-                        TextField("Class code", text: $accessCode)
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                            .font(.title3.monospaced().weight(.semibold))
-                            .padding(14)
-                            .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
-                            .focused($codeIsFocused)
-                            .accessibilityIdentifier("workshop-access-code")
-                            .disabled(isRegistering)
+                        Button(action: exploreExamples) {
+                            HStack {
+                                Spacer()
+                                Text("Explore examples")
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(isRegistering)
+                        .accessibilityIdentifier("explore-examples")
 
-                        Label("Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional.", systemImage: "info.circle")
-                            .font(.footnote)
-                            .foregroundStyle(accessCodeIsTooShort ? TappletTheme.danger : TappletTheme.mutedInk)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Have a class code?")
+                                .font(TappletTheme.Typography.section)
+                                .foregroundStyle(TappletTheme.ink)
+
+                            TextField("Class code", text: $accessCode)
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                                .font(.title3.monospaced().weight(.semibold))
+                                .padding(14)
+                                .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
+                                .focused($codeIsFocused)
+                                .accessibilityIdentifier("workshop-access-code")
+                                .disabled(isRegistering)
+
+                            Label("Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional.", systemImage: "info.circle")
+                                .font(.footnote)
+                                .foregroundStyle(accessCodeIsTooShort ? TappletTheme.danger : TappletTheme.mutedInk)
+                        }
 
                         if let registrationError {
                             VStack(alignment: .leading, spacing: 4) {
@@ -69,7 +87,7 @@ struct WorkshopAccessView: View {
                             HStack {
                                 Spacer()
                                 if isRegistering {
-                                    ProgressView().tint(.white)
+                                    ProgressView()
                                     Text("Activating…")
                                 } else {
                                     Text("Activate Tapplet")
@@ -77,7 +95,7 @@ struct WorkshopAccessView: View {
                                 Spacer()
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(TappletSecondaryButtonStyle())
                         .controlSize(.large)
                         .disabled(isRegistering)
                         .accessibilityIdentifier("activate-workshop-access")
@@ -95,18 +113,19 @@ struct WorkshopAccessView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Tapplet access")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(accessDismissalTitle) {
-                        if store.workshopAccessState != .ready, store.selectedProjectID == nil {
-                            store.selectedSection = .explore
+                        if store.workshopAccessState != .ready {
+                            exploreExamples()
+                        } else {
+                            store.dismissWorkshopAccess()
                         }
-                        store.dismissWorkshopAccess()
                     }
                     .disabled(isRegistering)
                 }
             }
-            .onAppear { codeIsFocused = store.workshopAccessState != .ready }
             .onChange(of: accessCode) { _, _ in
                 registrationError = nil
             }
@@ -120,11 +139,18 @@ struct WorkshopAccessView: View {
 
     private var accessDismissalTitle: String {
         if store.workshopAccessState == .ready { return "Done" }
-        return store.selectedProjectID == nil ? "Explore examples" : "Not now"
+        return "Not now"
     }
 
     private var accessCodeIsTooShort: Bool {
         !cleanedAccessCode.isEmpty && cleanedAccessCode.count < 8
+    }
+
+    private func exploreExamples() {
+        if store.selectedProjectID == nil {
+            store.selectedSection = .explore
+        }
+        store.dismissWorkshopAccess()
     }
 
     private func register() {

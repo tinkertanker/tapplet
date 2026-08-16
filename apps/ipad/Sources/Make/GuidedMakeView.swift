@@ -31,7 +31,25 @@ struct GuidedMakeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(32)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            if !store.guidedMakeShowsSummary {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    if question.isOptional && cleanResponse.isEmpty {
+                        Button("Skip") { moveForward() }
+                    }
+                    Button(continueTitle) { moveForward() }
+                        .disabled(!question.isOptional && cleanResponse.isEmpty)
+                        .accessibilityIdentifier("guided-continue-keyboard")
+                }
+            }
+        }
         .accessibilityIdentifier("make-screen")
+    }
+
+    private var continueTitle: String {
+        store.guidedMakeQuestionIndex == BriefQuestion.all.count - 1 ? "Review answers" : "Continue"
     }
 
     private var questionCard: some View {
@@ -124,7 +142,7 @@ struct GuidedMakeView: View {
                         .buttonStyle(TappletSecondaryButtonStyle())
                         .controlSize(.large)
                 }
-                Button(store.guidedMakeQuestionIndex == BriefQuestion.all.count - 1 ? "Review answers" : "Continue") {
+                Button(continueTitle) {
                     moveForward()
                 }
                 .buttonStyle(.borderedProminent)
@@ -326,12 +344,12 @@ struct GuidedMakeView: View {
         guard !store.isCreatingGuidedDraft else { return }
         guard !cleanResponse.isEmpty else {
             store.guidedMakeResponse = suggestion
-            responseIsFocused = true
+            responseIsFocused = false
             return
         }
         guard !store.guidedMakeResponse.contains(suggestion) else { return }
         store.guidedMakeResponse += store.guidedMakeResponse.hasSuffix("\n") ? suggestion : "\n\(suggestion)"
-        responseIsFocused = true
+        responseIsFocused = false
     }
 
     private func editAnswer(at questionIndex: Int) {
