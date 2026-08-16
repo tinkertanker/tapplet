@@ -185,13 +185,14 @@ struct ExploreView: View {
                         let isCopying = copyingProjectIDs.contains(project.id)
                         AppletProjectCard(
                             project: project,
-                            primaryTitle: isCopying ? "Making a copy…" : "Make a copy",
-                            onPrimary: { makeCopy(of: project) },
-                            primaryIsLoading: isCopying,
-                            primaryAccessibilityHint: "Creates an editable copy and opens it.",
-                            secondaryTitle: "Preview",
-                            onSecondary: { preview = project },
-                            secondaryAccessibilityHint: "Opens the activity in a full-screen student preview."
+                            primaryTitle: "Preview",
+                            onPrimary: { preview = project },
+                            primaryIsDisabled: isCopying,
+                            primaryAccessibilityHint: "Opens the activity in a full-screen student preview.",
+                            secondaryTitle: isCopying ? "Making a copy…" : "Make a copy",
+                            onSecondary: { makeCopy(of: project) },
+                            secondaryIsLoading: isCopying,
+                            secondaryAccessibilityHint: "Creates an editable copy and opens it."
                         )
                     }
                 }

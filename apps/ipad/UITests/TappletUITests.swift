@@ -31,8 +31,14 @@ final class TappletUITests: XCTestCase {
             playerHeading.waitForExistence(timeout: 25),
             "The bundled HTML artifact should render, not a blank web view."
         )
+        XCTAssertTrue(
+            app.staticTexts["Catchment Under Pressure — Runoff Lab"].waitForExistence(timeout: 3),
+            "The preview chrome should keep the full activity title readable."
+        )
 
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5) || app.staticTexts["Explore"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -86,11 +92,11 @@ final class TappletUITests: XCTestCase {
     @MainActor
     func testWorkshopAccessCanBeDeferred() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
-        XCTAssertTrue(app.staticTexts["Set up Tapplet on this iPad"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional."].exists)
-        let notNow = app.buttons["Explore examples"]
-        XCTAssertTrue(notNow.waitForExistence(timeout: 5))
-        notNow.tap()
+        let explore = app.buttons["Explore examples"]
+        XCTAssertTrue(explore.waitForExistence(timeout: 5))
+        explore.tap()
         XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
         let showSidebar = app.buttons["Show Sidebar"]
         if showSidebar.waitForExistence(timeout: 2) { showSidebar.tap() }
@@ -125,6 +131,7 @@ final class TappletUITests: XCTestCase {
         answer.typeText("Secondary 3 Physics")
         app.buttons["Primary 5 Science"].tap()
         XCTAssertEqual(answer.value as? String, "Secondary 3 Physics\nPrimary 5 Science")
+        XCTAssertTrue(app.buttons["guided-continue"].isHittable)
 
         app.buttons["guided-continue"].tap()
         let answers = [
@@ -145,6 +152,17 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
         app.buttons["edit-brief-answer-1"].tap()
         XCTAssertTrue(app.staticTexts["What should they understand or be able to do?"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testMyAppletsEmptyStateOffersMakeAndExplore() {
+        let app = launchApp()
+        selectSidebarItem(label: "My Applets", in: app)
+        XCTAssertTrue(app.staticTexts["Your applets will appear here"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Make one from a short plan, or copy an example from Explore."].exists)
+        XCTAssertTrue(app.buttons["Restore applets"].exists)
+        app.buttons["empty-make-applet"].tap()
+        XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitForExistence(timeout: 5))
     }
 
     @MainActor

@@ -65,7 +65,7 @@ struct BriefQuestion: Identifiable, Sendable {
             id: 1,
             prompt: "What should they understand or be able to do?",
             supportingText: "Start with the learning, not the screen you want to build.",
-            placeholder: "Relate launch angle and speed to projectile range",
+            placeholder: "Explain a key idea in their own words",
             suggestions: ["Recall key ideas", "Explain a relationship", "Practise a procedure"],
             isOptional: false
         ),
@@ -73,7 +73,7 @@ struct BriefQuestion: Identifiable, Sendable {
             id: 2,
             prompt: "What should students do on screen?",
             supportingText: "Choose one focused interaction. Tapplet can suggest a suitable format later.",
-            placeholder: "Adjust two sliders, predict, then compare",
+            placeholder: "Choose, predict, then compare what happens",
             suggestions: ["Choose and get feedback", "Match or sort items", "Explore a changing graph"],
             isOptional: false
         ),
@@ -81,7 +81,7 @@ struct BriefQuestion: Identifiable, Sendable {
             id: 3,
             prompt: "What must the applet include?",
             supportingText: "Add examples, vocabulary, values or instructions. Avoid student names and personal information.",
-            placeholder: "Use metres, seconds and Earth gravity",
+            placeholder: "Use the terms and examples from this lesson",
             suggestions: ["I will add this later", "Use familiar local examples", "Keep the language concise"],
             isOptional: true
         ),
