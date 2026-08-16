@@ -5,7 +5,7 @@ final class TappletUITests: XCTestCase {
     func testLaunchesIntoExploreWithoutABlankCanvas() {
         let app = launchApp()
         XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Catchment Under Pressure — Runoff Lab"].exists)
+        XCTAssertTrue(app.staticTexts["Rain, paved ground and drainage"].exists)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Make a copy'")).firstMatch.exists)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch.exists)
         XCTAssertTrue(app.buttons["subject-filter-mathematics"].exists)
@@ -14,7 +14,7 @@ final class TappletUITests: XCTestCase {
     @MainActor
     func testExploreOffersBundledHTMLSeedForRemixing() {
         let app = launchApp()
-        XCTAssertTrue(app.staticTexts["Catchment Under Pressure — Runoff Lab"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Rain, paved ground and drainage"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["Make a copy"].exists)
     }
 
@@ -26,13 +26,13 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(preview.waitForExistence(timeout: 8))
         preview.tap()
 
-        let playerHeading = app.staticTexts["Catchment Under Pressure"]
+        let playerHeading = app.staticTexts["Rain, paved ground and drainage"]
         XCTAssertTrue(
             playerHeading.waitForExistence(timeout: 25),
             "The bundled HTML artifact should render, not a blank web view."
         )
         XCTAssertTrue(
-            app.navigationBars.staticTexts["Catchment Under Pressure — Runoff Lab"].waitForExistence(timeout: 3),
+            app.navigationBars.staticTexts["Rain, paved ground and drainage"].waitForExistence(timeout: 3),
             "The preview chrome should keep the full activity title readable."
         )
 
@@ -49,8 +49,8 @@ final class TappletUITests: XCTestCase {
         search.tap()
         search.typeText("fractions")
 
-        XCTAssertTrue(app.staticTexts["Fraction Equivalence Detective — Three Clues"].waitForExistence(timeout: 3))
-        XCTAssertFalse(app.staticTexts["Linear Function Explorer — Gradient and Intercept"].exists)
+        XCTAssertTrue(app.staticTexts["Equivalent fractions"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["What do m and c do?"].exists)
 
         search.tap()
         search.typeText(" nonsense")
@@ -58,7 +58,7 @@ final class TappletUITests: XCTestCase {
         app.buttons["clear-example-filters"].tap()
 
         XCTAssertTrue(app.staticTexts["14 examples"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Linear Function Explorer — Gradient and Intercept"].exists)
+        XCTAssertTrue(app.staticTexts["What do m and c do?"].exists)
     }
 
     @MainActor

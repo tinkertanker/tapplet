@@ -41,8 +41,8 @@ final class ExampleCatalogTests: XCTestCase {
             ["catchment-under-pressure"]
         )
         XCTAssertEqual(
-            ids(in: examples, matching: "bahasa melayu"),
-            ["malay-classroom-vocabulary-match"]
+            ids(in: examples, matching: "town council budget"),
+            ["town-council-budget"]
         )
         XCTAssertEqual(
             ids(in: examples, matching: "geometry measurement"),
@@ -70,7 +70,7 @@ final class ExampleCatalogTests: XCTestCase {
                 subjectID: "humanities",
                 topicID: "history-sources"
             ).map(\.id),
-            ["singapore-self-government-timeline", "source-reliability-check"]
+            ["source-reliability-check"]
         )
     }
 
@@ -80,7 +80,7 @@ final class ExampleCatalogTests: XCTestCase {
 
         XCTAssertEqual(
             ExampleCatalog.subjects(in: examples).map(\.title),
-            ["Mathematics", "Science", "English", "Humanities", "Languages", "Classroom"]
+            ["Mathematics", "Science", "English", "Humanities", "Civics"]
         )
         XCTAssertEqual(
             ExampleCatalog.topics(in: examples, subjectID: "humanities").map(\.title),

@@ -346,6 +346,7 @@ struct ExampleCatalog {
         Subject(id: "science", title: "Science"),
         Subject(id: "english", title: "English"),
         Subject(id: "humanities", title: "Humanities"),
+        Subject(id: "civics", title: "Civics"),
         Subject(id: "languages", title: "Languages"),
         Subject(id: "other", title: "Classroom"),
         Subject(id: "unspecified", title: "Other")
@@ -356,14 +357,16 @@ struct ExampleCatalog {
         Topic(id: "geometry-measurement", subjectID: "mathematics", title: "Geometry & measurement", tagKeys: ["perimeter", "rectangles"]),
         Topic(id: "algebra", subjectID: "mathematics", title: "Algebra", tagKeys: ["algebra", "linear functions"]),
         Topic(id: "graphs", subjectID: "mathematics", title: "Graphs", tagKeys: ["graphs"]),
+        Topic(id: "averages", subjectID: "mathematics", title: "Averages", tagKeys: ["mean", "median", "data"]),
         Topic(id: "scientific-inquiry", subjectID: "science", title: "Scientific inquiry", tagKeys: ["science inquiry", "variables", "fair test"]),
         Topic(id: "biology", subjectID: "science", title: "Biology", tagKeys: ["biology", "cells", "organelles"]),
+        Topic(id: "light", subjectID: "science", title: "Light", tagKeys: ["light", "shadows", "prediction"]),
         Topic(id: "writing", subjectID: "english", title: "Writing", tagKeys: ["writing", "paragraphs", "cohesion"]),
         Topic(id: "persuasion", subjectID: "english", title: "Persuasion", tagKeys: ["persuasion", "rhetoric", "audience"]),
-        Topic(id: "geography", subjectID: "humanities", title: "Geography", tagKeys: ["geography", "urban flooding", "mangroves", "fieldwork"]),
-        Topic(id: "history-sources", subjectID: "humanities", title: "History & sources", tagKeys: ["history", "singapore", "self government", "sources", "corroboration"]),
-        Topic(id: "bahasa-melayu", subjectID: "languages", title: "Bahasa Melayu", tagKeys: ["bahasa melayu", "kosa kata", "padanan"]),
-        Topic(id: "routines-participation", subjectID: "other", title: "Routines & participation", tagKeys: ["routines", "timer", "randomiser", "traffic light"])
+        Topic(id: "editing", subjectID: "english", title: "Editing", tagKeys: ["editing", "concision", "word choice"]),
+        Topic(id: "geography", subjectID: "humanities", title: "Geography", tagKeys: ["geography", "urban flooding", "fieldwork"]),
+        Topic(id: "history-sources", subjectID: "humanities", title: "History & sources", tagKeys: ["history", "sources", "corroboration"]),
+        Topic(id: "civic-budget", subjectID: "civics", title: "Budgets & trade-offs", tagKeys: ["civics", "budgets", "trade offs"])
     ]
 
     static func subjects(in projects: [ArtifactProject]) -> [Subject] {
