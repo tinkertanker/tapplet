@@ -65,11 +65,24 @@ async function expectSuccess(path: string, init: RequestInit): Promise<void> {
 }
 
 async function prepare(): Promise<void> {
+  const manifest = JSON.parse(
+    await readFile(
+      resolve(root, "apps/ipad/Resources/Examples/manifest.json"),
+      "utf8",
+    ),
+  ) as { seeds?: Array<{ id?: unknown }> };
+  const seedId = manifest.seeds?.find(
+    (seed): seed is { id: string } => typeof seed.id === "string",
+  )?.id;
+  if (!seedId)
+    throw new Error(
+      "The canonical example manifest is empty; curate seeds before preparing the fixture.",
+    );
   const remixed = await expectJson(
-    "/v1/revisions/classroom-routines-toolkit-seed/remix",
+    `/v1/revisions/${encodeURIComponent(`${seedId}-seed`)}/remix`,
     {
       method: "POST",
-      body: JSON.stringify({ title: "Classroom routines browser fixture" }),
+      body: JSON.stringify({ title: "Publication browser fixture" }),
     },
   );
   const artifact = remixed.artifact as { id?: unknown } | undefined;
