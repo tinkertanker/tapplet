@@ -9,6 +9,7 @@ import {
   sha256,
 } from "../src/auth";
 import { HttpError } from "../src/http";
+import { MemoryStudioRepository } from "../src/storage/memoryRepository";
 
 describe("device ownership", () => {
   it("accepts a high-entropy device token", () => {
@@ -131,5 +132,38 @@ describe("device ownership", () => {
     const slugs = new Set(Array.from({ length: 200 }, () => randomSlug()));
     expect(slugs.size).toBe(200);
     for (const slug of slugs) expect(slug).toMatch(/^[A-Za-z0-9_-]{20}$/);
+  });
+
+  it("revokes tokens when the owner's token version is bumped", async () => {
+    const secret = "test-device-signing-secret-with-at-least-32-characters";
+    const issuedAt = new Date("2026-07-18T00:00:00.000Z");
+    const repository = new MemoryStudioRepository();
+    const credential = await issueDeviceToken(secret, issuedAt, 1);
+    const request = new Request("https://studio.test/v1/artifacts", {
+      headers: { "x-device-token": credential.token },
+    });
+    const ownerHash = await ownerHashFrom(
+      request,
+      secret,
+      issuedAt.getTime(),
+      repository,
+    );
+    expect(await repository.getOwnerTokenVersion(ownerHash)).toBe(0);
+
+    expect(await repository.bumpOwnerTokenVersion(ownerHash)).toBe(1);
+    await expect(
+      ownerHashFrom(request, secret, issuedAt.getTime(), repository),
+    ).rejects.toMatchObject({ code: "DEVICE_REGISTRATION_REQUIRED" });
+    await expect(
+      refreshDeviceToken(
+        new Request("https://studio.test/v1/devices/refresh", {
+          headers: { "x-device-token": credential.token },
+        }),
+        secret,
+        issuedAt,
+        1,
+        repository,
+      ),
+    ).rejects.toMatchObject({ code: "DEVICE_REGISTRATION_REQUIRED" });
   });
 });

@@ -22,6 +22,7 @@ export class MemoryStudioRepository implements StudioRepository {
   >();
   private usage = new Map<string, number>();
   private revisionAssets = new Map<string, Set<string>>();
+  readonly ownerTokenVersions = new Map<string, number>();
   async consumeGeneration(s: string, d: string, l: number) {
     const k = `${s}:${d}`,
       n = this.usage.get(k) ?? 0;
@@ -38,6 +39,14 @@ export class MemoryStudioRepository implements StudioRepository {
     if (!c || c.expiresAt <= n || c.uses >= c.maximumUses) return false;
     c.uses++;
     return true;
+  }
+  async getOwnerTokenVersion(o: string) {
+    return this.ownerTokenVersions.get(o) ?? 0;
+  }
+  async bumpOwnerTokenVersion(o: string) {
+    const next = (this.ownerTokenVersions.get(o) ?? 0) + 1;
+    this.ownerTokenVersions.set(o, next);
+    return next;
   }
   async countArtifacts(o: string) {
     return [...this.artifacts.values()].filter((a) => a.ownerHash === o).length;

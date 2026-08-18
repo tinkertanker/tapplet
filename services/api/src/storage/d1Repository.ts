@@ -80,6 +80,23 @@ export class D1StudioRepository implements StudioRepository {
     ).run();
     return (r.meta.changes ?? 0) === 1;
   }
+  async getOwnerTokenVersion(o: string) {
+    return (
+      (
+        await this.p(
+          "SELECT token_version v FROM owner_token_versions WHERE owner_hash=?1",
+          o,
+        ).first<{ v: number }>()
+      )?.v ?? 0
+    );
+  }
+  async bumpOwnerTokenVersion(o: string) {
+    const r = await this.p(
+      "INSERT INTO owner_token_versions(owner_hash,token_version) VALUES(?1,1) ON CONFLICT(owner_hash) DO UPDATE SET token_version=token_version+1 RETURNING token_version",
+      o,
+    ).first<{ token_version: number }>();
+    return r?.token_version ?? 1;
+  }
   async countArtifacts(o: string) {
     return (
       (

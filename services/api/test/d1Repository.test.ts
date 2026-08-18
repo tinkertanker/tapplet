@@ -291,3 +291,27 @@ describe("D1StudioRepository conditional revision writes", () => {
     expect(sql[1]).toContain("p.expires_at>?4");
   });
 });
+
+describe("D1StudioRepository owner token versions", () => {
+  it("defaults to zero and returns the bumped version", async () => {
+    const results: Array<Record<string, number> | undefined> = [
+      undefined,
+      { token_version: 3 },
+    ];
+    const sql: string[] = [];
+    const database = {
+      prepare(text: string) {
+        sql.push(text);
+        const statement = {
+          bind: () => statement,
+          first: () => Promise.resolve(results.shift()),
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    const repository = new D1StudioRepository(database);
+    await expect(repository.getOwnerTokenVersion("owner-a")).resolves.toBe(0);
+    await expect(repository.bumpOwnerTokenVersion("owner-a")).resolves.toBe(3);
+    expect(sql[1]).toContain("ON CONFLICT(owner_hash) DO UPDATE");
+  });
+});

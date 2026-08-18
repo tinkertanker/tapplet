@@ -1,4 +1,5 @@
 import { HttpError } from './http';
+import type { StudioRepository } from './storage/repository';
 
 const DEVICE_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{32,200}$/;
 const SIGNED_TOKEN_PATTERN = /^cw1\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{43})$/;
@@ -7,6 +8,7 @@ interface DeviceTokenPayload {
   version: 1;
   ownerId: string;
   expiresAt: number;
+  tokenVersion?: number;
 }
 
 export const DEVICE_TOKEN_RECOVERY_DAYS = 365;
@@ -39,8 +41,15 @@ export async function issueDeviceToken(
   secret: string,
   now: Date,
   lifetimeDays = 400,
+  tokenVersion = 0,
 ): Promise<{ token: string; expiresAt: string }> {
-  return issueDeviceTokenForOwner(secret, randomSlug(24), now, lifetimeDays);
+  return issueDeviceTokenForOwner(
+    secret,
+    randomSlug(24),
+    now,
+    lifetimeDays,
+    tokenVersion,
+  );
 }
 
 export async function refreshDeviceToken(
@@ -48,12 +57,20 @@ export async function refreshDeviceToken(
   secret: string,
   now: Date,
   lifetimeDays = 400,
+  repository?: StudioRepository,
 ): Promise<{ token: string; expiresAt: string }> {
   const payload = await verifiedDeviceTokenPayload(deviceTokenFrom(request), secret);
   if (payload.expiresAt + DEVICE_TOKEN_RECOVERY_DAYS * 86_400_000 <= now.getTime()) {
     throw invalidDeviceToken();
   }
-  return issueDeviceTokenForOwner(secret, payload.ownerId, now, lifetimeDays);
+  const tokenVersion = await currentTokenVersion(payload, repository);
+  return issueDeviceTokenForOwner(
+    secret,
+    payload.ownerId,
+    now,
+    lifetimeDays,
+    tokenVersion,
+  );
 }
 
 async function issueDeviceTokenForOwner(
@@ -61,12 +78,14 @@ async function issueDeviceTokenForOwner(
   ownerId: string,
   now: Date,
   lifetimeDays: number,
+  tokenVersion: number,
 ): Promise<{ token: string; expiresAt: string }> {
   const expiresAt = new Date(now.getTime() + lifetimeDays * 86_400_000);
   const payload: DeviceTokenPayload = {
     version: 1,
     ownerId,
     expiresAt: expiresAt.getTime(),
+    tokenVersion,
   };
   const encodedPayload = base64Url(new TextEncoder().encode(JSON.stringify(payload)));
   const signature = await sign(encodedPayload, secret);
@@ -77,21 +96,39 @@ export async function ownerHashFrom(
   request: Request,
   secret: string,
   nowMilliseconds = Date.now(),
+  repository?: StudioRepository,
 ): Promise<string> {
-  return (await ownerCredentialFrom(request, secret, nowMilliseconds)).ownerHash;
+  return (
+    await ownerCredentialFrom(request, secret, nowMilliseconds, repository)
+  ).ownerHash;
 }
 
 export async function ownerCredentialFrom(
   request: Request,
   secret: string,
   nowMilliseconds = Date.now(),
+  repository?: StudioRepository,
 ): Promise<VerifiedOwnerCredential> {
   const payload = await verifiedDeviceTokenPayload(deviceTokenFrom(request), secret);
   if (payload.expiresAt <= nowMilliseconds) throw invalidDeviceToken();
+  await currentTokenVersion(payload, repository);
   return {
     ownerHash: await sha256(`owner:${payload.ownerId}`),
     expiresAt: payload.expiresAt,
   };
+}
+
+// Returns the owner's stored token version after confirming the presented
+// token carries exactly that version; a bumped row revokes older tokens.
+async function currentTokenVersion(
+  payload: DeviceTokenPayload,
+  repository: StudioRepository | undefined,
+): Promise<number> {
+  if (!repository) return payload.tokenVersion ?? 0;
+  const ownerHash = await sha256(`owner:${payload.ownerId}`);
+  const stored = await repository.getOwnerTokenVersion(ownerHash);
+  if ((payload.tokenVersion ?? 0) !== stored) throw invalidDeviceToken();
+  return stored;
 }
 
 async function verifiedDeviceTokenPayload(
@@ -120,7 +157,9 @@ async function verifiedDeviceTokenPayload(
     payload.version !== 1 ||
     typeof payload.ownerId !== 'string' ||
     !/^[A-Za-z0-9_-]{32}$/.test(payload.ownerId) ||
-    !Number.isSafeInteger(payload.expiresAt)
+    !Number.isSafeInteger(payload.expiresAt) ||
+    (payload.tokenVersion !== undefined &&
+      (!Number.isSafeInteger(payload.tokenVersion) || payload.tokenVersion < 0))
   ) {
     throw invalidDeviceToken();
   }

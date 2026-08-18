@@ -115,6 +115,8 @@ export interface StudioRepository {
   ): Promise<boolean>;
   purgeUsage(before: string): Promise<void>;
   consumeClassCode(hash: string, now: string): Promise<boolean>;
+  getOwnerTokenVersion(ownerHash: string): Promise<number>;
+  bumpOwnerTokenVersion(ownerHash: string): Promise<number>;
   countArtifacts(owner: string): Promise<number>;
   createArtifact(input: CreateArtifactInput): Promise<void>;
   upsertCuratedSeed(input: CuratedSeedInput): Promise<void>;

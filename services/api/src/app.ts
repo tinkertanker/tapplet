@@ -244,7 +244,12 @@ export function createStudioApp(d: Deps) {
     id = d.createId ?? (() => crypto.randomUUID()),
     slug = d.createSlug ?? randomSlug;
   async function owner(r: Request) {
-    return ownerHashFrom(r, d.config.deviceTokenSigningSecret, now().getTime());
+    return ownerHashFrom(
+      r,
+      d.config.deviceTokenSigningSecret,
+      now().getTime(),
+      d.repository,
+    );
   }
   async function quota(
     r: Request,
@@ -518,7 +523,13 @@ export function createStudioApp(d: Deps) {
     }
     if (r.method === "POST" && u.pathname === "/v1/devices/refresh")
       return json(
-        await refreshDeviceToken(r, d.config.deviceTokenSigningSecret, now()),
+        await refreshDeviceToken(
+          r,
+          d.config.deviceTokenSigningSecret,
+          now(),
+          undefined,
+          d.repository,
+        ),
       );
     if (r.method === "POST" && u.pathname === "/v1/artifacts/generate") {
       const o = await owner(r),
@@ -1091,6 +1102,7 @@ export function createStudioApp(d: Deps) {
         r,
         d.config.deviceTokenSigningSecret,
         now().getTime(),
+        d.repository,
       );
       if (r.method === "DELETE")
         return (await d.repository.revokePublication(
