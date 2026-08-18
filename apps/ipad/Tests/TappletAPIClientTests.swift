@@ -63,6 +63,17 @@ final class TappletAPIClientTests: XCTestCase {
         XCTAssertEqual(try JSONSerialization.jsonObject(with: request.httpBody!) as? NSDictionary, ["instruction": "Use larger labels", "expectedHeadRevisionId": "r0"])
     }
 
+    func testServerErrorDescriptionsSurfaceServerMessages() {
+        XCTAssertEqual(
+            TappletAPIError.server(403, "INVALID_ACCESS_CODE", "This class code is invalid or expired.").errorDescription,
+            "This class code is invalid or expired."
+        )
+        XCTAssertEqual(
+            TappletAPIError.transport("offline").errorDescription,
+            "Tapplet could not complete this request. Check your connection and try again."
+        )
+    }
+
     func testSetHeadAndPublishUseExpectedHeadContracts() async throws {
         let publication = Data(#"{"publication":{"slug":"class-1","url":"https://example.test/class-1","title":"Forces","createdAt":"2026-08-02T00:00:00Z","expiresAt":"2026-11-01T00:00:00Z"}}"#.utf8)
         let transport = RecordingTransport(responses: [projectEnvelopeData, revisionsData, publication])

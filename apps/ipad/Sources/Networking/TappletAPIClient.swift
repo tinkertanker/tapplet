@@ -17,7 +17,7 @@ protocol TappletAPI: Sendable {
     func remix(id: String, revisionId: String?) async throws -> ArtifactProject
     func downloadAsset(id: String) async throws -> DownloadedAppletAsset
     func uploadScreenshot(revisionId: String, jpeg: Data) async throws
-    func publish(id: String, revisionId: String?) async throws -> ArtifactPublication
+    func publish(id: String, revisionId: String) async throws -> ArtifactPublication
     func revoke(slug: String) async throws
     func extend(slug: String, days: Int) async throws -> ArtifactPublication
     func uploadImage(_ image: PreparedAppletImage, alternativeText: String?, decorative: Bool) async throws -> UploadedAppletImage
@@ -211,9 +211,9 @@ struct TappletAPIClient: TappletAPI, Sendable {
         try await upload("/v1/revisions/\(path(revisionId))/screenshot", data: jpeg, contentType: "image/jpeg", headers: [:])
     }
 
-    func publish(id: String, revisionId: String?) async throws -> ArtifactPublication {
+    func publish(id: String, revisionId: String) async throws -> ArtifactPublication {
         struct Body: Encodable { let expectedHeadRevisionId: String }
-        let envelope: PublicationEnvelope = try await send("/v1/artifacts/\(path(id))/publish", method: "POST", body: Body(expectedHeadRevisionId: revisionId ?? ""))
+        let envelope: PublicationEnvelope = try await send("/v1/artifacts/\(path(id))/publish", method: "POST", body: Body(expectedHeadRevisionId: revisionId))
         return envelope.publication
     }
 
@@ -362,7 +362,9 @@ enum TappletAPIError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .registrationRequired: "Enter your workshop access code before using Tapplet."
-        case .invalidURL, .invalidResponse, .transport, .decoding, .server: "Tapplet could not complete this request. Check your connection and try again."
+        case .server(_, _, let message): message
+        case .invalidURL, .invalidResponse, .transport, .decoding:
+            "Tapplet could not complete this request. Check your connection and try again."
         }
     }
     var requiresRegistration: Bool {

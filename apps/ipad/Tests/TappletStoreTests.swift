@@ -408,7 +408,7 @@ private actor ArtifactAPIStub: TappletAPI {
         DownloadedAppletAsset(data: Data([1, 2, 3]), mediaType: "image/jpeg")
     }
     func uploadScreenshot(revisionId: String, jpeg: Data) async throws {}
-    func publish(id: String, revisionId: String?) async throws -> ArtifactPublication {
+    func publish(id: String, revisionId: String) async throws -> ArtifactPublication {
         ArtifactPublication(
             slug: "class",
             url: URL(string: "https://example.test/class")!,
@@ -419,7 +419,7 @@ private actor ArtifactAPIStub: TappletAPI {
     }
     func revoke(slug: String) async throws {}
     func extend(slug: String, days: Int) async throws -> ArtifactPublication {
-        try await publish(id: generated.id, revisionId: nil)
+        try await publish(id: generated.id, revisionId: "r1")
     }
     func uploadImage(
         _ image: PreparedAppletImage,
