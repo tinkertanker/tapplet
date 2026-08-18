@@ -127,9 +127,14 @@ async function servePublic(
   if (!source) return new Response("Applet unavailable.", { status: 503 });
   const html = injectPublicHtml(source, publication.slug);
   const headers = new Headers({ "content-type": "text/html; charset=utf-8" });
+  const playerOrigin = new URL(env.PUBLIC_PLAYER_ORIGIN).origin;
   headers.set(
     "content-security-policy",
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; sandbox allow-scripts allow-same-origin allow-modals",
+    // No allow-same-origin: published applets run in an opaque origin so a
+    // compromised applet cannot act against API endpoints with same-origin
+    // privilege. Every 'self' source must become the explicit player origin
+    // because an opaque origin never matches 'self'.
+    `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src ${playerOrigin} data:; connect-src ${playerOrigin}; base-uri ${playerOrigin}; form-action 'none'; frame-ancestors 'none'; object-src 'none'; sandbox allow-scripts allow-modals`,
   );
   headers.set(
     "permissions-policy",

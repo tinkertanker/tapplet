@@ -599,6 +599,24 @@ describe("Tapplet API registration and public HTML", () => {
     expect(queries).toBe(1);
   });
 
+  it("allows sandboxed player origins to preflight anonymous content reports", async () => {
+    const preflight = await app.fetch(
+      new Request(
+        "https://api.test/v1/publications/ABCDEFGHIJKLMNOPQRSTUV/reports",
+        {
+          method: "OPTIONS",
+          headers: {
+            origin: "null",
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "content-type",
+          },
+        },
+      ),
+    );
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
   it("stops expired publications from authorising search, preferred context, or remix", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),

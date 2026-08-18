@@ -94,6 +94,14 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
       )
     )
       issues.push("Network APIs are not allowed.");
+    if (
+      /\b(?:localStorage|sessionStorage|indexedDB|caches)\b|document\.cookie/i.test(
+        html,
+      )
+    )
+      issues.push(
+        "Storage APIs are not allowed; applets must keep all state in memory.",
+      );
     if (new RegExp(PUBLIC_REPORT_MARKER, "i").test(html))
       issues.push("Reserved server report marker is not allowed.");
     if (inspectHtml(html).length)
