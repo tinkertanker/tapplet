@@ -480,6 +480,40 @@ describe("Tapplet API registration and public HTML", () => {
     );
   });
 
+  it("derives list publication state from a single query per artifact", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string };
+      headRevision: { id: string };
+    };
+    expect(
+      (
+        await app.fetch(
+          authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+            expectedHeadRevisionId: first.headRevision.id,
+          }),
+        )
+      ).status,
+    ).toBe(201);
+    const original = repository.getActivePublicationForArtifact.bind(
+      repository,
+    );
+    let queries = 0;
+    repository.getActivePublicationForArtifact = async (id: string, o: string) => {
+      queries += 1;
+      return original(id, o);
+    };
+    const listed = await app.fetch(authenticated("/v1/artifacts"));
+    await expect(listed.json()).resolves.toMatchObject({
+      artifacts: [
+        { id: first.artifact.id, publicationStale: false },
+      ],
+    });
+    expect(queries).toBe(1);
+  });
+
   it("stops expired publications from authorising search, preferred context, or remix", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),

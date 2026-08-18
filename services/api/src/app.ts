@@ -604,20 +604,20 @@ export function createStudioApp(d: Deps) {
       const artifacts = await d.repository.listArtifacts(ownerHash);
       return json({
         artifacts: await Promise.all(
-          artifacts.map(async (artifact) => ({
-            ...artifactResponse(artifact),
-            publication: await d.repository
-              .getActivePublicationForArtifact(artifact.id, ownerHash)
-              .then((value) =>
-                value ? publication(value, d.config.publicPlayerOrigin) : null,
-              ),
-            publicationStale: await d.repository
-              .getActivePublicationForArtifact(artifact.id, ownerHash)
-              .then(
-                (value) =>
-                  !!value && value.revisionId !== artifact.headRevisionId,
-              ),
-          })),
+          artifacts.map(async (artifact) => {
+            const active = await d.repository.getActivePublicationForArtifact(
+              artifact.id,
+              ownerHash,
+            );
+            return {
+              ...artifactResponse(artifact),
+              publication: active
+                ? publication(active, d.config.publicPlayerOrigin)
+                : null,
+              publicationStale:
+                !!active && active.revisionId !== artifact.headRevisionId,
+            };
+          }),
         ),
       });
     }
