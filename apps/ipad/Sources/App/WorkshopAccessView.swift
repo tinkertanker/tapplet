@@ -62,7 +62,7 @@ struct WorkshopAccessView: View {
                                 .accessibilityIdentifier("workshop-access-code")
                                 .disabled(isRegistering)
 
-                            Label("Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional.", systemImage: "info.circle")
+                            Label("Enter four numbers followed by eight letters, for example 1234ABCDEFGH. A hyphen is optional.", systemImage: "info.circle")
                                 .font(.footnote)
                                 .foregroundStyle(accessCodeIsTooShort ? TappletTheme.danger : TappletTheme.mutedInk)
                         }
