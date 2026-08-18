@@ -89,7 +89,7 @@ private struct DetailsFields: View { let store: TappletStore; let project: Artif
 }
 
 struct StudentPreviewView: View { let project: ArtifactProject; @Environment(\.dismiss) var dismiss
-    var body: some View { NavigationStack { AppletPreviewWebView(source: project.source, localAssets: project.localAssets).navigationTitle(project.artifact.title).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .principal) { Text(project.artifact.title).font(.headline).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8).frame(maxWidth: 420).accessibilityAddTraits(.isHeader) }; Button("Done") { dismiss() } } } }
+    var body: some View { NavigationStack { AppletPreviewWebView(source: project.source, localAssets: project.localAssets).navigationTitle(project.artifact.title).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .principal) { Text(project.artifact.title).font(.headline).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8).frame(maxWidth: 420).accessibilityAddTraits(.isHeader) }; ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } } }
 }
 
 private struct ShareArtifactView: View { let store: TappletStore; let projectID: String; @Environment(\.dismiss) var dismiss; @State private var working = false; @State private var error: String?
