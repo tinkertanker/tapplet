@@ -54,6 +54,7 @@
     // Must stay >= the class_codes.maximum_uses ceiling (100, see migration
     // 0007) so a class sharing one NAT can reach its configured capacity.
     "DAILY_NETWORK_REGISTRATION_LIMIT": "100",
+    "CLASS_CODE_FAILURE_LOCKOUT": "10",
     "MAXIMUM_DRAFTS_PER_OWNER": "100",
     "PUBLICATION_TTL_DAYS": "90"
   }

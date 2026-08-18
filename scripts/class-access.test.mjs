@@ -7,9 +7,9 @@ import {
   parseMaximumUses,
 } from './class-access.mjs';
 
-test('creates four digits followed by four unambiguous uppercase letters', () => {
-  const selected = [0, 1, 2, 3];
-  assert.equal(createClassCode('1234', () => selected.shift()), '1234ABCD');
+test('creates four digits followed by eight unambiguous uppercase letters', () => {
+  const selected = [0, 1, 2, 3, 4, 5, 6, 7];
+  assert.equal(createClassCode('1234', () => selected.shift()), '1234ABCDEFGH');
 });
 
 test('requires an operator-supplied four-digit class number', () => {
@@ -30,8 +30,9 @@ test('requires a fixed activation limit between 1 and 100', () => {
 
 test('normalises compact and hyphenated class codes to the same value', () => {
   assert.equal(normaliseClassCode('1234abcd'), '1234ABCD');
-  assert.equal(normaliseClassCode(' 1234-ABCD '), '1234ABCD');
-  for (const value of ['123-ABCD', '12345-ABCD', '1234-ABC1', 'ABCD-1234', '1234--ABCD']) {
+  assert.equal(normaliseClassCode('1234abcdefgh'), '1234ABCDEFGH');
+  assert.equal(normaliseClassCode(' 1234-abcd-efgh '), '1234ABCDEFGH');
+  for (const value of ['123-ABCD', '12345-ABCD', '1234-ABC1', 'ABCD-1234', '1234ABCDE', '1234--ABC']) {
     assert.equal(normaliseClassCode(value), null);
   }
 });

@@ -20,6 +20,7 @@ export interface StudioEnv {
   DAILY_DRAFT_CREATION_LIMIT: string;
   DAILY_NETWORK_DRAFT_CREATION_LIMIT: string;
   DAILY_NETWORK_REGISTRATION_LIMIT: string;
+  CLASS_CODE_FAILURE_LOCKOUT: string;
   MAXIMUM_DRAFTS_PER_OWNER: string;
   PUBLICATION_TTL_DAYS: string;
 }
@@ -37,6 +38,7 @@ export interface StudioConfig {
   dailyNetworkDraftCreationLimit: number;
   maximumDraftsPerOwner: number;
   dailyNetworkRegistrationLimit: number;
+  classCodeFailureLockout: number;
   publicationTtlDays: number;
   deviceTokenSigningSecret: string;
   seedImportToken?: string;
@@ -128,6 +130,12 @@ export function readConfig(env: StudioEnv): StudioConfig {
       100,
       5,
       500,
+    ),
+    classCodeFailureLockout: boundedInteger(
+      env.CLASS_CODE_FAILURE_LOCKOUT,
+      10,
+      1,
+      100,
     ),
     publicationTtlDays: boundedInteger(env.PUBLICATION_TTL_DAYS, 90, 1, 365),
     deviceTokenSigningSecret: env.DEVICE_TOKEN_SIGNING_SECRET,

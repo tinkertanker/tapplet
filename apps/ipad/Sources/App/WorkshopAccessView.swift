@@ -143,7 +143,17 @@ struct WorkshopAccessView: View {
     }
 
     private var accessCodeIsTooShort: Bool {
+        // Codes are four digits plus four letters (legacy) or eight letters.
         !cleanedAccessCode.isEmpty && cleanedAccessCode.count < 8
+    }
+
+    private var accessCodeIsIncomplete: Bool {
+        guard !cleanedAccessCode.isEmpty else { return false }
+        let compact = cleanedAccessCode.uppercased().replacingOccurrences(of: "-", with: "")
+        let digits = compact.prefix(4)
+        let letters = compact.dropFirst(4)
+        let lettersValid = letters.count == 4 || letters.count == 8
+        return !(digits.allSatisfy(\.isNumber) && lettersValid && letters.allSatisfy(\.isLetter))
     }
 
     private func exploreExamples() {
@@ -164,10 +174,10 @@ struct WorkshopAccessView: View {
             codeIsFocused = true
             return
         }
-        guard !accessCodeIsTooShort else {
+        guard !accessCodeIsIncomplete else {
             registrationError = TappletErrorPresentation(
                 title: "Complete the class code",
-                message: "Enter all four numbers and four letters. Your code is still in the field above.",
+                message: "Enter all four numbers and every letter of your code. Your code is still in the field above.",
                 requestsWorkshopAccess: false
             )
             codeIsFocused = true

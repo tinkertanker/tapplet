@@ -22,12 +22,14 @@ export function parseMaximumUses(value, usage = 'Expected maximum uses from 1 to
 
 export function createClassCode(classNumber, selectIndex = (length) => randomInt(length)) {
   const prefix = parseClassNumber(classNumber);
-  const suffix = Array.from({ length: 4 }, () => LETTERS[selectIndex(LETTERS.length)]).join('');
+  // Eight letters (~41 bits) keeps codes unguessable even when the four-digit
+  // class number is known to students. Legacy four-letter codes remain valid.
+  const suffix = Array.from({ length: 8 }, () => LETTERS[selectIndex(LETTERS.length)]).join('');
   return `${prefix}${suffix}`;
 }
 
 export function normaliseClassCode(value) {
   if (typeof value !== 'string') return null;
-  const compact = value.trim().toUpperCase().replace('-', '');
-  return /^\d{4}[A-Z]{4}$/.test(compact) ? compact : null;
+  const compact = value.trim().toUpperCase().replaceAll('-', '');
+  return /^\d{4}(?:[A-Z]{4}|[A-Z]{8})$/.test(compact) ? compact : null;
 }

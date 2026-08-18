@@ -450,8 +450,8 @@ export function createStudioApp(d: Deps) {
       const b = obj(await readJson(r, 1000)),
         code = str(b.accessCode, "Class code", 80)
           .toUpperCase()
-          .replace("-", "");
-      if (!/^\d{4}[A-Z]{4}$/.test(code))
+          .replaceAll("-", "");
+      if (!/^\d{4}(?:[A-Z]{4}|[A-Z]{8})$/.test(code))
         throw new HttpError(
           403,
           "INVALID_ACCESS_CODE",
@@ -476,12 +476,25 @@ export function createStudioApp(d: Deps) {
           await sha256(`class-code:${code}`),
           timestamp.toISOString(),
         ))
-      )
+      ) {
+        if (
+          !(await d.repository.consumeGeneration(
+            `class-code-fail:${await sha256(`class-code:${code}`)}`,
+            date,
+            d.config.classCodeFailureLockout,
+          ))
+        )
+          throw new HttpError(
+            429,
+            "CLASS_CODE_LOCKED",
+            "This class code has had too many failed attempts today. Try again tomorrow or ask your facilitator for help.",
+          );
         throw new HttpError(
           403,
           "INVALID_ACCESS_CODE",
           "This class code is invalid or expired.",
         );
+      }
       return json(
         await issueDeviceToken(d.config.deviceTokenSigningSecret, timestamp),
         { status: 201 },
