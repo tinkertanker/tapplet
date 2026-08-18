@@ -480,6 +480,91 @@ describe("Tapplet API registration and public HTML", () => {
     );
   });
 
+  it("neutralises private briefs on cross-owner remixes but preserves them for the owner", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        creationBrief: "Help the pupil in row 3 with fractions after school.",
+      }),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string; title: string; summary: string };
+      headRevision: { id: string };
+    };
+    expect(
+      (
+        await app.fetch(
+          authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+            expectedHeadRevisionId: first.headRevision.id,
+          }),
+        )
+      ).status,
+    ).toBe(201);
+
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    const asOther = (path: string, method = "GET", body?: unknown) =>
+      app.fetch(
+        new Request(`https://api.test${path}`, {
+          method,
+          headers: {
+            "x-device-token": otherToken,
+            origin: "https://studio.test",
+            ...(body === undefined ? {} : { "content-type": "application/json" }),
+          },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        }),
+      );
+    const crossOwner = await asOther(
+      `/v1/revisions/${first.headRevision.id}/remix`,
+      "POST",
+      {},
+    );
+    expect(crossOwner.status).toBe(201);
+    const remixed = (await crossOwner.json()) as {
+      artifact: { creationBrief: string };
+    };
+    expect(remixed.artifact.creationBrief).not.toContain("row 3");
+    expect(remixed.artifact.creationBrief).toContain(first.artifact.title);
+
+    const ownRemix = await app.fetch(
+      authenticated(`/v1/revisions/${first.headRevision.id}/remix`, "POST", {}),
+    );
+    const own = (await ownRemix.json()) as {
+      artifact: { creationBrief: string };
+    };
+    expect(own.artifact.creationBrief).toContain("row 3");
+  });
+
+  it("rejects unsafe metadata and remix titles", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string };
+      headRevision: { id: string };
+    };
+    const unsafe = await app.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}`, "PATCH", {
+        title: "Contact teacher@example.com for the answers",
+        summary: "A concise fraction diagnostic",
+        creationBrief: "Updated teacher-facing brief",
+      }),
+    );
+    expect(unsafe.status).toBe(422);
+    await expect(unsafe.json()).resolves.toMatchObject({
+      error: { code: "UNSAFE_CONTENT" },
+    });
+
+    const unsafeRemix = await app.fetch(
+      authenticated(`/v1/revisions/${first.headRevision.id}/remix`, "POST", {
+        title: "Email teacher@example.com",
+      }),
+    );
+    expect(unsafeRemix.status).toBe(422);
+  });
+
   it("derives list publication state from a single query per artifact", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),

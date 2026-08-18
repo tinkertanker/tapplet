@@ -131,6 +131,22 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
     },
   };
 }
+function remixBrief(source: ArtifactRecord): TeacherBrief {
+  return {
+    level: source.level ?? "General",
+    subject: source.subject ?? "General",
+    learnerContext: `${source.level ?? "General"} ${source.subject ?? "General"}`
+      .trim()
+      .slice(0, 300),
+    learningObjective: (source.learningObjective ?? source.title).slice(
+      0,
+      600,
+    ),
+    studentAction: source.summary.slice(0, 600),
+    feedback: "Ask the teacher for feedback on this remixed applet.",
+    classroomFit: source.level ?? "Classroom use",
+  };
+}
 async function digest(html: string) {
   return sha256(html);
 }
@@ -695,37 +711,48 @@ export function createStudioApp(d: Deps) {
       }
       if (s.length === 3 && r.method === "PATCH") {
         const b = obj(await readJson(r, 10000));
-        if (typeof b.title === "string" && b.headRevisionId === undefined)
+        if (typeof b.title === "string" && b.headRevisionId === undefined) {
+          const metadata = {
+            title: str(b.title, "Title", 200),
+            summary: str(b.summary, "Summary", 1000),
+            subject: optionalStr(b.subject, "Subject", 100) ?? null,
+            level: optionalStr(b.level, "Level", 100) ?? null,
+            locale: optionalStr(b.locale, "Locale", 30) ?? null,
+            learningObjective:
+              optionalStr(b.learningObjective, "Learning objective", 600) ??
+              null,
+            tags: Array.isArray(b.tags)
+              ? b.tags.map((x) => str(x, "Tag", 60)).slice(0, 20)
+              : [],
+            creationBrief: str(b.creationBrief, "Creation brief", 6000),
+          };
+          if (
+            [
+              metadata.title,
+              metadata.summary,
+              metadata.learningObjective ?? "",
+              metadata.creationBrief,
+              ...metadata.tags,
+              ...(metadata.subject ? [metadata.subject] : []),
+              ...(metadata.level ? [metadata.level] : []),
+              ...(metadata.locale ? [metadata.locale] : []),
+            ].some((value) => inspectText(value).length)
+          )
+            throw new HttpError(
+              422,
+              "UNSAFE_CONTENT",
+              "Metadata cannot be processed.",
+            );
           return json({
             artifact: await d.repository
-              .updateArtifactMetadata(
-                a.id,
-                o,
-                {
-                  title: str(b.title, "Title", 200),
-                  summary: str(b.summary, "Summary", 1000),
-                  subject: optionalStr(b.subject, "Subject", 100) ?? null,
-                  level: optionalStr(b.level, "Level", 100) ?? null,
-                  locale: optionalStr(b.locale, "Locale", 30) ?? null,
-                  learningObjective:
-                    optionalStr(
-                      b.learningObjective,
-                      "Learning objective",
-                      600,
-                    ) ?? null,
-                  tags: Array.isArray(b.tags)
-                    ? b.tags.map((x) => str(x, "Tag", 60)).slice(0, 20)
-                    : [],
-                  creationBrief: str(b.creationBrief, "Creation brief", 6000),
-                },
-                now().toISOString(),
-              )
+              .updateArtifactMetadata(a.id, o, metadata, now().toISOString())
               .then(async (value) =>
                 value
                   ? (await projectResponse(value, o, u.origin)).artifact
                   : null,
               ),
           });
+        }
         const head = str(b.headRevisionId, "headRevisionId", 100),
           expected = str(
             b.expectedHeadRevisionId,
@@ -952,13 +979,20 @@ export function createStudioApp(d: Deps) {
             "Revision unavailable.",
           );
         const b = obj(await readJson(r, 2000)),
-          title =
-            typeof b.title === "string"
-              ? str(b.title, "Title", 200)
-              : sourceArtifact.title,
-          html = await d.sources.getSource(rv.sourceHash);
+          suppliedTitle =
+            typeof b.title === "string" ? str(b.title, "Title", 200) : null,
+          title = suppliedTitle ?? sourceArtifact.title;
+        if (suppliedTitle && inspectText(suppliedTitle).length)
+          throw new HttpError(
+            422,
+            "UNSAFE_CONTENT",
+            "Title cannot be processed.",
+          );
+        const html = await d.sources.getSource(rv.sourceHash);
         if (!html)
           throw new HttpError(404, "SOURCE_NOT_FOUND", "Source unavailable.");
+        const keepBriefs =
+          !!ownedArtifact || sourceArtifact.ownerHash === CURATED_SEED_OWNER;
         await reserveArtifactCreation(r, o);
         const aid = id(),
           rid = id(),
@@ -984,8 +1018,15 @@ export function createStudioApp(d: Deps) {
             locale: sourceArtifact.locale,
             learningObjective: sourceArtifact.learningObjective,
             tags: sourceArtifact.tags,
-            creationBrief: sourceArtifact.creationBrief,
-            generationBrief: sourceArtifact.generationBrief,
+            creationBrief: keepBriefs
+              ? sourceArtifact.creationBrief
+              : `${sourceArtifact.title}\n\n${sourceArtifact.summary}`.slice(
+                  0,
+                  6000,
+                ),
+            generationBrief: keepBriefs
+              ? sourceArtifact.generationBrief
+              : JSON.stringify(remixBrief(sourceArtifact)),
             headRevisionId: rid,
             remixedFromRevisionId: rv.id,
             createdAt: timestamp,
