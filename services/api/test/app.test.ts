@@ -86,7 +86,7 @@ describe("Tapplet API registration and public HTML", () => {
 
   it("normalises a class code and permits all 100 activations on a shared network", async () => {
     const hash = createHash("sha256")
-      .update("class-code:1234ABCD")
+      .update("class-code:1234ABCDEFGH")
       .digest("hex");
     repository.classCodes.set(hash, {
       maximumUses: 100,
@@ -95,16 +95,16 @@ describe("Tapplet API registration and public HTML", () => {
     });
     for (let use = 0; use < 100; use += 1) {
       expect(
-        (await register(use === 0 ? "1234-abcd" : "1234ABCD")).status,
+        (await register(use === 0 ? "1234-abcd-efgh" : "1234ABCDEFGH")).status,
       ).toBe(201);
     }
-    expect((await register("1234ABCD")).status).toBe(429);
+    expect((await register("1234ABCDEFGH")).status).toBe(429);
     expect(repository.classCodes.get(hash)?.uses).toBe(100);
   });
 
   it("checks network registration quota before consuming a class code", async () => {
     const hash = createHash("sha256")
-      .update("class-code:1234ABCD")
+      .update("class-code:1234ABCDEFGH")
       .digest("hex");
     repository.classCodes.set(hash, {
       maximumUses: 2,
@@ -119,8 +119,8 @@ describe("Tapplet API registration and public HTML", () => {
       now: () => new Date("2026-08-02T00:00:00Z"),
     });
     app = limited;
-    expect((await register("1234ABCD")).status).toBe(201);
-    expect((await register("1234ABCD")).status).toBe(429);
+    expect((await register("1234ABCDEFGH")).status).toBe(201);
+    expect((await register("1234ABCDEFGH")).status).toBe(429);
     expect(repository.classCodes.get(hash)?.uses).toBe(1);
   });
 
@@ -137,9 +137,23 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.classCodes.get(hash)?.uses).toBe(1);
   });
 
+  it("rejects legacy four-letter codes without consuming them", async () => {
+    const hash = createHash("sha256")
+      .update("class-code:1234ABCD")
+      .digest("hex");
+    repository.classCodes.set(hash, {
+      maximumUses: 5,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    expect((await register("1234ABCD")).status).toBe(403);
+    expect((await register("1234-ABCD")).status).toBe(403);
+    expect(repository.classCodes.get(hash)?.uses).toBe(0);
+  });
+
   it("locks a class code after repeated failures but still accepts the correct code", async () => {
     const correct = createHash("sha256")
-      .update("class-code:1234ABCD")
+      .update("class-code:1234ABCDEFGH")
       .digest("hex");
     repository.classCodes.set(correct, {
       maximumUses: 5,
@@ -154,10 +168,10 @@ describe("Tapplet API registration and public HTML", () => {
       now: () => new Date("2026-08-02T00:00:00Z"),
     });
     app = limited;
-    expect((await register("1234WXYZ")).status).toBe(403);
-    expect((await register("1234WXYZ")).status).toBe(403);
-    expect((await register("1234WXYZ")).status).toBe(429);
-    expect((await register("1234ABCD")).status).toBe(201);
+    expect((await register("1234WXYZABCD")).status).toBe(403);
+    expect((await register("1234WXYZABCD")).status).toBe(403);
+    expect((await register("1234WXYZABCD")).status).toBe(429);
+    expect((await register("1234ABCDEFGH")).status).toBe(201);
   });
 
   it("injects one scoped base and one report control without changing the source", () => {

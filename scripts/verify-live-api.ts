@@ -32,7 +32,7 @@ async function ensureDeviceToken(): Promise<void> {
     return;
   }
   const localSmokeCode = existsSync(smokeCodePath)
-    ? /^(\d{4}[A-Z]{4})$/m.exec(readFileSync(smokeCodePath, "utf8"))?.[1]
+    ? /^(\d{4}[A-Z]{8})$/m.exec(readFileSync(smokeCodePath, "utf8"))?.[1]
     : undefined;
   const accessCode = explicitAccessCode || localSmokeCode;
   if (!accessCode) {

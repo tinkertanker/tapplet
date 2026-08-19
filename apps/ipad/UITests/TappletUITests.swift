@@ -93,7 +93,7 @@ final class TappletUITests: XCTestCase {
     func testWorkshopAccessCanBeDeferred() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Enter four numbers followed by four letters, for example 1234ABCD. A hyphen is optional."].exists)
+        XCTAssertTrue(app.staticTexts["Enter four numbers followed by eight letters, for example 1234ABCDEFGH. A hyphen is optional."].exists)
         let explore: XCUIElement = app.buttons["Explore examples"]
         XCTAssertTrue(explore.waitForExistence(timeout: 5))
         explore.tap()

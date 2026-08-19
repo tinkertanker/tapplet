@@ -143,8 +143,8 @@ struct WorkshopAccessView: View {
     }
 
     private var accessCodeIsTooShort: Bool {
-        // Codes are four digits plus four letters (legacy) or eight letters.
-        !cleanedAccessCode.isEmpty && cleanedAccessCode.count < 8
+        // Codes are four digits plus eight letters.
+        !cleanedAccessCode.isEmpty && cleanedAccessCode.count < 12
     }
 
     private var accessCodeIsIncomplete: Bool {
@@ -152,8 +152,7 @@ struct WorkshopAccessView: View {
         let compact = cleanedAccessCode.uppercased().replacingOccurrences(of: "-", with: "")
         let digits = compact.prefix(4)
         let letters = compact.dropFirst(4)
-        let lettersValid = letters.count == 4 || letters.count == 8
-        return !(digits.allSatisfy(\.isNumber) && lettersValid && letters.allSatisfy(\.isLetter))
+        return !(digits.allSatisfy(\.isNumber) && letters.count == 8 && letters.allSatisfy(\.isLetter))
     }
 
     private func exploreExamples() {

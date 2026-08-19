@@ -29,10 +29,9 @@ test('requires a fixed activation limit between 1 and 100', () => {
 });
 
 test('normalises compact and hyphenated class codes to the same value', () => {
-  assert.equal(normaliseClassCode('1234abcd'), '1234ABCD');
   assert.equal(normaliseClassCode('1234abcdefgh'), '1234ABCDEFGH');
   assert.equal(normaliseClassCode(' 1234-abcd-efgh '), '1234ABCDEFGH');
-  for (const value of ['123-ABCD', '12345-ABCD', '1234-ABC1', 'ABCD-1234', '1234ABCDE', '1234--ABC']) {
+  for (const value of ['123-ABCD', '12345-ABCD', '1234-ABC1', 'ABCD-1234', '1234ABCDE', '1234--ABC', '1234ABCD', '1234-abcd']) {
     assert.equal(normaliseClassCode(value), null);
   }
 });

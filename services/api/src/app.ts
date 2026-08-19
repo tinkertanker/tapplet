@@ -472,7 +472,7 @@ export function createStudioApp(d: Deps) {
         code = str(b.accessCode, "Class code", 80)
           .toUpperCase()
           .replaceAll("-", "");
-      if (!/^\d{4}(?:[A-Z]{4}|[A-Z]{8})$/.test(code))
+      if (!/^\d{4}[A-Z]{8}$/.test(code))
         throw new HttpError(
           403,
           "INVALID_ACCESS_CODE",
