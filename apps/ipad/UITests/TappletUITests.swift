@@ -8,7 +8,8 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Rain, paved ground and drainage"].exists)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Make a copy'")).firstMatch.exists)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch.exists)
-        XCTAssertTrue(app.buttons["subject-filter-mathematics"].exists)
+        XCTAssertTrue(app.staticTexts["Conductor or insulator?"].exists)
+        XCTAssertTrue(app.buttons["form-filter-game"].exists)
     }
 
     @MainActor
@@ -57,7 +58,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["No examples found"].waitForExistence(timeout: 3))
         app.buttons["clear-example-filters"].tap()
 
-        XCTAssertTrue(app.staticTexts["14 examples"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["18 examples"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["What do m and c do?"].exists)
     }
 
@@ -66,6 +67,7 @@ final class TappletUITests: XCTestCase {
         let app = launchApp()
         selectSidebarItem(label: "Make", in: app)
         XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].exists)
 
         let answers = [
             "Secondary 3 Physics",
@@ -85,8 +87,38 @@ final class TappletUITests: XCTestCase {
         }
 
         XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
-        app.buttons["Make my applet"].tap()
+        app.buttons["Make my tapplet"].tap()
         XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+    }
+
+    @MainActor
+    func testExploreGamesFilterAndUseThisPlan() {
+        let app = launchApp()
+        XCTAssertTrue(app.buttons["form-filter-game"].waitForExistence(timeout: 8))
+        app.buttons["form-filter-game"].tap()
+        XCTAssertTrue(app.staticTexts["4 examples"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Times-tables lightning"].exists)
+        XCTAssertFalse(app.staticTexts["Rain, paved ground and drainage"].exists)
+
+        app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["use-example-plan"].waitForExistence(timeout: 8))
+        app.buttons["use-example-plan"].tap()
+
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Game"].exists)
+    }
+
+    @MainActor
+    func testStarterPlanFillsTheReviewCard() {
+        let app = launchApp()
+        selectSidebarItem(label: "Make", in: app)
+        let plan = app.buttons["starter-plan-times-tables-lightning"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+        plan.tap()
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Primary 5 Mathematics"].exists)
+        XCTAssertTrue(app.staticTexts["Game"].exists)
+        XCTAssertTrue(app.staticTexts["pinned-example-plan"].exists)
     }
 
     @MainActor
@@ -157,14 +189,14 @@ final class TappletUITests: XCTestCase {
     @MainActor
     func testMyAppletsEmptyStateOffersMakeAndExplore() {
         let app = launchApp()
-        selectSidebarItem(label: "My Applets", in: app)
-        XCTAssertTrue(app.staticTexts["Your applets will appear here"].waitForExistence(timeout: 5))
+        selectSidebarItem(label: "My Tapplets", in: app)
+        XCTAssertTrue(app.staticTexts["Your tapplets will appear here"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Make one from a short plan, or copy an example from Explore."].exists)
-        XCTAssertTrue(app.buttons["Restore applets"].exists)
+        XCTAssertTrue(app.buttons["Restore tapplets"].exists)
         app.buttons["empty-start-with-example"].tap()
         XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
 
-        selectSidebarItem(label: "My Applets", in: app)
+        selectSidebarItem(label: "My Tapplets", in: app)
         XCTAssertTrue(app.buttons["empty-make-applet"].waitForExistence(timeout: 5))
         app.buttons["empty-make-applet"].tap()
         XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitForExistence(timeout: 5))

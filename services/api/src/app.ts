@@ -87,6 +87,49 @@ function retrievalQuery(value: string): string | null {
     ? terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ")
     : null;
 }
+const ACTIVITY_FORMS = ["game", "quiz", "simulation", "practice"] as const;
+type ActivityForm = (typeof ACTIVITY_FORMS)[number];
+function optionalForm(value: unknown): ActivityForm | undefined {
+  const raw = optionalStr(value, "Activity form", 20);
+  if (!raw) return undefined;
+  const form = raw.toLowerCase();
+  if (!ACTIVITY_FORMS.includes(form as ActivityForm))
+    throw new HttpError(
+      422,
+      "INVALID_INPUT",
+      "Activity form must be game, quiz, simulation or practice.",
+    );
+  return form as ActivityForm;
+}
+function inferSubject(learnerContext: string): string {
+  const text = learnerContext.toLowerCase();
+  if (/\bmaths?\b|\bmathematics\b|\balgebra\b/.test(text)) return "mathematics";
+  if (
+    /\bsci(?:ence)?\b|\bphy(?:sics)?\b|\bchem(?:istry)?\b|\bbio(?:logy)?\b/.test(
+      text,
+    )
+  )
+    return "science";
+  if (/\benglish\b|\blit(?:erature)?\b|\bliteracy\b|\bspelling\b/.test(text))
+    return "english";
+  if (/\bhumanities\b|\bgeog(?:raphy)?\b|\bhist(?:ory)?\b/.test(text))
+    return "humanities";
+  if (/\bcivics\b|\bcitizenship\b|\bsocial studies\b/.test(text)) return "civics";
+  if (
+    /\b(?:chinese|malay|tamil|mother tongue|mtl|higher chinese|higher malay|higher tamil)\b/.test(
+      text,
+    )
+  )
+    return "languages";
+  return "other";
+}
+function generationRetrievalQuery(brief: TeacherBrief): string | null {
+  return retrievalQuery(
+    [brief.format, brief.learnerContext ?? `${brief.level} ${brief.subject}`, brief.learningObjective]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
 function stringList(value: unknown, name: string, maximum: number): string[] {
   if (!Array.isArray(value) || value.length > maximum)
     throw new HttpError(422, "INVALID_INPUT", `${name} must be a short list.`);
@@ -100,6 +143,7 @@ interface GuidedGeneration {
 function brief(b: Record<string, unknown>): GuidedGeneration {
   const guided = obj(b.brief);
   const learnerContext = str(guided.learnerContext, "Learner context", 300);
+  const format = optionalForm(guided.format);
   return {
     creationBrief: str(b.creationBrief, "Creation brief", 6000),
     preferredExampleRevisionId:
@@ -108,7 +152,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
         : str(b.preferredExampleRevisionId, "Preferred example revision", 100),
     brief: {
       level: learnerContext,
-      subject: "General",
+      subject: inferSubject(learnerContext),
       learnerContext,
       learningObjective: str(
         guided.learningObjective,
@@ -128,6 +172,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
         : {}),
       feedback: str(guided.feedback, "Feedback", 1000),
       classroomFit: str(guided.classroomFit, "Classroom fit", 1000),
+      ...(format ? { format } : {}),
     },
   };
 }
@@ -143,7 +188,7 @@ function remixBrief(source: ArtifactRecord): TeacherBrief {
       600,
     ),
     studentAction: source.summary.slice(0, 600),
-    feedback: "Ask the teacher for feedback on this remixed applet.",
+    feedback: "Ask the teacher for feedback on this remixed tapplet.",
     classroomFit: source.level ?? "Classroom use",
   };
 }
@@ -340,7 +385,7 @@ export function createStudioApp(d: Deps) {
       throw new HttpError(
         429,
         "ARTIFACT_STORAGE_LIMIT_REACHED",
-        "Saved applet limit reached.",
+        "Saved tapplet limit reached.",
       );
     await quota(r, ownerHash, "artifact");
   }
@@ -546,9 +591,7 @@ export function createStudioApp(d: Deps) {
         );
       await reserveArtifactCreation(r, o);
       await quota(r, o, "generation");
-      const query = retrievalQuery(
-        `${b.learnerContext ?? `${b.level} ${b.subject}`} ${b.learningObjective}`,
-      );
+      const query = generationRetrievalQuery(b);
       const preferred = request.preferredExampleRevisionId
         ? await d.repository.getRevision(request.preferredExampleRevisionId)
         : null;
@@ -559,8 +602,10 @@ export function createStudioApp(d: Deps) {
             preferred.id,
             now().toISOString(),
           )));
-      const found = preferredAllowed
-        ? [{ revisionId: preferred.id, descriptor: "Teacher-selected example" }]
+      const found = request.preferredExampleRevisionId
+        ? preferredAllowed
+          ? [{ revisionId: preferred.id, descriptor: "Teacher-selected example" }]
+          : []
         : query
           ? await d.repository.searchRetrieval(query, 2, now().toISOString())
           : [];
@@ -602,7 +647,7 @@ export function createStudioApp(d: Deps) {
         ownerHash: o,
         title: out.designCard?.title ?? b.learningObjective,
         summary: out.designCard?.description ?? b.studentAction,
-        subject: null,
+        subject: b.subject === "other" ? null : b.subject,
         level: b.learnerContext ?? b.level,
         locale: "en-SG",
         learningObjective: b.learningObjective,

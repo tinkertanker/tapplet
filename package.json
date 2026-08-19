@@ -1,7 +1,7 @@
 {
   "name": "tapplet",
   "version": "0.1.0",
-  "description": "Create tiny interactive applets for any lesson.",
+  "description": "Create tiny interactive tapplets for any lesson.",
   "private": true,
   "workspaces": [
     "services/api"

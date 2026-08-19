@@ -12,7 +12,8 @@ final class TappletAPIClientTests: XCTestCase {
                 studentAction: "Choose and explain",
                 sourceContent: "Use halves and quarters",
                 feedback: "Explain each answer",
-                classroomFit: "Five minutes independently"
+                classroomFit: "Five minutes independently",
+                format: nil
             ),
             preferredExampleRevisionId: nil
         )
@@ -24,6 +25,7 @@ final class TappletAPIClientTests: XCTestCase {
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: sent.httpBody!) as? [String: Any])
         XCTAssertEqual(body["creationBrief"] as? String, "A guided brief")
         XCTAssertEqual((body["brief"] as? [String: Any])?["learnerContext"] as? String, "Primary 5 Mathematics")
+        XCTAssertNil((body["brief"] as? [String: Any])?["format"])
         XCTAssertNil(body["preferredExampleRevisionId"], "nil optional fields are omitted by Swift's encoder")
     }
 
@@ -70,7 +72,7 @@ final class TappletAPIClientTests: XCTestCase {
         )
         XCTAssertEqual(
             TappletAPIError.transport("offline").errorDescription,
-            "Tapplet could not complete this request. Check your connection and try again."
+            "Tapplet Studio could not complete this request. Check your connection and try again."
         )
     }
 

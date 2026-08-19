@@ -26,6 +26,21 @@
       "designCard": {"layout": "two-column lab sheet", "accent": "indigo", "interaction": "classify, select, reorder"}
     },
     {
+      "id": "conductor-or-insulator",
+      "filename": "conductor-or-insulator.html",
+      "title": "Conductor or insulator?",
+      "summary": "Sort classroom objects into conductors and insulators. A wrong bin costs a life and explains why.",
+      "subject": "science",
+      "level": "upper-primary",
+      "locale": "en-SG",
+      "form": "game",
+      "learningObjective": "Classify materials as electrical conductors or insulators and explain the difference.",
+      "tags": ["electricity", "conductors", "insulators", "game", "lives"],
+      "interactionPattern": "timed-sort-with-lives",
+      "descriptor": "A 60-second sorting game: tap an object, choose a bin, lose a life with an explanation when wrong.",
+      "designCard": {"layout": "item list and two bins", "accent": "sage", "interaction": "select, sort, retry", "form": "game"}
+    },
+    {
       "id": "cut-extra-words",
       "filename": "cut-extra-words.html",
       "title": "Cut extra words",
@@ -66,6 +81,21 @@
       "tags": ["algebra", "linear-functions", "graphs"], "interactionPattern": "dual-range-live-graph",
       "descriptor": "Two coefficient sliders update equation, point value and inline SVG graph together.",
       "designCard": {"layout": "equation controls beside graph", "accent": "indigo", "interaction": "predict, vary, infer"}
+    },
+    {
+      "id": "line-golf",
+      "filename": "line-golf.html",
+      "title": "Line golf",
+      "summary": "Change m and c so y = mx + c passes through every flag in as few strokes as possible.",
+      "subject": "mathematics",
+      "level": "secondary",
+      "locale": "en-SG",
+      "form": "game",
+      "learningObjective": "Choose gradient and intercept so a straight line passes through given points.",
+      "tags": ["algebra", "linear-functions", "graphs", "game"],
+      "interactionPattern": "stroke-budget-line-fit",
+      "descriptor": "Three golf holes: sliders for m and c, live graph, flag targets and a par for each hole.",
+      "designCard": {"layout": "controls beside graph", "accent": "indigo", "interaction": "adjust, check, beat par", "form": "game"}
     },
     {
       "id": "market-street-field-notes", "filename": "market-street-field-notes.html",
@@ -128,6 +158,36 @@
       "tags": ["history", "sources", "corroboration"], "interactionPattern": "source-evaluation-diagnostic",
       "descriptor": "A source card followed by purpose, evidence and historical-vocabulary checks.",
       "designCard": {"layout": "source banner and three checks", "accent": "terracotta", "interaction": "question, corroborate, judge"}
+    },
+    {
+      "id": "spell-it-before-the-sun-sets",
+      "filename": "spell-it-before-the-sun-sets.html",
+      "title": "Spell it before the sun sets",
+      "summary": "Guess letters in a word. Each wrong letter adds a sun ray and explains a spelling pattern.",
+      "subject": "english",
+      "level": "upper-primary",
+      "locale": "en-SG",
+      "form": "game",
+      "learningObjective": "Spell high-frequency words with silent letters and common letter patterns.",
+      "tags": ["spelling", "vocabulary", "game", "lives"],
+      "interactionPattern": "hangman-cost-for-wrong",
+      "descriptor": "A hangman-style spelling game: six rays, letter keys, and a teaching note on every miss.",
+      "designCard": {"layout": "sun, blanks and keyboard", "accent": "amber", "interaction": "guess, cost, reveal", "form": "game"}
+    },
+    {
+      "id": "times-tables-lightning",
+      "filename": "times-tables-lightning.html",
+      "title": "Times-tables lightning",
+      "summary": "Answer 6, 7, 8 and 9 times-table facts in 60 seconds. Misses break the streak and return at the end.",
+      "subject": "mathematics",
+      "level": "upper-primary",
+      "locale": "en-SG",
+      "form": "game",
+      "learningObjective": "Recall multiplication facts from the 6, 7, 8 and 9 times tables fluently.",
+      "tags": ["times-tables", "multiplication", "fluency", "game", "countdown", "streak"],
+      "interactionPattern": "timed-fact-streak",
+      "descriptor": "A 60-second times-tables game with four answers, a streak counter and a missed-fact review.",
+      "designCard": {"layout": "timer and answer grid", "accent": "amber", "interaction": "choose, streak, review", "form": "game"}
     },
     {
       "id": "town-council-budget",

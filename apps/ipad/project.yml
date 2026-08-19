@@ -34,11 +34,11 @@ targets:
         VERSIONING_SYSTEM: apple-generic
         TARGETED_DEVICE_FAMILY: "2"
         GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_KEY_CFBundleDisplayName: Tapplet
+        INFOPLIST_KEY_CFBundleDisplayName: Tapplet Studio
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.education
         INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking: true
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Choose classroom images to include in an applet.
-        INFOPLIST_KEY_NSCameraUsageDescription: Take a photo of a classroom diagram, worksheet or sketch to include in an applet.
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Choose classroom images to include in a tapplet.
+        INFOPLIST_KEY_NSCameraUsageDescription: Take a photo of a classroom diagram, worksheet or sketch to include in a tapplet.
         INFOPLIST_KEY_TappletAPIBaseURL: "$(TAPPLET_API_BASE_URL)"
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UIUserInterfaceStyle: Light

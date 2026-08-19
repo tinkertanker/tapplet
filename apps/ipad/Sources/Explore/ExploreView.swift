@@ -7,6 +7,7 @@ struct ExploreView: View {
     @State private var query = ""
     @State private var selectedSubjectID: String?
     @State private var selectedTopicID: String?
+    @State private var selectedFormID: String?
     @State private var copyingProjectIDs: Set<String> = []
     @State private var preview: ArtifactProject?
     @State private var error: String?
@@ -25,7 +26,8 @@ struct ExploreView: View {
             store.examples,
             query: query,
             subjectID: selectedSubjectID,
-            topicID: selectedTopicID
+            topicID: selectedTopicID,
+            formID: selectedFormID
         )
     }
 
@@ -33,6 +35,7 @@ struct ExploreView: View {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || selectedSubjectID != nil
             || selectedTopicID != nil
+            || selectedFormID != nil
     }
 
     private var columns: [GridItem] {
@@ -46,7 +49,7 @@ struct ExploreView: View {
             VStack(alignment: .leading, spacing: 28) {
                 PageHeader(
                     title: "Start with an example",
-                    subtitle: "Find a ready-made activity, preview it, then make a copy for your class.",
+                    subtitle: "Find a ready-made tapplet, preview it, then make a copy for your class.",
                     sticker: .greetings
                 )
 
@@ -62,8 +65,13 @@ struct ExploreView: View {
         .onChange(of: selectedSubjectID) {
             selectedTopicID = nil
         }
-        .fullScreenCover(item: $preview) {
-            StudentPreviewView(project: $0)
+        .fullScreenCover(item: $preview) { project in
+            StudentPreviewView(
+                project: project,
+                onUsePlan: StarterPlan.matching(exampleID: project.artifact.id).map { plan in
+                    { store.applyStarterPlan(plan) }
+                }
+            )
         }
         .alert(
             "Could not make a copy",
@@ -109,6 +117,25 @@ struct ExploreView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(TappletTheme.border, lineWidth: 1)
+            }
+
+            filterGroup(title: "Form") {
+                CatalogFilterPill(
+                    title: "All",
+                    group: "Form",
+                    isSelected: selectedFormID == nil,
+                    accessibilityIdentifier: "form-filter-all"
+                ) {
+                    selectedFormID = nil
+                }
+                CatalogFilterPill(
+                    title: "Games",
+                    group: "Form",
+                    isSelected: selectedFormID == "game",
+                    accessibilityIdentifier: "form-filter-game"
+                ) {
+                    selectedFormID = "game"
+                }
             }
 
             filterGroup(title: "Subject") {
@@ -263,7 +290,7 @@ struct ExploreView: View {
         ContentUnavailableView(
             "Examples are unavailable",
             systemImage: "square.grid.2x2",
-            description: Text("Tapplet could not load its bundled activities.")
+            description: Text("Tapplet Studio could not load its bundled activities.")
         )
         .frame(maxWidth: .infinity)
         .padding(.vertical, 52)
@@ -285,10 +312,11 @@ struct ExploreView: View {
         query = ""
         selectedSubjectID = nil
         selectedTopicID = nil
+        selectedFormID = nil
     }
 }
 
-private struct CatalogFilterPill: View {
+struct CatalogFilterPill: View {
     let title: String
     let group: String
     let isSelected: Bool
@@ -356,14 +384,17 @@ struct ExampleCatalog {
         Topic(id: "fractions", subjectID: "mathematics", title: "Fractions", tagKeys: ["fractions", "equivalence"]),
         Topic(id: "geometry-measurement", subjectID: "mathematics", title: "Geometry & measurement", tagKeys: ["perimeter", "rectangles"]),
         Topic(id: "algebra", subjectID: "mathematics", title: "Algebra", tagKeys: ["algebra", "linear functions"]),
+        Topic(id: "times-tables", subjectID: "mathematics", title: "Times tables", tagKeys: ["times tables", "multiplication", "fluency"]),
         Topic(id: "graphs", subjectID: "mathematics", title: "Graphs", tagKeys: ["graphs"]),
         Topic(id: "averages", subjectID: "mathematics", title: "Averages", tagKeys: ["mean", "median", "data"]),
         Topic(id: "scientific-inquiry", subjectID: "science", title: "Scientific inquiry", tagKeys: ["science inquiry", "variables", "fair test"]),
         Topic(id: "biology", subjectID: "science", title: "Biology", tagKeys: ["biology", "cells", "organelles"]),
         Topic(id: "light", subjectID: "science", title: "Light", tagKeys: ["light", "shadows", "prediction"]),
+        Topic(id: "electricity", subjectID: "science", title: "Electricity", tagKeys: ["electricity", "conductors", "insulators"]),
         Topic(id: "writing", subjectID: "english", title: "Writing", tagKeys: ["writing", "paragraphs", "cohesion"]),
         Topic(id: "persuasion", subjectID: "english", title: "Persuasion", tagKeys: ["persuasion", "rhetoric", "audience"]),
         Topic(id: "editing", subjectID: "english", title: "Editing", tagKeys: ["editing", "concision", "word choice"]),
+        Topic(id: "spelling", subjectID: "english", title: "Spelling", tagKeys: ["spelling", "vocabulary"]),
         Topic(id: "geography", subjectID: "humanities", title: "Geography", tagKeys: ["geography", "urban flooding", "fieldwork"]),
         Topic(id: "history-sources", subjectID: "humanities", title: "History & sources", tagKeys: ["history", "sources", "corroboration"]),
         Topic(id: "civic-budget", subjectID: "civics", title: "Budgets & trade-offs", tagKeys: ["civics", "budgets", "trade offs"])
@@ -392,7 +423,8 @@ struct ExampleCatalog {
         _ projects: [ArtifactProject],
         query: String,
         subjectID: String?,
-        topicID: String?
+        topicID: String?,
+        formID: String? = nil
     ) -> [ArtifactProject] {
         let terms = normalize(query).split(whereSeparator: \.isWhitespace)
         let selectedTopic = topicID.flatMap { id in curatedTopics.first { $0.id == id } }
@@ -403,6 +435,9 @@ struct ExampleCatalog {
                 return false
             }
             if let selectedTopic, !matches(project, topic: selectedTopic) {
+                return false
+            }
+            if let formID, !matchesForm(project, formID: formID) {
                 return false
             }
             guard !terms.isEmpty else { return true }
@@ -420,6 +455,13 @@ struct ExampleCatalog {
     private static func matches(_ project: ArtifactProject, topic: Topic) -> Bool {
         let tags = Set(project.artifact.tags.map(normalize))
         return !tags.isDisjoint(with: topic.tagKeys)
+    }
+
+    private static func matchesForm(_ project: ArtifactProject, formID: String) -> Bool {
+        if let form = project.artifact.form, !form.isEmpty {
+            return normalize(form) == normalize(formID)
+        }
+        return project.artifact.tags.map(normalize).contains(normalize(formID))
     }
 
     private static func searchText(for project: ArtifactProject) -> String {

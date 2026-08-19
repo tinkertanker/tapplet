@@ -95,7 +95,7 @@ export function inspectText(text: string): ModerationFinding[] {
     findings.push({
       code: "UNSAFE_HARM_INSTRUCTION",
       message:
-        "This request asks for unsafe instructions and cannot be made into a classroom applet.",
+        "This request asks for unsafe instructions and cannot be made into a tapplet.",
     });
   }
   if (SEXUAL_MINOR_CONTENT.test(text)) {

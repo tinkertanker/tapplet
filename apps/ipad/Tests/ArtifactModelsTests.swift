@@ -12,7 +12,7 @@ final class ArtifactModelsTests: XCTestCase {
 
     @MainActor func testBundledHTMLExampleLoads() {
         let store = TappletStore(storageDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString), bundle: Bundle(for: TappletStore.self))
-        XCTAssertEqual(store.examples.count, 14)
+        XCTAssertEqual(store.examples.count, 18)
         XCTAssertTrue(store.examples.allSatisfy { $0.source.html.contains("<html") })
     }
 
@@ -85,6 +85,59 @@ final class ExampleCatalogTests: XCTestCase {
         XCTAssertEqual(
             ExampleCatalog.topics(in: examples, subjectID: "humanities").map(\.title),
             ["Geography", "History & sources"]
+        )
+    }
+
+    @MainActor
+    func testGamesFormFilterReturnsOnlyGameTaggedExamples() {
+        let examples = bundledExamples()
+        let games = ExampleCatalog.filteredProjects(
+            examples,
+            query: "",
+            subjectID: nil,
+            topicID: nil,
+            formID: "game"
+        )
+        XCTAssertEqual(games.count, 4)
+        XCTAssertTrue(games.allSatisfy { $0.artifact.form == "game" })
+        XCTAssertEqual(
+            Set(games.map(\.id)),
+            [
+                "conductor-or-insulator",
+                "line-golf",
+                "spell-it-before-the-sun-sets",
+                "times-tables-lightning"
+            ]
+        )
+    }
+
+    @MainActor
+    func testGamesFormFilterPrefersDecodedFormOverTags() {
+        var taggedQuiz = bundledExamples()[0]
+        taggedQuiz.artifact.form = "quiz"
+        taggedQuiz.artifact.tags = ["game", "fractions"]
+        var untaggedGame = bundledExamples()[1]
+        untaggedGame.artifact.form = "game"
+        untaggedGame.artifact.tags = ["fractions"]
+
+        XCTAssertTrue(
+            ExampleCatalog.filteredProjects(
+                [taggedQuiz],
+                query: "",
+                subjectID: nil,
+                topicID: nil,
+                formID: "game"
+            ).isEmpty
+        )
+        XCTAssertEqual(
+            ExampleCatalog.filteredProjects(
+                [untaggedGame],
+                query: "",
+                subjectID: nil,
+                topicID: nil,
+                formID: "game"
+            ).map(\.id),
+            [untaggedGame.id]
         )
     }
 

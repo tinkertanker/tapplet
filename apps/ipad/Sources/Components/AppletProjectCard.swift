@@ -17,7 +17,7 @@ struct AppletProjectCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(displayName(project.artifact.subject) ?? "Classroom applet")
+            Text(displayName(project.artifact.subject) ?? "Classroom tapplet")
                 .font(TappletTheme.Typography.eyebrow)
                 .foregroundStyle(TappletTheme.accent)
 

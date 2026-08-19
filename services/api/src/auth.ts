@@ -218,6 +218,6 @@ function invalidDeviceToken(): HttpError {
   return new HttpError(
     401,
     'DEVICE_REGISTRATION_REQUIRED',
-    'Enter a valid workshop access code on this iPad before using Tapplet.',
+    'Enter a valid workshop access code on this iPad before using Tapplet Studio.',
   );
 }

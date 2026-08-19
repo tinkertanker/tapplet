@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 enum TappletSection: String, CaseIterable, Identifiable { case explore, make, myApplets; var id: String { rawValue }
-    var title: String { self == .myApplets ? "My Applets" : rawValue.capitalized }
+    var title: String { self == .myApplets ? "My Tapplets" : rawValue.capitalized }
     var symbolName: String { self == .explore ? "square.grid.2x2" : self == .make ? "plus.square" : "square.stack.3d.up" }
 }
 enum WorkshopAccessState: Equatable { case checking, registrationRequired, ready }
@@ -20,6 +20,8 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
     var showsWorkshopAccess = false
     var isRestoringFromTapplet = false
     var guidedMakeDraft = GuidedBriefDraft(); var guidedMakeQuestionIndex = 0; var guidedMakeResponse = ""; var guidedMakeShowsSummary = false
+    var guidedMakePreferredExampleRevisionId: String?
+    var guidedMakePinnedPlanID: String?
     var isCreatingGuidedDraft = false
     private let api: any TappletAPI
     private let projectDirectory: URL
@@ -76,9 +78,38 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
                 requestsWorkshopAccess: true
             )
         }
-        return TappletErrorPresentation(title: "Tapplet could not complete this action", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
+        return TappletErrorPresentation(title: "Tapplet Studio could not complete this action", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
     }
-    func resetGuidedMake() { guidedMakeDraft = .init(); guidedMakeQuestionIndex = 0; guidedMakeResponse = ""; guidedMakeShowsSummary = false }
+    func resetGuidedMake() {
+        guidedMakeDraft = .init()
+        guidedMakeQuestionIndex = 0
+        guidedMakeResponse = ""
+        guidedMakeShowsSummary = false
+        guidedMakePreferredExampleRevisionId = nil
+        guidedMakePinnedPlanID = nil
+    }
+    func applyStarterPlan(_ plan: StarterPlan) {
+        guidedMakeDraft = plan.draft
+        guidedMakePreferredExampleRevisionId = plan.exampleRevisionID
+        guidedMakePinnedPlanID = plan.id
+        guidedMakeShowsSummary = true
+        guidedMakeQuestionIndex = 0
+        guidedMakeResponse = ""
+        selectedSection = .make
+        closeEditor()
+    }
+    var guidedMakePinnedPlan: StarterPlan? {
+        guard let id = guidedMakePinnedPlanID else { return nil }
+        return StarterPlan.all.first { $0.id == id }
+    }
+    var guidedMakeEffectivePreferredExampleRevisionId: String? {
+        guard let plan = guidedMakePinnedPlan else { return nil }
+        if guidedMakeDraft.learnerContext != plan.draft.learnerContext
+            || guidedMakeDraft.learningObjective != plan.draft.learningObjective {
+            return nil
+        }
+        return plan.exampleRevisionID
+    }
     func createApprovedBrief(_ brief: GuidedBriefDraft) async throws -> ArtifactProject {
         isCreatingGuidedDraft = true; defer { isCreatingGuidedDraft = false }
         let text = brief.answers.enumerated().map { "\(BriefQuestion.all[$0.offset].prompt)\n\($0.element)" }.joined(separator: "\n\n")
@@ -91,8 +122,8 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         let request = GuidedGenerationRequest(creationBrief: text, brief: .init(
             learnerContext: brief.learnerContext, learningObjective: brief.learningObjective,
             studentAction: brief.studentAction, sourceContent: brief.sourceContent.isEmpty ? nil : brief.sourceContent,
-            feedback: brief.feedback, classroomFit: brief.classroomFit
-        ), preferredExampleRevisionId: nil)
+            feedback: brief.feedback, classroomFit: brief.classroomFit, format: brief.format?.rawValue
+        ), preferredExampleRevisionId: guidedMakeEffectivePreferredExampleRevisionId)
         let project = try await api.generate(request: request); upsert(project); open(project); return project
     }
     func remix(_ example: ArtifactProject) async throws {
@@ -107,7 +138,8 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
                     studentAction: artifact.summary,
                     sourceContent: nil,
                     feedback: "Provide clear feedback",
-                    classroomFit: "Use in a short classroom activity"
+                    classroomFit: "Use in a short classroom activity",
+                    format: nil
                 ),
                 preferredExampleRevisionId: nil
             ))
@@ -181,8 +213,8 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         }
         if failures > 0 {
             recoveryNotice = count > 0
-                ? "Tapplet restored \(count) applet(s), but could not restore \(failures). Try again later."
-                : "Tapplet could not restore your applets. Try again later."
+                ? "Tapplet Studio restored \(count) tapplet(s), but could not restore \(failures). Try again later."
+                : "Tapplet Studio could not restore your tapplets. Try again later."
         }
         return count
     }
@@ -252,7 +284,7 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
     private func persist(_ project: ArtifactProject) {
         let name = project.id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? UUID().uuidString
         do { try JSONEncoder().encode(project).write(to: projectDirectory.appending(path: "\(name).json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
-        catch { recoveryNotice = "Tapplet could not save this applet for offline use." }
+        catch { recoveryNotice = "Tapplet Studio could not save this tapplet for offline use." }
     }
     private static func loadCachedProjects(from directory: URL) -> [ArtifactProject] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
@@ -321,5 +353,5 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
             revisions: [revision]
         )
     }
-    private static func example(_ record: ExampleArtifact, html: String) -> ArtifactProject { let now = "2026-08-02T00:00:00Z"; let revision = ArtifactRevision(id: "\(record.id)-seed", artifactId: record.id, parentRevisionId: nil, sourceHash: "bundled", byteLength: html.utf8.count, kind: .seed, instruction: nil, designCard: nil, screenshotUrl: nil, model: "bundled", promptVersion: "seed", createdAt: now); let creationBrief = "\(record.learningObjective ?? record.title)\n\nStudents should \(record.summary)"; let artifact = Artifact(id: record.id, title: record.title, summary: record.summary, subject: record.subject, level: record.level, locale: record.locale, learningObjective: record.learningObjective, tags: record.tags, creationBrief: creationBrief, headRevisionId: revision.id, createdAt: now, updatedAt: now, headRevision: revision, html: html); return ArtifactProject(artifact: artifact, source: .init(revision: revision, html: html), revisions: [revision], isExample: true) }
+    private static func example(_ record: ExampleArtifact, html: String) -> ArtifactProject { let now = "2026-08-02T00:00:00Z"; let revision = ArtifactRevision(id: "\(record.id)-seed", artifactId: record.id, parentRevisionId: nil, sourceHash: "bundled", byteLength: html.utf8.count, kind: .seed, instruction: nil, designCard: nil, screenshotUrl: nil, model: "bundled", promptVersion: "seed", createdAt: now); let creationBrief = "\(record.learningObjective ?? record.title)\n\nStudents should \(record.summary)"; let artifact = Artifact(id: record.id, title: record.title, summary: record.summary, subject: record.subject, level: record.level, locale: record.locale, learningObjective: record.learningObjective, tags: record.tags, creationBrief: creationBrief, headRevisionId: revision.id, createdAt: now, updatedAt: now, headRevision: revision, html: html, form: record.form); return ArtifactProject(artifact: artifact, source: .init(revision: revision, html: html), revisions: [revision], isExample: true) }
 }

@@ -13,6 +13,9 @@
 - Source identities use Tapplet. Deployed Worker URLs/names, D1/R2 resources,
   bindings and externally configured secret names remain stable unless a task
   explicitly includes a coordinated infrastructure migration.
+- Teacher-facing names: the iPad app is Tapplet Studio; the student-facing HTML
+  activities are tapplets. Do not rename bundle IDs, Worker URLs or Swift types
+  unless the task includes a coordinated migration.
 - Use explicit types and avoid `any`. Do not edit generated files without
   changing their source of truth.
 - Add or update focused tests for behavior changes and run the narrowest useful

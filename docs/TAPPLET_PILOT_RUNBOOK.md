@@ -2,8 +2,8 @@
 
 This is the operator checklist for the August 2026 pilot. It covers Tapplet's
 public API at
-`https://classroom-widgets-studio-api.tinkertanker.workers.dev` and the iPad
-app. Run Cloudflare commands from `services/api`.
+`https://classroom-widgets-studio-api.tinkertanker.workers.dev` and Tapplet
+Studio on iPad. Run Cloudflare commands from `services/api`.
 The production resources are in Wrangler's `tinkertanker` profile; keep
 `--profile tinkertanker` on every production command below.
 
@@ -67,7 +67,7 @@ curated. Never print or commit the token.
    and keep it valid until review has completed; never put it in source control
    or public metadata.
 7. Install the Release build on a physical A16 iPad. Complete the full flow for
-   at least three representative applets, including a simulation: generate,
+   at least three representative tapplets, including a simulation: generate,
    revise, add a non-personal image where appropriate, publish, and open each
    resulting URL on a separate device in Safari. Across the three flows, test
    VoiceOver, portrait and landscape. Revoke every link and verify that the
@@ -80,13 +80,13 @@ chat logs or screenshots.
 
 ## Review public content reports
 
-List unreviewed reports with their applet metadata:
+List unreviewed reports with their tapplet metadata:
 
 ```sh
 npx wrangler d1 execute DB --remote --profile tinkertanker --command "SELECT r.id, r.created_at, r.reason, r.publication_slug, p.title, p.expires_at, p.revoked_at FROM content_reports r JOIN publications p ON p.slug = r.publication_slug WHERE r.reviewed_at IS NULL ORDER BY r.created_at ASC"
 ```
 
-Open the exact reported publication URL and assess only the reported applet.
+Open the exact reported publication URL and assess only the reported tapplet.
 Do not enter student information while testing it.
 
 For an unsafe report, validate that the slug contains only letters, numbers,
@@ -102,20 +102,20 @@ Record the outcome against the exact report ID:
 npx wrangler d1 execute DB --remote --profile tinkertanker --command "UPDATE content_reports SET reviewed_at = datetime('now'), resolution = 'widget-revoked' WHERE id = 'VALIDATED_REPORT_ID' AND reviewed_at IS NULL"
 ```
 
-Use `no-action` only after checking the live applet, or `teacher-contacted` when
+Use `no-action` only after checking the live tapplet, or `teacher-contacted` when
 follow-up is still required. Reports are retained for 180 days and then removed
 by the scheduled cleanup.
 
 ## Restore projects after reinstall or device replacement
 
 The signed device credential is stored in Keychain and is eligible for an
-encrypted-device-backup restore. With that credential, Tapplet can list the
+encrypted-device-backup restore. With that credential, Tapplet Studio can list the
 owner's remote artifacts and publications and re-download a selected project. If the
 credential is unavailable, do not issue a replacement credential that assumes
 ownership: ask the operator to identify the exact link, then revoke it directly
 after validating the slug.
 
-Local projects are stored as separate atomic files with backups. If Tapplet
+Local projects are stored as separate atomic files with backups. If Tapplet Studio
 offers a conflict or recovered copy, keep both until the teacher confirms which
 one is current.
 
@@ -124,7 +124,7 @@ one is current.
 - To stop new AI generation while keeping student links available, remove or
   rotate `AI_API_KEY`; generation and model moderation will fail closed
   while stored HTML publications remain readable.
-- To remove one unsafe applet, revoke only its validated slug as above.
+- To remove one unsafe tapplet, revoke only its validated slug as above.
 - To roll back a bad Worker deployment, inspect the recent deployment list with
   `npx wrangler deployments list --profile tinkertanker`, then use Wrangler's
   rollback command with `--profile tinkertanker` for the
@@ -136,7 +136,7 @@ one is current.
 ## End of pilot
 
 1. Export the anonymised counts needed for evaluation; do not export teacher
-   prompts or applet content unnecessarily.
+   prompts or tapplet content unnecessarily.
 2. Review every outstanding report.
 3. Revoke the smoke-test publication if one remains.
 4. Keep teacher publications until their displayed expiry unless a teacher asks

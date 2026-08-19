@@ -44,7 +44,7 @@ struct TappletRootView: View {
             }
             .scrollContentBackground(.hidden)
             .background(TappletTheme.canvas)
-            .navigationTitle("Tapplet")
+            .navigationTitle("Tapplet Studio")
         } detail: {
             Group {
                 if let project = store.selectedProject {

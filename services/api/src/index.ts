@@ -84,7 +84,7 @@ export function injectPublicHtml(source: string, slug: string): string {
   const bodyClosings = [...structure.matchAll(/<\/body\s*>/gi)];
   const bodyClosing = bodyClosings.at(-1);
   if (bodyClosing?.index === undefined || withBase === source)
-    throw new Error("Stored applet source is not a complete HTML document.");
+    throw new Error("Stored tapplet source is not a complete HTML document.");
   return `${withBase.slice(0, bodyClosing.index)}${report}${bodyClosing[0]}${withBase.slice(bodyClosing.index + bodyClosing[0].length)}`;
 }
 
@@ -99,11 +99,11 @@ async function servePublic(
   const publication = parts[0]
     ? await repository.getPublication(parts[0])
     : null;
-  if (!publication) return new Response("Applet not found.", { status: 404 });
+  if (!publication) return new Response("Tapplet not found.", { status: 404 });
   if (publication.revokedAt)
-    return new Response("This applet was unpublished.", { status: 410 });
+    return new Response("This tapplet was unpublished.", { status: 410 });
   if (Date.parse(publication.expiresAt) <= Date.now())
-    return new Response("This applet link expired.", { status: 410 });
+    return new Response("This tapplet link expired.", { status: 410 });
   if (parts[1] === "assets" && parts[2]) {
     if (
       !(await repository.publicationReferencesAsset(publication.slug, parts[2]))
@@ -124,14 +124,14 @@ async function servePublic(
   const source = await new R2SourceStore(env.MEDIA).getSource(
     publication.sourceHash,
   );
-  if (!source) return new Response("Applet unavailable.", { status: 503 });
+  if (!source) return new Response("Tapplet unavailable.", { status: 503 });
   const html = injectPublicHtml(source, publication.slug);
   const headers = new Headers({ "content-type": "text/html; charset=utf-8" });
   const playerOrigin = new URL(env.PUBLIC_PLAYER_ORIGIN).origin;
   headers.set(
     "content-security-policy",
-    // No allow-same-origin: published applets run in an opaque origin so a
-    // compromised applet cannot act against API endpoints with same-origin
+    // No allow-same-origin: published tapplets run in an opaque origin so a
+    // compromised tapplet cannot act against API endpoints with same-origin
     // privilege. Every 'self' source must become the explicit player origin
     // because an opaque origin never matches 'self'.
     `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src ${playerOrigin} data:; connect-src ${playerOrigin}; base-uri ${playerOrigin}; form-action 'none'; frame-ancestors 'none'; object-src 'none'; sandbox allow-scripts allow-modals`,

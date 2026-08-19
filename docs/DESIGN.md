@@ -1,6 +1,6 @@
-# Tapplet design guide
+# Tapplet Studio design guide
 
-This guide currently defines only Tapplet's first-party colour system. Layout,
+This guide currently defines only Tapplet Studio's first-party colour system. Layout,
 typography, motion and illustration rules have not been standardised here yet.
 Follow native iPad patterns and nearby components for those decisions rather
 than treating this document as a complete design system.
@@ -16,7 +16,7 @@ Do not apply this palette automatically to:
 
 - `apps/ipad/Resources/Examples`, whose reviewed student activities use their
   own content-appropriate palettes;
-- generated or teacher-authored applet HTML shown in the preview;
+- generated or teacher-authored tapplet HTML shown in the preview;
 - T Krobot mascot art or the app icon, which are curated source assets and need
   an explicit artwork decision before recolouring;
 - technical image-processing backgrounds such as the white image-normalisation
@@ -31,7 +31,7 @@ meet normal-text contrast. Warm paper neutrals are shared with the wider
 Tinkertanker identity.
 
 Blue is not a Tinkercademy interaction colour. Do not add a generic blue accent
-for buttons, links, selection or status. A content-specific applet may still use
+for buttons, links, selection or status. A content-specific tapplet may still use
 blue within its own isolated design.
 
 ## Semantic palette
