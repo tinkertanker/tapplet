@@ -83,7 +83,7 @@ final class TappletUITests: XCTestCase {
             XCTAssertTrue(textView.waitForExistence(timeout: 3))
             textView.tap()
             textView.typeText(answer)
-            app.buttons["guided-continue"].tap()
+            advanceGuidedFlow(in: app)
         }
 
         XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
@@ -132,7 +132,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
         let showSidebar = app.buttons["Show Sidebar"]
         if showSidebar.waitForExistence(timeout: 2) { showSidebar.tap() }
-        XCTAssertTrue(app.staticTexts["Tapplet access"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tapplet Studio access"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Code needed"].waitForExistence(timeout: 5))
     }
 
@@ -163,9 +163,7 @@ final class TappletUITests: XCTestCase {
         answer.typeText("Secondary 3 Physics")
         app.buttons["Primary 5 Science"].tap()
         XCTAssertEqual(answer.value as? String, "Secondary 3 Physics\nPrimary 5 Science")
-        XCTAssertTrue(app.buttons["guided-continue"].isHittable)
-
-        app.buttons["guided-continue"].tap()
+        advanceGuidedFlow(in: app)
         let answers = [
             "Explain projectile range",
             "Predict then compare",
@@ -178,7 +176,7 @@ final class TappletUITests: XCTestCase {
             XCTAssertTrue(currentAnswer.waitForExistence(timeout: 3))
             currentAnswer.tap()
             currentAnswer.typeText(response)
-            app.buttons["guided-continue"].tap()
+            advanceGuidedFlow(in: app)
         }
 
         XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
@@ -214,6 +212,20 @@ final class TappletUITests: XCTestCase {
         }
         XCTAssertTrue(item.waitForExistence(timeout: 5))
         item.tap()
+    }
+
+    @MainActor
+    private func advanceGuidedFlow(in app: XCUIApplication) {
+        let keyboardButton = app.buttons["guided-continue-keyboard"]
+        if keyboardButton.waitForExistence(timeout: 2), keyboardButton.isHittable {
+            keyboardButton.tap()
+            return
+        }
+
+        let bottomButton = app.buttons["guided-continue"]
+        XCTAssertTrue(bottomButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(bottomButton.isHittable)
+        bottomButton.tap()
     }
 
     @MainActor

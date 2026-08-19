@@ -73,7 +73,7 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
             workshopAccessState = .registrationRequired
             showsWorkshopAccess = true
             return TappletErrorPresentation(
-                title: "Tapplet access needed",
+                title: "Tapplet Studio access needed",
                 message: "Enter your workshop code to continue.",
                 requestsWorkshopAccess: true
             )

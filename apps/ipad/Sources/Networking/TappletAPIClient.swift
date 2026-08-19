@@ -92,11 +92,25 @@ struct TappletAPIClient: TappletAPI, Sendable {
     let transport: any TappletHTTPTransport
     let tokenStore: any DeviceTokenProviding
 
-    static func live() -> Self {
-        let configured = ProcessInfo.processInfo.environment["TAPPLET_API_BASE_URL"]
-            ?? Bundle.main.object(forInfoDictionaryKey: "TappletAPIBaseURL") as? String
+    static func live(
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Self {
+        return Self(
+            baseURL: configuredBaseURL(bundle: bundle, environment: environment),
+            transport: URLSessionTappletTransport(),
+            tokenStore: KeychainDeviceTokenStore.shared
+        )
+    }
+
+    static func configuredBaseURL(
+        bundle: Bundle,
+        environment: [String: String]
+    ) -> URL {
+        let configured = environment["TAPPLET_API_BASE_URL"]
+            ?? bundle.object(forInfoDictionaryKey: "TappletAPIBaseURL") as? String
             ?? "http://127.0.0.1:8787"
-        return Self(baseURL: URL(string: configured)!, transport: URLSessionTappletTransport(), tokenStore: KeychainDeviceTokenStore.shared)
+        return URL(string: configured)!
     }
 
     func hasDeviceCredential() async -> Bool {

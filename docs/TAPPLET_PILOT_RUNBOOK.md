@@ -39,22 +39,43 @@ curated. Never print or commit the token.
 **Important:** Before any class-code verification, trash the legacy `.studio-pilot-codes.txt` and any stale pre-cutover `.studio-smoke-token` from prior pilot runs. The new `.studio-smoke-token` created afterwards remains active and ignored.
 
 1. Confirm `GET /health` returns 200.
-2. Apply remote D1 migrations with
+2. Apply all D1 migrations before deploying Worker code that queries a newly
+   introduced table. In particular, confirm that the complete migration set,
+   including `0010_owner_token_versions.sql`, has been applied remotely with
    `npx wrangler d1 migrations apply DB --remote --profile tinkertanker`.
    Dropping `pilot_codes` only removes the old provisioning table; it does not
    revoke any device token already issued to a pilot iPad.
-3. Rotate `DEVICE_TOKEN_SIGNING_SECRET` as part of this cutover so that every
-   pilot iPad's existing device token is actually invalidated (device tokens
-   are long-lived and are verified only against this secret, not looked up in
-   the database). Generate a fresh secret and set it without ever displaying,
-   logging or storing it:
-   `openssl rand -base64 48 | npx wrangler secret put DEVICE_TOKEN_SIGNING_SECRET --profile tinkertanker`.
-   Afterwards every pilot iPad receives `DEVICE_REGISTRATION_REQUIRED` and must
-   re-register with a new class code; confirm `AI_API_KEY` is also configured.
+3. To revoke tokens for one iPad owner, use the per-owner token version rather
+   than rotating the global signing secret. First identify the owner safely
+   from a validated artifact or publication associated with that iPad: validate
+   the exact artifact ID or publication slug, then use a read-only lookup on the
+   matching owner-scoped record to obtain its `owner_hash`:
+
+   ```sql
+   SELECT owner_hash FROM artifacts WHERE id = 'VALIDATED_ARTIFACT_ID';
+   SELECT owner_hash FROM publications WHERE slug = 'VALIDATED_PUBLICATION_SLUG';
+   ```
+
+   Do not accept an owner hash copied from an unvalidated request, log, or
+   screenshot. Bump the validated hash with one atomic D1 upsert:
+
+   ```sql
+   INSERT INTO owner_token_versions(owner_hash, token_version)
+   VALUES ('VALIDATED_OWNER_HASH', 1)
+   ON CONFLICT(owner_hash) DO UPDATE
+     SET token_version = owner_token_versions.token_version + 1;
+   ```
+
+   Run that statement as a single D1 execution after replacing the placeholder
+   only with the hash obtained from the validated record. The iPad will then
+   need to register again. If no artifact or publication can identify the iPad's
+   owner, per-owner revocation is not possible; global
+   `DEVICE_TOKEN_SIGNING_SECRET` rotation remains the last resort and invalidates
+   every pilot iPad. Confirm `AI_API_KEY` is also configured.
 4. Provision one shared code for each class with
    `npm run class-access:provision -- 1234 30`, replacing `1234` with the
    four-digit class number and `30` with the required activation limit from 1
-   to 100. The generated code contains those four numbers followed by four
+   to 100. The generated code contains those four numbers followed by eight
    random letters. Its ignored `.studio-class-codes/1234.txt` file has
    owner-only permissions. Each successful iPad activation consumes one use;
    the code remains valid until it reaches the configured limit or expires.

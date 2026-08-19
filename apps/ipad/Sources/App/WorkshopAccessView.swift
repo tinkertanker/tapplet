@@ -1,5 +1,25 @@
 import SwiftUI
 
+enum WorkshopAccessCodeValidator {
+    static func normalizedCode(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .replacingOccurrences(of: "-", with: "")
+    }
+
+    static func isComplete(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.utf8.allSatisfy({ byte in
+            byte == 45 || (48...57).contains(byte) || (65...90).contains(byte) || (97...122).contains(byte)
+        }) else { return false }
+        let bytes = Array(normalizedCode(value).utf8)
+        guard bytes.count == 12 else { return false }
+        return bytes[..<4].allSatisfy { (48...57).contains($0) }
+            && bytes[4...].allSatisfy { (65...90).contains($0) }
+    }
+}
+
 struct WorkshopAccessView: View {
     let store: TappletStore
 
@@ -20,7 +40,7 @@ struct WorkshopAccessView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("This iPad is ready")
                                 .font(.largeTitle.bold())
-                            Text("You can make, share and manage tapplets here. Existing student links stay connected to this Tapplet access.")
+                            Text("You can make, share and manage tapplets here. Existing student links stay connected to this Tapplet Studio access.")
                                 .foregroundStyle(TappletTheme.mutedInk)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -100,7 +120,7 @@ struct WorkshopAccessView: View {
                         .disabled(isRegistering)
                         .accessibilityIdentifier("activate-workshop-access")
 
-                        Text("Your Tapplet access stays securely on this iPad. You can explore examples without a code and activate Tapplet Studio from the sidebar whenever you are ready.")
+                        Text("Your Tapplet Studio access stays securely on this iPad. You can explore examples without a code and activate Tapplet Studio from the sidebar whenever you are ready.")
                             .font(.footnote)
                             .foregroundStyle(TappletTheme.mutedInk)
                             .fixedSize(horizontal: false, vertical: true)
@@ -112,7 +132,7 @@ struct WorkshopAccessView: View {
                 .frame(maxWidth: 620, minHeight: 520, alignment: .topLeading)
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Tapplet access")
+            .navigationTitle("Tapplet Studio access")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -148,11 +168,7 @@ struct WorkshopAccessView: View {
     }
 
     private var accessCodeIsIncomplete: Bool {
-        guard !cleanedAccessCode.isEmpty else { return false }
-        let compact = cleanedAccessCode.uppercased().replacingOccurrences(of: "-", with: "")
-        let digits = compact.prefix(4)
-        let letters = compact.dropFirst(4)
-        return !(digits.allSatisfy(\.isNumber) && letters.count == 8 && letters.allSatisfy(\.isLetter))
+        !cleanedAccessCode.isEmpty && !WorkshopAccessCodeValidator.isComplete(cleanedAccessCode)
     }
 
     private func exploreExamples() {

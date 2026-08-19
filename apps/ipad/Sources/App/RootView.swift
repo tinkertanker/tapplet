@@ -30,7 +30,7 @@ struct TappletRootView: View {
                         store.requestWorkshopAccess()
                     } label: {
                         HStack {
-                            Label("Tapplet access", systemImage: "key")
+                            Label("Tapplet Studio access", systemImage: "key")
                             Spacer()
                             Text(workshopAccessLabel)
                                 .font(.caption.weight(.semibold))

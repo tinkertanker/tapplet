@@ -2,6 +2,18 @@ import XCTest
 @testable import Tapplet
 
 final class TappletAPIClientTests: XCTestCase {
+    func testConfiguredBaseURLReadsProductionURLFromInjectedBundlePlist() throws {
+        let bundle = try makeBundle(info: [
+            "CFBundleIdentifier": "sg.tinkertanker.TappletTests.fixture",
+            "TappletAPIBaseURL": "https://classroom-widgets-studio-api.tinkertanker.workers.dev"
+        ])
+
+        XCTAssertEqual(
+            TappletAPIClient.configuredBaseURL(bundle: bundle, environment: [:]),
+            URL(string: "https://classroom-widgets-studio-api.tinkertanker.workers.dev")
+        )
+    }
+
     func testGenerateSendsStructuredGuidedBriefAndDecodesProjectEnvelope() async throws {
         let transport = RecordingTransport(responses: [projectEnvelopeData, revisionsData])
         let request = GuidedGenerationRequest(
@@ -136,6 +148,18 @@ final class TappletAPIClientTests: XCTestCase {
 
     private var projectEnvelopeData: Data { Data(#"{"artifact":{"id":"a1","title":"Forces","summary":"Check forces","tags":[],"creationBrief":"brief","headRevisionId":"r1","createdAt":"2026-08-02T00:00:00.123Z","updatedAt":"2026-08-02T00:00:00Z"},"headRevision":{"id":"r1","artifactId":"a1","sourceHash":"abc","byteLength":50,"kind":"revise","instruction":"Larger labels","model":"model","promptVersion":"1","createdAt":"2026-08-02T00:00:00Z"},"html":"<html><img src=\"assets/image-1\"></html>"}"#.utf8) }
     private var revisionsData: Data { Data(#"{"revisions":[{"id":"r1","artifactId":"a1","sourceHash":"abc","byteLength":50,"kind":"revise","instruction":"Larger labels","model":"model","promptVersion":"1","createdAt":"2026-08-02T00:00:00Z"}]}"#.utf8) }
+
+    private func makeBundle(info: [String: Any]) throws -> Bundle {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("bundle")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        XCTAssertTrue((info as NSDictionary).write(to: directory.appendingPathComponent("Info.plist"), atomically: true))
+        return try XCTUnwrap(Bundle(url: directory))
+    }
 }
 
 private actor RecordingTransport: TappletHTTPTransport {
