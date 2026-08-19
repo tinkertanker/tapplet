@@ -67,7 +67,7 @@ test('builds a backend-neutral API record', () => {
 test('all curated seeds initialise without browser errors', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
-  assert.equal(files.length, 14);
+  assert.equal(files.length, 18);
   for (const file of files) {
     const errors = [];
     const virtualConsole = new VirtualConsole();
@@ -82,4 +82,31 @@ test('all curated seeds initialise without browser errors', async () => {
     dom.window.close();
     assert.deepEqual(errors, [], file);
   }
+});
+
+test('spelling misses teach the target pattern', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/spell-it-before-the-sun-sets.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const z = dom.window.document.querySelector('[data-ch="z"]');
+  assert.ok(z);
+  z.click();
+  const msg = dom.window.document.getElementById('msg').textContent;
+  assert.match(msg, /silent/i);
+  assert.doesNotMatch(msg, /^No Z in this word\. A ray is added\.$/);
+  dom.window.close();
+});
+
+test('line golf rejects a half-unit miss on a horizontal hole', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/line-golf.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  assert.equal(dom.window.onLine(0.5, 0, 1, 1), false);
+  assert.equal(dom.window.onLine(0, 1, 1, 1), true);
+  assert.equal(dom.window.onLine(2, 1, 1, 3), true);
+  dom.window.close();
 });

@@ -27,6 +27,50 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStarterPlanPrefillsBriefAndPinsExampleRevision() async throws {
+        let directory = temporaryDirectory()
+        let generated = makeProject(revisionID: "r1", html: "<html><h1>Generated</h1></html>")
+        let api = ArtifactAPIStub(generated: generated, revised: generated)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        let plan = try XCTUnwrap(StarterPlan.matching(exampleID: "times-tables-lightning"))
+
+        store.applyStarterPlan(plan)
+
+        XCTAssertEqual(store.selectedSection, .make)
+        XCTAssertTrue(store.guidedMakeShowsSummary)
+        XCTAssertEqual(store.guidedMakeDraft.format, .game)
+        XCTAssertEqual(store.guidedMakeDraft.learnerContext, "Primary 5 Mathematics")
+        XCTAssertEqual(store.guidedMakePreferredExampleRevisionId, "times-tables-lightning-seed")
+
+        _ = try await store.createApprovedBrief(store.guidedMakeDraft)
+        let request = await api.lastGenerationRequest
+        XCTAssertEqual(request?.brief.format, "game")
+        XCTAssertEqual(request?.preferredExampleRevisionId, "times-tables-lightning-seed")
+    }
+
+    @MainActor
+    func testRewritingStarterPlanGoalDropsThePinnedExample() async throws {
+        let generated = makeProject(revisionID: "r1", html: "<html><h1>Generated</h1></html>")
+        let api = ArtifactAPIStub(generated: generated, revised: generated)
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let plan = try XCTUnwrap(StarterPlan.matching(exampleID: "times-tables-lightning"))
+        store.applyStarterPlan(plan)
+        store.guidedMakeDraft.learnerContext = "Secondary 2 Geography"
+        store.guidedMakeDraft.learningObjective = "Explain how rainfall affects flooding"
+
+        XCTAssertNil(store.guidedMakeEffectivePreferredExampleRevisionId)
+
+        _ = try await store.createApprovedBrief(store.guidedMakeDraft)
+        let request = await api.lastGenerationRequest
+        XCTAssertNil(request?.preferredExampleRevisionId)
+        XCTAssertEqual(request?.brief.learnerContext, "Secondary 2 Geography")
+    }
+
+    @MainActor
     func testRefinementUsesCurrentExpectedHeadAndReplacesSourceAfterSuccess() async throws {
         let original = makeProject(revisionID: "r1", html: "<html>Original</html>")
         let revised = makeProject(

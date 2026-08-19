@@ -1,0 +1,29 @@
+<!doctype html><html lang="en-SG"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conductor or insulator?</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f3f7f2;color:#1d3328;font:16px system-ui,sans-serif}main{max-width:720px;margin:auto;padding:18px}h1{font-size:clamp(26px,5.5vw,38px);margin:0 0 8px}p{margin:0 0 12px;line-height:1.4}.bar{display:flex;gap:18px;margin:0 0 12px;font-variant-numeric:tabular-nums}.bar strong{font-size:22px}.items,.bins{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}button{min-height:44px;border:0;border-radius:12px;padding:8px 12px;font:inherit;font-weight:700}.items button{background:#fff;color:#1d3328;border:2px solid #c5d6c6}.items button[aria-pressed="true"]{outline:3px solid #2d6a4f}.bins button{min-width:46%;background:#2d6a4f;color:#fff}.bins button.ins{background:#6b4a2b}#msg{min-height:48px;line-height:1.4}#again{display:none;background:#1d3328;color:#fff;width:100%}
+</style></head><body><main><h1>Conductor or insulator?</h1><p>Tap an object, then tap the bin it belongs in. A conductor lets electric current pass through; an insulator does not. You have three lives. The 60-second timer starts when you choose the first object.</p>
+<div class="bar"><span>Time <strong id="time">60</strong></span><span>Lives <strong id="lives">3</strong></span><span>Sorted <strong id="done">0</strong>/8</span></div>
+<div class="items" id="items"></div>
+<div class="bins"><button type="button" data-bin="conductor">Conductor</button><button type="button" class="ins" data-bin="insulator">Insulator</button></div>
+<p id="msg" aria-live="polite">Choose an object first.</p>
+<button type="button" id="again">Try again</button>
+<script>
+const pack=[
+  {id:"coin",name:"Copper coin",bin:"conductor",why:"Copper is a metal, so electric current can pass through it."},
+  {id:"foil",name:"Aluminium foil",bin:"conductor",why:"Aluminium is a metal. Foil still lets electric current pass through."},
+  {id:"nail",name:"Iron nail",bin:"conductor",why:"Iron is a metal, so the nail is a conductor."},
+  {id:"graphite",name:"Pencil graphite",bin:"conductor",why:"Graphite lets electric current pass through, even though a pencil is not a metal object overall."},
+  {id:"band",name:"Rubber band",bin:"insulator",why:"Rubber does not let electric current pass through easily, so it is an insulator."},
+  {id:"ruler",name:"Plastic ruler",bin:"insulator",why:"Plastic is an insulator. Electric current does not pass through it."},
+  {id:"chop",name:"Wooden chopsticks",bin:"insulator",why:"Dry wood is an insulator."},
+  {id:"glass",name:"Glass bottle",bin:"insulator",why:"Glass does not let electric current pass through, so it is an insulator."}
+];
+const rule="A conductor lets electric current pass through; an insulator does not.";
+let left=[...pack],selected=null,lives=3,time=60,timer=null,over=false;
+function render(){const box=document.getElementById("items");box.innerHTML="";left.forEach(item=>{const b=document.createElement("button");b.type="button";b.textContent=item.name;b.setAttribute("aria-pressed",selected===item.id?"true":"false");b.onclick=()=>{if(over)return;startClock();selected=item.id;msg.textContent="Now choose Conductor or Insulator for "+item.name+".";render()};box.appendChild(b)});document.getElementById("lives").textContent=lives;document.getElementById("done").textContent=pack.length-left.length}
+function startClock(){if(timer||over)return;timer=setInterval(()=>{time-=1;document.getElementById("time").textContent=time;if(time<=0) end("Time is up. "+rule)},1000)}
+function end(text){over=true;clearInterval(timer);timer=null;msg.textContent=text;document.getElementById("again").style.display="block"}
+document.querySelector(".bins").onclick=e=>{const bin=e.target.dataset.bin;if(!bin||over)return;if(!selected){msg.textContent="Tap an object first, then a bin.";return}const item=left.find(it=>it.id===selected);if(!item)return;if(item.bin===bin){left=left.filter(it=>it.id!==item.id);selected=null;msg.textContent="Yes. "+item.why;render();if(!left.length) end("All eight sorted. "+rule)}else{lives-=1;selected=null;msg.textContent="Not a "+bin+". "+item.why;render();if(lives<=0) end("No lives left. "+item.name+" is an "+item.bin+". "+item.why)}};
+function reset(){left=[...pack];selected=null;lives=3;time=60;over=false;clearInterval(timer);timer=null;document.getElementById("again").style.display="none";document.getElementById("time").textContent=time;msg.textContent="Choose an object first.";render()}
+document.getElementById("again").onclick=reset;
+render();
+</script></body></html>

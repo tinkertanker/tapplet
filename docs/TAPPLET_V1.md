@@ -1,43 +1,56 @@
 # Tapplet V1 product contract
 
-Tapplet is an iPad app for making a small, self-contained classroom applet and
-publishing it as one student-facing web link.
+**Tapplet Studio** is the teacher iPad app for making a small, self-contained
+**tapplet** and publishing it as one student-facing web link. **Tapplet** is the
+product family name: access, the API, and source identities stay Tapplet.
 
 The August 2026 pilot targets 10–20 Singapore upper-primary and secondary
-teachers. The app performs generation through the Tapplet API, so it does not
-depend on Apple Intelligence.
+teachers. Tapplet Studio performs generation through the Tapplet API, so it
+does not depend on Apple Intelligence.
+
+## Names
+
+- **Tapplet Studio** is the iPad app teachers open.
+- A **tapplet** is the HTML classroom activity students open. Write it in
+  sentence case (`a tapplet`, `My Tapplets`), not as `a Tapplet`.
+- **Tapplet** remains the family name for class-code access and the API.
+- Student-facing HTML should not print Tapplet, Tapplet Studio or tapplet
+  unless the brief asks for it. Source identities (bundle ID, Worker names,
+  D1/R2) stay Tapplet unless a task includes a coordinated migration.
 
 ## Product promise
 
-> Make the small interactive applet your next lesson needs, then share one link.
+> Make the tapplet your next lesson needs, then share one link.
 
-An applet should normally fit one browser viewport and serve one focused
-learning purpose. A short linear story may use two or three screens, but Tapplet
-is not intended to generate full webpages, dashboards, lessons, menus or
-multi-activity labs.
+A tapplet should normally fit one browser viewport and serve one focused
+learning purpose. A short linear story may use two or three screens, but
+Tapplet Studio is not intended to generate full webpages, dashboards, lessons,
+menus or multi-activity labs.
 
 Teachers do not need to start from an empty prompt. They can run and remix a
-curated example or answer a short guided interview. Generation uses relevant
-published and curated examples as inspiration, and revision always starts from
-the current HTML rather than recreating the applet from scratch.
+curated example, start from a ready-made plan, or answer a short guided
+interview. Plans and examples include games, quizzes, simulations and practice
+activities. Generation uses relevant published and curated examples as
+inspiration, and revision always starts from the current HTML rather than
+recreating the tapplet from scratch.
 
 ## V1 experience
 
-1. Open **Explore**, **Make** or **My Applets**.
-2. Run/remix an example, or answer the guided questions and approve the brief.
-3. Generate the applet and interact with it directly in the iPad preview.
-4. Ask Tapplet for a change. The working preview remains visible while the new
-   revision loads.
+1. Open **Explore**, **Make** or **My Tapplets**.
+2. Run/remix an example, start from a plan, or answer the guided questions and approve the brief.
+3. Generate the tapplet and interact with it directly in the iPad preview.
+4. Ask Tapplet Studio for a change. The working preview remains visible while
+   the new revision loads.
 5. Restore any earlier revision if the change is not useful.
 6. Edit project details such as title, summary, subject, level and tags without
    making a model request.
-7. Test the applet full-screen.
+7. Test the tapplet full-screen.
 8. Publish an unlisted URL, then copy it, show its QR code or use the iPad share
    sheet.
 9. Extend or revoke the publication from the originating device.
 
 Explore contains the reviewed HTML seed catalogue bundled with the app. My
-Applets stores local project files and synchronises the server-owned revision
+Tapplets stores local project files and synchronises the server-owned revision
 history. The editor is preview-first: there is no raw syntax tree or structural
 layout editor.
 
@@ -60,20 +73,20 @@ The service applies deterministic checks before saving a generated revision:
 - deterministic text moderation;
 - one bounded model repair when generated output fails the checks.
 
-The generation prompt asks for a compact, touch-first applet, one coherent
-interaction system and simple readable JavaScript. The model returns the full
-HTML document plus an optional design card. The card and project metadata help
-future revision, retrieval and remixing; failure to parse the optional card does
-not discard otherwise valid HTML.
+The generation prompt asks for a compact, touch-first classroom applet, one
+coherent interaction system and simple readable JavaScript. The model returns
+the full HTML document plus an optional design card. The card and project
+metadata help future revision, retrieval and remixing; failure to parse the
+optional card does not discard otherwise valid HTML.
 
-Generated JavaScript runs only in the applet's front end. It has no Tapplet
+Generated JavaScript runs only in the tapplet's front end. It has no Tapplet
 credentials, cookies or server-side execution path. Student interaction state
 is transient browser state.
 
 ## System boundary
 
 ```text
-SwiftUI iPad app
+Tapplet Studio (iPad)
         |
         | HTTPS: generate, revise, history, images, publish
         v
@@ -89,9 +102,9 @@ Tapplet API -------> configured text-generation provider
                        Student Safari
 ```
 
-The iPad app loads artifact HTML directly into a non-persistent `WKWebView`.
+Tapplet Studio loads artifact HTML directly into a non-persistent `WKWebView`.
 The public URL serves the same immutable source revision directly, with a fixed
-report control added by the service. No separate player or proprietary applet
+report control added by the service. No separate player or proprietary tapplet
 language sits between the artifact and the browser.
 
 The Tapplet API remains separate from the Express/Socket.IO classroom server.
@@ -124,14 +137,14 @@ pilot runbook.
 
 ## Supported content
 
-The HTML artifact model supports focused quizzes, matching/sorting/sequencing,
-interactive diagrams, classroom utilities, graph explorers, small
+The HTML artifact model supports focused quizzes, games, matching/sorting/sequencing,
+interactive diagrams, graph explorers, small
 simulations, writing tools and other browser-based interactions. These are
 authoring and retrieval descriptions, not schema labels that grant special
 capabilities.
 
 Larger activities should be split by learning purpose. For example, a
-qualitative-analysis catalogue becomes separate one-unknown practice applets;
+qualitative-analysis catalogue becomes separate one-unknown practice tapplets;
 a simulation should centre on one model with its controls, readouts and graph
 rather than several unrelated activities.
 

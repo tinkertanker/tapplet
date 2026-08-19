@@ -1,6 +1,6 @@
-# Tapplet for iPad
+# Tapplet Studio for iPad
 
-Tapplet is a native SwiftUI iPad app. The generated Xcode project is not source controlled.
+Tapplet Studio is a native SwiftUI iPad app. The generated Xcode project is not source controlled.
 
 ## Setup and test
 
@@ -22,6 +22,6 @@ Run `TappletTests` on an available iPad simulator with `-only-testing:TappletTes
 - `Tests` / `UITests`: native tests
 - `project.yml`: Tapplet project, targets, schemes, bundle IDs and API configuration
 
-Bundled examples and locally saved applets preview offline. Generation, server history/recovery and publication require the Tapplet API. Debug uses simulator loopback by default. For a physical iPad, set `TAPPLET_API_BASE_URL` to a host reachable on its network; `127.0.0.1` means the iPad itself. Release uses the deployed API unless overridden.
+Bundled examples and locally saved tapplets preview offline. Generation, server history/recovery and publication require the Tapplet API. Debug uses simulator loopback by default. For a physical iPad, set `TAPPLET_API_BASE_URL` to a host reachable on its network; `127.0.0.1` means the iPad itself. Release uses the deployed API unless overridden.
 
 Automatic signing uses the configured development team. Simulator builds can disable signing with `CODE_SIGNING_ALLOWED=NO`; device and archive builds require an appropriate team/profile. Never commit credentials, class-access codes or device tokens.

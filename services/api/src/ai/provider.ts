@@ -10,6 +10,7 @@ export interface TeacherBrief {
   learnerContext?: string;
   sourceContent?: string;
   classroomFit?: string;
+  format?: "game" | "quiz" | "simulation" | "practice";
 }
 export interface DesignCard {
   title?: string;

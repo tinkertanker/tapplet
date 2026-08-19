@@ -297,15 +297,138 @@ describe("Tapplet API registration and public HTML", () => {
     });
   });
 
+  it("records the requested activity form and infers subject from the learner context", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        creationBrief: "Primary 5 times-tables game.",
+        brief: {
+          learnerContext: "Primary 5 Mathematics",
+          learningObjective: "Recall the 6 times table fluently",
+          studentAction: "Beat a 60-second countdown",
+          feedback: "Explain every wrong answer",
+          classroomFit: "Five minutes independently",
+          format: "game",
+        },
+      }),
+    );
+    expect(generated.status).toBe(201);
+    const body = (await generated.json()) as {
+      artifact: { subject: string | null; id: string };
+    };
+    expect(body.artifact.subject).toBe("mathematics");
+    expect(
+      JSON.parse(repository.artifacts.get(body.artifact.id)!.generationBrief),
+    ).toMatchObject({
+      subject: "mathematics",
+      format: "game",
+    });
+  });
+
+  it("infers abbreviated and mother-tongue learner contexts", async () => {
+    const cases: Array<[string, string]> = [
+      ["P5 Sci", "science"],
+      ["Sec 2 Geog", "humanities"],
+      ["Sec 4 Hist", "humanities"],
+      ["Primary 5 Chinese", "languages"],
+      ["Sec 1 Literature", "english"],
+    ];
+    for (const [learnerContext, subject] of cases) {
+      const generated = await app.fetch(
+        authenticated("/v1/artifacts/generate", "POST", {
+          creationBrief: `${learnerContext} activity.`,
+          brief: {
+            ...creationBrief.brief,
+            learnerContext,
+          },
+        }),
+      );
+      expect(generated.status).toBe(201);
+      const body = (await generated.json()) as {
+        artifact: { subject: string | null };
+      };
+      expect(body.artifact.subject).toBe(subject);
+    }
+  });
+
+  it("does not substitute retrieval when a preferred example cannot be resolved", async () => {
+    const seed = {
+      seedId: "fraction-equivalence-diagnostic",
+      title: "Fraction Equivalence Detective",
+      summary: "Compare equivalent fractions and check each answer.",
+      artifact: {
+        html: '<!doctype html><html lang="en-SG"><head><meta charset="utf-8"><title>Fraction Equivalence Detective</title></head><body><button type="button">Check</button></body></html>',
+        designCard: { layout: "single diagnostic" },
+      },
+      metadata: {
+        subject: "mathematics",
+        level: "upper-primary",
+        locale: "en-SG",
+        learningObjective: "Recognise equivalent fractions.",
+        tags: ["fractions", "equivalence", "diagnostic"],
+        interactionPattern: "choice-diagnostic",
+        descriptor: "A fraction diagnostic with immediate feedback.",
+      },
+    };
+    expect(
+      (
+        await app.fetch(
+          new Request("https://api.test/v1/seeds", {
+            method: "POST",
+            headers: {
+              authorization: "Bearer test-seed-import-token",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(seed),
+          }),
+        )
+      ).status,
+    ).toBe(201);
+
+    const provider = new FixtureModelProvider();
+    const generate = provider.generate.bind(provider);
+    let receivedExemplars: string[] = [];
+    provider.generate = async (brief, exemplars) => {
+      receivedExemplars = exemplars.map((exemplar) => exemplar.revisionId);
+      return generate(brief, exemplars);
+    };
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        preferredExampleRevisionId: "missing-example-seed",
+      }),
+    );
+    expect(generated.status).toBe(201);
+    expect(receivedExemplars).toEqual([]);
+  });
+
+  it("rejects an unknown activity form", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, format: "arcade" },
+      }),
+    );
+    expect(generated.status).toBe(422);
+  });
+
   it("creates immutable revisions, moves the head, and records remix lineage", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
     );
     expect(generated.status).toBe(201);
     const first = (await generated.json()) as {
-      artifact: { id: string; headRevisionId: string };
+      artifact: { id: string; headRevisionId: string; subject: string | null };
       headRevision: RevisionRecord;
     };
+    expect(first.artifact.subject).toBe("mathematics");
     expect(await sources.getSource(first.headRevision.sourceHash)).toContain(
       "<!doctype html>",
     );

@@ -1,6 +1,6 @@
 # Tapplet
 
-**Create tiny interactive applets for any lesson.** Tapplet is Tinkercademy's teacher-facing, iPad-first SwiftUI app for creating, adapting, previewing and sharing self-contained classroom activities.
+**Create tiny interactive tapplets for any lesson.** Tapplet Studio is Tinkercademy's teacher-facing, iPad-first SwiftUI app for creating, adapting, previewing and sharing self-contained classroom activities.
 
 ## Architecture
 
@@ -9,7 +9,7 @@
 - `scripts` and `evals`: repository, publication and model-quality tooling
 - `docs`: product contract and pilot operations
 
-The app bundles reviewed HTML examples and can browse and run them offline. Saved applets remain available for offline preview. Generation, revision history, restoration from the service, and publication require the API.
+The app bundles reviewed HTML examples and can browse and run them offline. Saved tapplets remain available for offline preview. Generation, revision history, restoration from the service, and publication require the API.
 
 ## Native iPad setup (no Node required)
 

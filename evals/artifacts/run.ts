@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const manifest = JSON.parse(
     await readFile(path.join(directory, "manifest.json"), "utf8"),
   );
-  const manifestIssues = validateSeedManifest(manifest, { expectedCount: 14 });
+  const manifestIssues = validateSeedManifest(manifest, { expectedCount: 18 });
   if (manifestIssues.length)
     throw new Error(
       `HTML artifact corpus failed:\n- ${manifestIssues.map((issue: { message: string }) => `manifest: ${issue.message}`).join("\n- ")}`,

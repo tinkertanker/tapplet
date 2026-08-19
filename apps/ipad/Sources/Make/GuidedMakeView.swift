@@ -4,6 +4,7 @@ struct GuidedMakeView: View {
     let store: TappletStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var creationError: TappletErrorPresentation?
+    @State private var hidesStarterPlans = false
     @FocusState private var responseIsFocused: Bool
 
     private var question: BriefQuestion {
@@ -14,10 +15,14 @@ struct GuidedMakeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 PageHeader(
-                    title: "Plan your classroom applet",
-                    subtitle: "Answer six quick questions. You can review and change every answer before Tapplet makes your applet.",
+                    title: "Plan your tapplet",
+                    subtitle: "Start from a plan, or answer a few questions. You can change every answer before Tapplet Studio makes your tapplet.",
                     sticker: .handraise
                 )
+
+                if showsStarterPlans {
+                    starterPlans
+                }
 
                 Group {
                     if store.guidedMakeShowsSummary {
@@ -80,6 +85,10 @@ struct GuidedMakeView: View {
                 Text(question.supportingText)
                     .font(.body)
                     .foregroundStyle(TappletTheme.mutedInk)
+            }
+
+            if question.id == 2 {
+                formatPicker
             }
 
             TextEditor(
@@ -158,12 +167,12 @@ struct GuidedMakeView: View {
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(store.isCreatingGuidedDraft ? "Making your applet" : "Check your answers")
+                Text(store.isCreatingGuidedDraft ? "Making your tapplet" : "Check your answers")
                     .font(TappletTheme.Typography.question)
                 Text(
                     store.isCreatingGuidedDraft
-                        ? "Tapplet is working from the answers below."
-                        : "Tap any answer to change it, then make your applet. You can keep refining it afterwards."
+                        ? "Tapplet Studio is working from the answers below."
+                        : "Tap any answer to change it, then make your tapplet. You can keep refining it afterwards."
                 )
                     .foregroundStyle(TappletTheme.mutedInk)
             }
@@ -176,6 +185,8 @@ struct GuidedMakeView: View {
                 summaryRow(label: "Students", value: store.guidedMakeDraft.learnerContext, questionIndex: 0)
                 Divider()
                 summaryRow(label: "Learning goal", value: store.guidedMakeDraft.learningObjective, questionIndex: 1)
+                Divider()
+                summaryRow(label: "Form", value: store.guidedMakeDraft.format?.title ?? "Tapplet Studio can choose", questionIndex: 2)
                 Divider()
                 summaryRow(label: "Students will", value: store.guidedMakeDraft.studentAction, questionIndex: 2)
                 Divider()
@@ -193,7 +204,21 @@ struct GuidedMakeView: View {
             }
             .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            Text("The applet will not collect responses, identify students or call external services.")
+            if let plan = store.guidedMakePinnedPlan {
+                if store.guidedMakeEffectivePreferredExampleRevisionId != nil {
+                    Text("Based on \(plan.title). Change who you are teaching or the learning goal to unpin this example.")
+                        .font(.footnote)
+                        .foregroundStyle(TappletTheme.mutedInk)
+                        .accessibilityIdentifier("pinned-example-plan")
+                } else {
+                    Text("This started from \(plan.title), but the students or learning goal no longer match, so Tapplet Studio will not pin that example.")
+                        .font(.footnote)
+                        .foregroundStyle(TappletTheme.mutedInk)
+                        .accessibilityIdentifier("unpinned-example-plan")
+                }
+            }
+
+            Text("The tapplet will not collect responses, identify students or call external services.")
                 .font(.footnote)
                 .foregroundStyle(TappletTheme.mutedInk)
 
@@ -224,10 +249,10 @@ struct GuidedMakeView: View {
                     if store.isCreatingGuidedDraft {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Making your applet…")
+                            Text("Making your tapplet…")
                         }
                     } else {
-                        Text("Make my applet")
+                        Text("Make my tapplet")
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -240,6 +265,86 @@ struct GuidedMakeView: View {
         .tappletCard()
     }
 
+    private var starterPlans: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Start from a plan")
+                .font(TappletTheme.Typography.section)
+                .foregroundStyle(TappletTheme.ink)
+            Text("Tap a plan to fill the answers. Change the topic if you need to, then make the tapplet.")
+                .font(.callout)
+                .foregroundStyle(TappletTheme.mutedInk)
+            Button("Answer the questions instead") {
+                hidesStarterPlans = true
+            }
+            .buttonStyle(.plain)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(TappletTheme.accent)
+            .accessibilityIdentifier("skip-starter-plans")
+            LazyVGrid(
+                columns: dynamicTypeSize.isAccessibilitySize
+                    ? [GridItem(.flexible())]
+                    : [GridItem(.adaptive(minimum: 200), spacing: 10)],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                ForEach(StarterPlan.all) { plan in
+                    Button {
+                        store.applyStarterPlan(plan)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(plan.form.title.uppercased())
+                                .font(TappletTheme.Typography.eyebrow)
+                                .foregroundStyle(TappletTheme.accent)
+                            Text(plan.title)
+                                .font(TappletTheme.Typography.cardTitle)
+                                .foregroundStyle(TappletTheme.ink)
+                                .multilineTextAlignment(.leading)
+                            Text(plan.summary)
+                                .font(.subheadline)
+                                .foregroundStyle(TappletTheme.mutedInk)
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(3)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .tappletCard()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("starter-plan-\(plan.id)")
+                }
+            }
+        }
+        .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    private var formatPicker: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Kind of activity")
+                .font(TappletTheme.Typography.eyebrow)
+                .foregroundStyle(TappletTheme.mutedInk)
+            FlowLayout(spacing: 8) {
+                CatalogFilterPill(
+                    title: "Not sure",
+                    group: "Kind of activity",
+                    isSelected: store.guidedMakeDraft.format == nil,
+                    accessibilityIdentifier: "activity-format-none"
+                ) {
+                    store.guidedMakeDraft.format = nil
+                }
+                ForEach(ActivityFormat.allCases, id: \.self) { format in
+                    CatalogFilterPill(
+                        title: format.title,
+                        group: "Kind of activity",
+                        isSelected: store.guidedMakeDraft.format == format,
+                        accessibilityIdentifier: "activity-format-\(format.rawValue)"
+                    ) {
+                        store.guidedMakeDraft.format = format
+                    }
+                }
+            }
+        }
+    }
+
     private var generationStatus: some View {
         HStack(alignment: .top, spacing: 14) {
             ProgressView()
@@ -249,7 +354,7 @@ struct GuidedMakeView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This usually takes one to two minutes.")
                     .font(.body.weight(.semibold))
-                Text("Your answers are still here and will be used to make your applet. There is nothing else you need to do right now.")
+                Text("Your answers are still here and will be used to make your tapplet. There is nothing else you need to do right now.")
                     .font(.callout)
                     .foregroundStyle(TappletTheme.mutedInk)
             }
@@ -262,7 +367,7 @@ struct GuidedMakeView: View {
                 .stroke(TappletTheme.border, lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Making your applet. This usually takes one to two minutes. Your answers are still here and will be used to make your applet.")
+        .accessibilityLabel("Making your tapplet. This usually takes one to two minutes. Your answers are still here and will be used to make your tapplet.")
     }
 
     private func summaryRow(label: String, value: String, questionIndex: Int) -> some View {
@@ -308,6 +413,20 @@ struct GuidedMakeView: View {
         .accessibilityValue(value)
         .accessibilityHint("Returns to question \(questionIndex + 1).")
         .accessibilityIdentifier("edit-brief-answer-\(questionIndex)")
+    }
+
+    private var showsStarterPlans: Bool {
+        !store.guidedMakeShowsSummary
+            && store.guidedMakeQuestionIndex == 0
+            && !hidesStarterPlans
+            && !draftHasAnswers
+            && cleanResponse.isEmpty
+    }
+
+    private var draftHasAnswers: Bool {
+        store.guidedMakeDraft.answers.contains {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } || store.guidedMakeDraft.format != nil
     }
 
     private var cleanResponse: String {

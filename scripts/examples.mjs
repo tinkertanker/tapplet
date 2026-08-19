@@ -17,7 +17,7 @@ const fixtureDirectory = path.join(repoRoot, 'scripts', 'fixtures', 'examples');
 
 async function loadValidatedSeeds() {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  const manifestFailures = validateSeedManifest(manifest, { expectedCount: 14 });
+  const manifestFailures = validateSeedManifest(manifest, { expectedCount: 18 });
   if (manifestFailures.length) throw new Error(`Tapplet HTML seed validation failed:\n- ${manifestFailures.map((issue) => `manifest: ${issue.message}`).join('\n- ')}`);
   const failures = [];
   const records = [];

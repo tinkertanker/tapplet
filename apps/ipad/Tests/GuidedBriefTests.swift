@@ -19,5 +19,16 @@ final class GuidedBriefTests: XCTestCase {
             BriefQuestion.all[3].placeholder,
             "Use the terms and examples from this lesson"
         )
+        XCTAssertFalse(BriefQuestion.all[2].supportingText.contains("format later"))
+        XCTAssertTrue(BriefQuestion.all[2].suggestions.contains("Keep a streak going"))
+        XCTAssertEqual(StarterPlan.all.count, 8)
+        XCTAssertEqual(TappletSection.myApplets.title, "My Tapplets")
+        XCTAssertEqual(StarterPlan.matching(exampleID: "times-tables-lightning")?.form, .game)
+        XCTAssertEqual(
+            StarterPlan.matching(exampleRevisionID: "times-tables-lightning-seed")?.id,
+            "times-tables-lightning"
+        )
+        XCTAssertEqual(ActivityFormat.allCases.map(\.rawValue), ["game", "quiz", "simulation", "practice"])
+        XCTAssertEqual(RefineSuggestion.all.map(\.id), ["timer", "lives", "streak", "explain", "harder", "bigger"])
     }
 }

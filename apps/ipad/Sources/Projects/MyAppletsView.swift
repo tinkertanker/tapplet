@@ -32,7 +32,7 @@ struct MyAppletsView: View {
             .padding(32)
         }
         .alert(
-            "Tapplet could not complete this action",
+            "Tapplet Studio could not complete this action",
             isPresented: Binding(
                 get: { error != nil },
                 set: { if !$0 { error = nil } }
@@ -49,8 +49,8 @@ struct MyAppletsView: View {
         if dynamicTypeSize.isAccessibilitySize || store.projects.isEmpty {
             VStack(alignment: .leading, spacing: 16) {
                 PageHeader(
-                    title: "My Applets",
-                    subtitle: "Copies and applets you make stay on this iPad so you can preview them offline.",
+                    title: "My Tapplets",
+                    subtitle: "Copies and tapplets you make stay on this iPad so you can preview them offline.",
                     sticker: store.projects.isEmpty ? .happy : nil
                 )
                 if !store.projects.isEmpty {
@@ -60,8 +60,8 @@ struct MyAppletsView: View {
         } else {
             HStack(alignment: .top, spacing: 16) {
                 PageHeader(
-                    title: "My Applets",
-                    subtitle: "Copies and applets you make stay on this iPad so you can preview them offline."
+                    title: "My Tapplets",
+                    subtitle: "Copies and tapplets you make stay on this iPad so you can preview them offline."
                 )
                 Spacer(minLength: 12)
                 headerActions(expanded: false)
@@ -87,7 +87,7 @@ struct MyAppletsView: View {
     }
 
     private var makeButton: some View {
-        Button("Make an applet") { store.selectedSection = .make }
+        Button("Make a tapplet") { store.selectedSection = .make }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .accessibilityIdentifier("my-applets-make")
@@ -103,7 +103,7 @@ struct MyAppletsView: View {
                         .controlSize(.small)
                         .accessibilityHidden(true)
                 }
-                Text(store.isRestoringFromTapplet ? "Restoring…" : "Restore applets")
+                Text(store.isRestoringFromTapplet ? "Restoring…" : "Restore tapplets")
             }
         }
         .buttonStyle(.plain)
@@ -116,14 +116,14 @@ struct MyAppletsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Text("Your applets will appear here")
+            Text("Your tapplets will appear here")
                 .font(TappletTheme.Typography.question)
                 .foregroundStyle(TappletTheme.ink)
                 .multilineTextAlignment(.center)
             Text("Make one from a short plan, or copy an example from Explore.")
                 .foregroundStyle(TappletTheme.mutedInk)
                 .multilineTextAlignment(.center)
-            Button("Make an applet") { store.selectedSection = .make }
+            Button("Make a tapplet") { store.selectedSection = .make }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .accessibilityIdentifier("empty-make-applet")

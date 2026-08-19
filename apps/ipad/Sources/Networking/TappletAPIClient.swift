@@ -335,7 +335,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
     private func validate(_ response: HTTPURLResponse, payload: Data) throws {
         guard (200..<300).contains(response.statusCode) else {
             let error = try? JSONDecoder().decode(APIErrorEnvelope.self, from: payload).error
-            throw TappletAPIError.server(response.statusCode, error?.code, error?.message ?? "Tapplet request failed.")
+            throw TappletAPIError.server(response.statusCode, error?.code, error?.message ?? "Tapplet Studio request failed.")
         }
     }
 
@@ -361,10 +361,10 @@ enum TappletAPIError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .registrationRequired: "Enter your workshop access code before using Tapplet."
+        case .registrationRequired: "Enter your workshop access code before using Tapplet Studio."
         case .server(_, _, let message): message
         case .invalidURL, .invalidResponse, .transport, .decoding:
-            "Tapplet could not complete this request. Check your connection and try again."
+            "Tapplet Studio could not complete this request. Check your connection and try again."
         }
     }
     var requiresRegistration: Bool {

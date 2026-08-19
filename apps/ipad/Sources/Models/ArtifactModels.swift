@@ -18,6 +18,7 @@ struct Artifact: Codable, Equatable, Identifiable, Sendable {
     var publicationStale: Bool? = nil
     var headRevision: ArtifactRevision? = nil
     var html: String? = nil
+    var form: String? = nil
 }
 
 struct ArtifactRevision: Codable, Equatable, Identifiable, Sendable {
@@ -80,10 +81,11 @@ struct ExampleArtifact: Codable, Equatable, Identifiable, Sendable {
     var locale: String? = nil
     var learningObjective: String? = nil
     var tags: [String]
+    var form: String? = nil
     var file: String
 
     enum CodingKeys: String, CodingKey {
-        case id, title, summary, subject, level, locale, learningObjective, tags
+        case id, title, summary, subject, level, locale, learningObjective, tags, form
         case file = "filename"
     }
 }
