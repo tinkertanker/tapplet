@@ -524,28 +524,38 @@ export function createStudioApp(d: Deps) {
           "This class code is invalid or expired.",
         );
       const timestamp = now(),
-        date = timestamp.toISOString().slice(0, 10);
-      if (
-        !(await d.repository.consumeGeneration(
-          `registration:${await networkHashFrom(r)}`,
+        date = timestamp.toISOString().slice(0, 10),
+        classCodeHash = await sha256(`class-code:${code}`),
+        networkHash = await networkHashFrom(r),
+        registration = await d.repository.consumeRegistration(
+          classCodeHash,
+          timestamp.toISOString(),
+          `registration:${networkHash}`,
           date,
           d.config.dailyNetworkRegistrationLimit,
-        ))
-      )
-        throw new HttpError(
-          429,
-          "REGISTRATION_LIMIT_REACHED",
-          "This network has reached today’s workshop registration limit.",
         );
-      if (
-        !(await d.repository.consumeClassCode(
-          await sha256(`class-code:${code}`),
-          timestamp.toISOString(),
-        ))
-      ) {
+      if (registration === "network-limit")
+        throw new HttpError(
+          403,
+          "ACCESS_CODE_UNAVAILABLE",
+          "This class code cannot be used. Check it or ask your facilitator for help.",
+        );
+      if (registration === "invalid-class-code") {
         if (
           !(await d.repository.consumeGeneration(
-            `class-code-fail:${await sha256(`class-code:${code}`)}`,
+            `class-code-fail-network:${networkHash}`,
+            date,
+            d.config.dailyNetworkClassCodeFailureLimit,
+          ))
+        )
+          throw new HttpError(
+            429,
+            "CLASS_CODE_NETWORK_LOCKED",
+            "This network has had too many unsuccessful class-code attempts today. Ask your facilitator for help.",
+          );
+        if (
+          !(await d.repository.consumeGeneration(
+            `class-code-fail:${classCodeHash}`,
             date,
             d.config.classCodeFailureLockout,
           ))
@@ -557,8 +567,8 @@ export function createStudioApp(d: Deps) {
           );
         throw new HttpError(
           403,
-          "INVALID_ACCESS_CODE",
-          "This class code is invalid or expired.",
+          "ACCESS_CODE_UNAVAILABLE",
+          "This class code cannot be used. Check it or ask your facilitator for help.",
         );
       }
       return json(

@@ -84,8 +84,24 @@ describe("MemoryStudioRepository artifact model", () => {
       uses: 0,
       expiresAt: "2026-08-03T00:00:00Z",
     });
-    expect(await repository.consumeClassCode("code", now)).toBe(true);
-    expect(await repository.consumeClassCode("code", now)).toBe(false);
+    expect(
+      await repository.consumeRegistration(
+        "code",
+        now,
+        "registration:network",
+        "2026-08-02",
+        1,
+      ),
+    ).toBe("success");
+    expect(
+      await repository.consumeRegistration(
+        "code",
+        now,
+        "registration:network",
+        "2026-08-02",
+        1,
+      ),
+    ).toBe("invalid-class-code");
   });
 
   it("keeps artifacts private and revisions in an immutable same-artifact chain", async () => {

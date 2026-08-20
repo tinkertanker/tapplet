@@ -107,6 +107,11 @@ export interface ArtifactStorageReferences {
 
 export const CURATED_SEED_OWNER = "studio-curated-seed";
 
+export type RegistrationResult =
+  | "success"
+  | "invalid-class-code"
+  | "network-limit";
+
 export interface StudioRepository {
   consumeGeneration(
     subject: string,
@@ -114,7 +119,13 @@ export interface StudioRepository {
     limit: number,
   ): Promise<boolean>;
   purgeUsage(before: string): Promise<void>;
-  consumeClassCode(hash: string, now: string): Promise<boolean>;
+  consumeRegistration(
+    classCodeHash: string,
+    now: string,
+    networkSubject: string,
+    date: string,
+    networkLimit: number,
+  ): Promise<RegistrationResult>;
   getOwnerTokenVersion(ownerHash: string): Promise<number>;
   bumpOwnerTokenVersion(ownerHash: string): Promise<number>;
   countArtifacts(owner: string): Promise<number>;

@@ -20,6 +20,7 @@
     "examples:package": "node scripts/examples.mjs package",
     "examples:validate": "node scripts/examples.mjs validate",
     "examples:import": "node scripts/examples.mjs import",
+    "examples:verify-production": "node scripts/examples.mjs parity",
     "eval:artifacts": "tsx evals/artifacts/run.ts",
     "eval:model": "tsx evals/model/run.ts",
     "eval:model-moderation": "tsx evals/model/moderation.ts",

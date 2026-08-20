@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -6,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   seedApiRecord,
   serializeSeedFixtures,
+  productionSeedParityIssues,
   validateHtmlArtifact,
   validateSeedManifest,
 } from './lib/html-artifact.mjs';
@@ -93,6 +96,33 @@ async function importSeeds() {
   }
 }
 
+async function verifyProductionSeedParity() {
+  const { records } = await loadValidatedSeeds();
+  const expected = records.map((record) => ({
+    artifact_id: record.seedId,
+    revision_id: `${record.seedId}-seed`,
+    source_hash: createHash('sha256').update(record.artifact.html).digest('hex'),
+  }));
+  const query = 'SELECT r.artifact_id, r.revision_id, v.source_hash FROM retrieval_entries r JOIN revisions v ON v.id=r.revision_id WHERE r.curated=1 ORDER BY r.artifact_id';
+  const result = spawnSync(
+    'npx',
+    ['wrangler', 'd1', 'execute', 'DB', '--remote', '--profile', 'tinkertanker', '--json', '--command', query],
+    { cwd: path.join(repoRoot, 'services', 'api'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  if (result.status !== 0) throw new Error('Could not read production curated seed metadata with Wrangler.');
+  let remote;
+  try {
+    const executions = JSON.parse(result.stdout);
+    remote = executions?.[0]?.success === true ? executions[0].results : undefined;
+  } catch {
+    remote = undefined;
+  }
+  if (!Array.isArray(remote)) throw new Error('Wrangler did not return production curated seed metadata as JSON.');
+  const issues = productionSeedParityIssues(expected, remote);
+  if (issues.length) throw new Error(`Production curated seed parity failed:\n- ${issues.join('\n- ')}`);
+  console.log(`Verified exact production parity for ${expected.length} curated Tapplet seeds.`);
+}
+
 function option(name) {
   const index = process.argv.indexOf(name);
   return index < 0 ? undefined : process.argv[index + 1];
@@ -106,7 +136,8 @@ try {
     console.log(`Validated ${manifest.seeds.length} self-contained Tapplet HTML seeds.`);
   } else if (command === 'package') await packageFixtures();
   else if (command === 'import') await importSeeds();
-  else throw new Error('Usage: node scripts/examples.mjs validate|package|import [--endpoint URL]');
+  else if (command === 'parity') await verifyProductionSeedParity();
+  else throw new Error('Usage: node scripts/examples.mjs validate|package|import|parity [--endpoint URL]');
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;

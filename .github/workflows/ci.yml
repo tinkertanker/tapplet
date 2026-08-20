@@ -30,16 +30,42 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Select stable Xcode 26
+        run: |
+          XCODE_APP=$(python3 - <<'PY'
+          import pathlib
+          import re
+
+          candidates = []
+          for path in pathlib.Path("/Applications").glob("Xcode_26*.app"):
+              match = re.fullmatch(r"Xcode_(26(?:\.\d+)*)\.app", path.name)
+              if match:
+                  candidates.append((tuple(map(int, match.group(1).split("."))), path))
+          if not candidates:
+              raise SystemExit("No installed stable Xcode 26 found")
+          print(max(candidates)[1])
+          PY
+          )
+          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+          XCODE_VERSION=$(DEVELOPER_DIR="$XCODE_APP/Contents/Developer" xcodebuild -version | awk 'NR == 1 { print $2 }')
+          SDK_VERSION=$(DEVELOPER_DIR="$XCODE_APP/Contents/Developer" xcrun --sdk iphoneos --show-sdk-version)
+          test "${XCODE_VERSION%%.*}" -ge 26
+          test "${SDK_VERSION%%.*}" -ge 26
+          echo "Using Xcode $XCODE_VERSION with iPhoneOS SDK $SDK_VERSION"
       - name: Install XcodeGen 2.44.1
         run: |
+          test "$(uname -m)" = "arm64"
           curl -fsSLo /tmp/xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/download/2.44.1/xcodegen.zip
+          echo "a2e905fb68446e9bb4008cdfe2e13e3f176d0cbcca828b71770f8e53fca91b73  /tmp/xcodegen.zip" | shasum -a 256 -c -
           unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
           sudo /tmp/xcodegen/xcodegen/install.sh
-          test "$(xcodegen --version)" = "XcodeGen version: 2.44.1"
+          lipo -archs "$(command -v xcodegen)" | grep -qw arm64
+          test "$(arch -arm64 xcodegen --version)" = "Version: 2.44.1"
       - run: xcodegen generate --spec apps/ipad/project.yml --project apps/ipad
-      - name: Build Tapplet unsigned
-        run: xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-      - name: Run TappletTests
+      - name: Build Tapplet unsigned (Release)
+        run: xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+      - name: Run unit and UI tests (Debug)
         run: |
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for xs in d.values() for x in xs if "iPad" in x["name"]))')
-          xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -destination "platform=iOS Simulator,id=$DEVICE" CODE_SIGNING_ALLOWED=NO -only-testing:TappletTests test
+          SIMULATOR_SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; version=sys.argv[1].replace(".", "-"); d=json.load(sys.stdin)["devices"]; runtime=next((key for key in d if key.endswith("iOS-" + version)), None); candidates=[] if runtime is None else [x for x in d[runtime] if "iPad" in x["name"]]; assert candidates, f"No available iPad for iOS {sys.argv[1]}"; print(candidates[0]["udid"])' "$SIMULATOR_SDK")
+          xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletTests -only-testing:TappletUITests test

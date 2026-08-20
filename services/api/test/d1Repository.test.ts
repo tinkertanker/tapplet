@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { D1StudioRepository } from "../src/storage/d1Repository";
 import {
@@ -38,6 +39,53 @@ const artifact: ArtifactRecord = {
   createdAt: revision.createdAt,
   updatedAt: revision.createdAt,
 };
+
+function sqliteD1Database() {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(
+    "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT);" +
+      "CREATE TABLE generation_usage(owner_hash TEXT NOT NULL,usage_date TEXT NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_hash,usage_date));",
+  );
+  const database = {
+    prepare(query: string) {
+      let values: Array<string | number | bigint | null> = [];
+      const statement = {
+        bind(...bound: unknown[]) {
+          if (
+            !bound.every(
+              (value) =>
+                value === null ||
+                typeof value === "string" ||
+                typeof value === "number" ||
+                typeof value === "bigint",
+            )
+          )
+            throw new Error("Unsupported SQLite test binding");
+          values = bound as Array<string | number | bigint | null>;
+          return statement;
+        },
+        async run() {
+          const result = sqlite.prepare(query).run(...values);
+          return { meta: { changes: Number(result.changes) } };
+        },
+      };
+      return statement;
+    },
+    async batch(statements: D1PreparedStatement[]) {
+      sqlite.exec("BEGIN IMMEDIATE");
+      try {
+        const results = [];
+        for (const statement of statements) results.push(await statement.run());
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) {
+        sqlite.exec("ROLLBACK");
+        throw error;
+      }
+    },
+  } as unknown as D1Database;
+  return { database, sqlite };
+}
 
 describe("D1StudioRepository conditional revision writes", () => {
   it("uses one batch whose insert checks owner, expected head, and same-artifact parent", async () => {
@@ -313,5 +361,68 @@ describe("D1StudioRepository owner token versions", () => {
     await expect(repository.getOwnerTokenVersion("owner-a")).resolves.toBe(0);
     await expect(repository.bumpOwnerTokenVersion("owner-a")).resolves.toBe(3);
     expect(sql[1]).toContain("ON CONFLICT(owner_hash) DO UPDATE");
+  });
+});
+
+describe("D1StudioRepository registration transaction", () => {
+  it("spends both counters on success and restores class state at the network limit", async () => {
+    const { database, sqlite } = sqliteD1Database();
+    sqlite
+      .prepare(
+        "INSERT INTO class_codes(code_hash,label,maximum_uses,expires_at,created_at,last_used_at) VALUES(?,?,?,?,?,?)",
+      )
+      .run(
+        "valid",
+        "Class 1234",
+        2,
+        "2026-09-01T00:00:00Z",
+        "2026-08-01T00:00:00Z",
+        "2026-08-01T01:00:00Z",
+      );
+    const repository = new D1StudioRepository(database);
+
+    await expect(
+      repository.consumeRegistration(
+        "valid",
+        "2026-08-20T00:00:00Z",
+        "registration:network",
+        "2026-08-20",
+        1,
+      ),
+    ).resolves.toBe("success");
+    await expect(
+      repository.consumeRegistration(
+        "valid",
+        "2026-08-20T00:01:00Z",
+        "registration:network",
+        "2026-08-20",
+        1,
+      ),
+    ).resolves.toBe("network-limit");
+    await expect(
+      repository.consumeRegistration(
+        "missing",
+        "2026-08-20T00:02:00Z",
+        "registration:other-network",
+        "2026-08-20",
+        1,
+      ),
+    ).resolves.toBe("invalid-class-code");
+
+    expect(
+      sqlite
+        .prepare(
+          "SELECT use_count,last_used_at FROM class_codes WHERE code_hash='valid'",
+        )
+        .get(),
+    ).toEqual({
+      use_count: 1,
+      last_used_at: "2026-08-20T00:00:00Z",
+    });
+    expect(
+      sqlite.prepare("SELECT owner_hash,request_count FROM generation_usage").all(),
+    ).toEqual([
+      { owner_hash: "registration:network", request_count: 1 },
+    ]);
   });
 });

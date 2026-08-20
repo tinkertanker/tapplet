@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import {
+  productionSeedParityIssues,
   seedApiRecord,
   serializeSeedFixtures,
   validateHtmlArtifact,
@@ -62,6 +63,22 @@ test('builds a backend-neutral API record', () => {
   const fixtures = serializeSeedFixtures([record]);
   assert.equal(JSON.parse(fixtures.catalogue).seeds[0].seedId, 'seed');
   assert.equal(JSON.parse(fixtures.ndjson).seedId, 'seed');
+});
+
+test('requires exact production seed ID, revision, and source-hash parity', () => {
+  const expected = [
+    { artifact_id: 'one', revision_id: 'one-seed', source_hash: 'hash-one' },
+    { artifact_id: 'two', revision_id: 'two-seed', source_hash: 'hash-two' },
+  ];
+  assert.deepEqual(productionSeedParityIssues(expected, structuredClone(expected)), []);
+  const issues = productionSeedParityIssues(expected, [
+    { artifact_id: 'one', revision_id: 'old', source_hash: 'wrong' },
+    { artifact_id: 'stale', revision_id: 'stale-seed', source_hash: 'stale-hash' },
+  ]);
+  assert.ok(issues.some((issue) => issue.includes('Missing remote curated seed two')));
+  assert.ok(issues.some((issue) => issue.includes('one points to revision old')));
+  assert.ok(issues.some((issue) => issue.includes('one has a different source hash')));
+  assert.ok(issues.some((issue) => issue.includes('Stale remote curated seed stale')));
 });
 
 test('all curated seeds initialise without browser errors', async () => {

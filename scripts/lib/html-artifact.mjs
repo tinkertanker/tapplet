@@ -131,3 +131,32 @@ export function serializeSeedFixtures(records) {
     ndjson: `${records.map((record) => JSON.stringify(record)).join('\n')}\n`,
   };
 }
+
+export function productionSeedParityIssues(expectedRows, remoteRows) {
+  const issues = [];
+  const expected = new Map(expectedRows.map((row) => [row.artifact_id, row]));
+  const remote = new Map();
+  for (const row of remoteRows) {
+    if (remote.has(row.artifact_id)) {
+      issues.push(`Remote curated seed ${row.artifact_id} appears more than once.`);
+    }
+    remote.set(row.artifact_id, row);
+  }
+  for (const [id, row] of expected) {
+    const actual = remote.get(id);
+    if (!actual) {
+      issues.push(`Missing remote curated seed ${id}.`);
+      continue;
+    }
+    if (actual.revision_id !== row.revision_id) {
+      issues.push(`Remote curated seed ${id} points to revision ${actual.revision_id}, expected ${row.revision_id}.`);
+    }
+    if (actual.source_hash !== row.source_hash) {
+      issues.push(`Remote curated seed ${id} has a different source hash.`);
+    }
+  }
+  for (const id of remote.keys()) {
+    if (!expected.has(id)) issues.push(`Stale remote curated seed ${id}.`);
+  }
+  return issues;
+}

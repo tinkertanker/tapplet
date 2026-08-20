@@ -7,22 +7,69 @@ Studio on iPad. Run Cloudflare commands from `services/api`.
 The production resources are in Wrangler's `tinkertanker` profile; keep
 `--profile tinkertanker` on every production command below.
 
-## Import the canonical examples
+## Production preflight and canonical examples
 
-The source corpus is `apps/ipad/Resources/Examples`. Validate it, configure the
-existing externally managed Worker secret, and run the idempotent import:
+Before changing production, run these read-only checks and save their
+non-secret output with the change record:
+
+```bash
+# Pending migration names must be understood before proceeding (do not apply yet).
+cd services/api
+npx wrangler d1 migrations list DB --remote --profile tinkertanker
+# Confirm the active deployment is the reviewed version intended for this pilot.
+npx wrangler deployments list --profile tinkertanker
+# Inspect D1 size/capacity and current class-code activation headroom.
+npx wrangler d1 info DB --profile tinkertanker
+npx wrangler d1 execute DB --remote --profile tinkertanker --command \
+  "SELECT label, maximum_uses, use_count, maximum_uses-use_count AS remaining, expires_at FROM class_codes ORDER BY label"
+# Inspect today's aggregate shared request counters and stored D1 records.
+npx wrangler d1 execute DB --remote --profile tinkertanker --command \
+  "SELECT 'shared_request_counters_today' AS metric, COALESCE(SUM(request_count),0) AS value FROM generation_usage WHERE usage_date=date('now') UNION ALL SELECT 'uploads_today',COALESCE(SUM(upload_count),0) FROM asset_usage WHERE usage_date=date('now') UNION ALL SELECT 'upload_bytes_today',COALESCE(SUM(total_bytes),0) FROM asset_usage WHERE usage_date=date('now') UNION ALL SELECT 'artifacts',COUNT(*) FROM artifacts UNION ALL SELECT 'publications',COUNT(*) FROM publications"
+cd ../..
+
+# Exit nonzero on any missing, stale, wrong-revision or wrong-hash curated seed.
+npm run examples:verify-production
+```
+
+Do not proceed unless remaining class activations, configured daily quotas and
+D1/R2 account capacity cover the workshop plus a deliberate safety margin.
+Confirm R2 storage/request headroom in the Cloudflare account dashboard; the D1
+queries above do not measure R2 usage. `generation_usage` contains several
+subject-prefixed counters, so its aggregate is not a generation-only metric.
+Deployment parity means the active deployment ID/code is the reviewed release,
+not merely that `/health` responds. The parity command requires exactly the 18
+canonical IDs, expected `-seed` revisions and local source hashes, and reports
+every extra remote curated ID as stale.
+
+The production order is exact: **apply migrations → deploy the matching Worker
+release → import canonical seeds → repeat the read-only parity/capacity checks
+and live verification**. Never import against code with pending migrations.
+Validate the source corpus, then execute the first three steps:
 
 ```bash
 npm run examples:validate
 cd services/api
-npx wrangler secret put STUDIO_SEED_IMPORT_TOKEN --profile tinkertanker
+npx wrangler d1 migrations apply DB --remote --profile tinkertanker
+npx wrangler deploy --profile tinkertanker
 cd ../..
-STUDIO_SEED_IMPORT_TOKEN=... npm run examples:import -- \
+printf "Seed import token: " >&2
+IFS= read -rs STUDIO_SEED_IMPORT_TOKEN; printf "\n" >&2
+export STUDIO_SEED_IMPORT_TOKEN
+npm run examples:import -- \
   --endpoint https://classroom-widgets-studio-api.tinkertanker.workers.dev/v1/seeds
+unset STUDIO_SEED_IMPORT_TOKEN
+npm run examples:verify-production
 ```
 
 The importer writes HTML to R2 before updating D1 and marks retrieval rows as
-curated. Never print or commit the token.
+curated. It is an upsert, not reconciliation: it does **not** remove stale
+remote curated IDs. Stale cleanup is a separate change requiring validation of
+each exact ID and its D1/R2 references before a narrowly scoped deletion; never
+turn the import into an automatic delete. Never print or commit the token.
+Use the existing externally managed Worker secret. If deliberate rotation is
+required, enter the same new value into `wrangler secret put` via its hidden
+prompt and the local import prompt, record the resulting deployment version,
+then unset it; do not rotate it as a routine import step.
 
 ## Roles and response times
 
@@ -72,17 +119,25 @@ curated. Never print or commit the token.
    owner, per-owner revocation is not possible; global
    `DEVICE_TOKEN_SIGNING_SECRET` rotation remains the last resort and invalidates
    every pilot iPad. Confirm `AI_API_KEY` is also configured.
-4. Provision one shared code for each class with
-   `npm run class-access:provision -- 1234 30`, replacing `1234` with the
-   four-digit class number and `30` with the required activation limit from 1
-   to 100. The generated code contains those four numbers followed by eight
+4. Provision one shared code for each class with an explicit reviewed expiry:
+   `npm run class-access:provision -- 1234 30 2026-08-24T00:00:00.000Z`,
+   replacing every example argument (including the expiry) with workshop
+   values and having a second operator review the UTC expiry. Keep it valid only
+   through setup, the workshop and a short contingency period. The activation
+   limit must be 1 to 100. The generated code contains those four numbers followed by eight
    random letters. Its ignored `.studio-class-codes/1234.txt` file has
    owner-only permissions. Each successful iPad activation consumes one use;
-   the code remains valid until it reaches the configured limit or expires.
+   the code remains valid until it reaches the configured limit or expires. If
+   Wrangler fails, retry the **identical command**: provisioning reuses the
+   protected file only when class, limit and expiry all match, performs a
+   convergent insert, verifies the matching remote metadata, and never prints
+   the code or its hash. A mismatch requires deliberate rotation; do not delete
+   the file merely to clear an error.
 5. Provision class `0000` with a 100-use limit for automated live verification.
    Set `STUDIO_CLASS_ACCESS_CODE` to that code and run
-   `npm run verify:live`. Later runs reuse the ignored, owner-only
-   `.studio-smoke-token` file.
+   `npm run verify:live`, then immediately `unset STUDIO_CLASS_ACCESS_CODE`.
+   Later runs reuse the ignored, owner-only `.studio-smoke-token` file without
+   consuming another activation.
 6. For external TestFlight or App Store review, place a still-valid multi-use
    workshop code in App Review notes. Verify it immediately before submission
    and keep it valid until review has completed; never put it in source control
@@ -94,10 +149,38 @@ curated. Never print or commit the token.
    VoiceOver, portrait and landscape. Revoke every link and verify that the
    student sees the unavailable state.
 
-If a class code must be replaced, use `trash .studio-class-codes/1234.txt`,
-delete only the matching `Class 1234` row after checking its label and usage,
-then provision a replacement. Never paste class codes into issues, commits,
-chat logs or screenshots.
+## TestFlight release gate
+
+The unsigned CI build is not a distribution check. Before uploading:
+
+1. Confirm App Store Connect ownership for `sg.tinkertanker.Tapplet`, active
+   agreements, the `PQ6U5ESLN2` team, and an automatic-distribution signing
+   identity/profile on the release Mac.
+2. Generate the project with XcodeGen 2.44.1, create a signed Release archive
+   with Xcode 26, export with `ExportOptions.plist`, and run Xcode's Validate App
+   action. Increment `CURRENT_PROJECT_VERSION` before any upload after build 1;
+   automatic build-number management is intentionally disabled.
+3. Have the release owner confirm the export-compliance determination behind
+   `ITSAppUsesNonExemptEncryption = NO`: native first-party use is limited to
+   Apple-provided HTTPS/Keychain and SHA-256 hashing, and no bundled code adds
+   non-exempt encryption. If that scope is not accurate, remove the declaration
+   and answer App Store Connect's encryption questions with the required
+   documentation instead. This repository setting is not legal advice.
+4. Reconcile App Store privacy labels with the checked-in privacy manifest and
+   actual API behavior, complete Apple's current age-rating questionnaire, and
+   provide beta review contact details, concise testing instructions, and a
+   still-valid review class code. Do not put the code in public metadata.
+5. Install the archived build on a physical iPad and repeat the workshop flow
+   on the venue Wi-Fi. Keep the preinstalled, preactivated offline-example path
+   as the class-day fallback; TestFlight review timing is not a workshop
+   dependency.
+
+If a class code must be replaced, preserve its protected file as the audit and
+recovery record. Derive its hash locally without printing either value, verify
+the exact row's label, limit, expiry and use count, and disable only that hash
+before securely archiving the file and provisioning a replacement. Never
+identify a row only by the non-unique label, and never paste class codes or
+hashes into issues, commits, chat logs or screenshots.
 
 ## Review public content reports
 
@@ -147,9 +230,12 @@ one is current.
   while stored HTML publications remain readable.
 - To remove one unsafe tapplet, revoke only its validated slug as above.
 - To roll back a bad Worker deployment, inspect the recent deployment list with
-  `npx wrangler deployments list --profile tinkertanker`, then use Wrangler's
-  rollback command with `--profile tinkertanker` for the
-  selected known-good deployment. Re-run `/health` and the complete live flow.
+  `npx wrangler deployments list --profile tinkertanker`, then run
+  `npx wrangler rollback KNOWN_GOOD_VERSION_ID --name classroom-widgets-studio-api --profile tinkertanker`
+  only after validating the selected version. A Worker rollback does not undo
+  D1 migrations or imported D1/R2 data, so the known-good Worker must remain
+  schema-compatible or use a separately reviewed forward recovery. Re-run
+  `/health` and the complete live flow.
 - If public rendering itself is unsafe, disable the Worker deployment and tell
   facilitators that published links are temporarily unavailable. Do not purge
   D1 or R2 during incident response.

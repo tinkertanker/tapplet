@@ -22,6 +22,7 @@ const config = {
   dailyNetworkDraftCreationLimit: 500,
   maximumDraftsPerOwner: 100,
   dailyNetworkRegistrationLimit: 100,
+  dailyNetworkClassCodeFailureLimit: 500,
   classCodeFailureLockout: 10,
   publicationTtlDays: 90,
   deviceTokenSigningSecret: secret,
@@ -98,7 +99,7 @@ describe("Tapplet API registration and public HTML", () => {
         (await register(use === 0 ? "1234-abcd-efgh" : "1234ABCDEFGH")).status,
       ).toBe(201);
     }
-    expect((await register("1234ABCDEFGH")).status).toBe(429);
+    expect((await register("1234ABCDEFGH")).status).toBe(403);
     expect(repository.classCodes.get(hash)?.uses).toBe(100);
   });
 
@@ -120,8 +121,69 @@ describe("Tapplet API registration and public HTML", () => {
     });
     app = limited;
     expect((await register("1234ABCDEFGH")).status).toBe(201);
-    expect((await register("1234ABCDEFGH")).status).toBe(429);
+    const unavailable = await register("1234ABCDEFGH");
+    expect(unavailable.status).toBe(403);
+    expect(
+      ((await unavailable.json()) as { error: { code: string } }).error.code,
+    ).toBe("ACCESS_CODE_UNAVAILABLE");
     expect(repository.classCodes.get(hash)?.uses).toBe(1);
+  });
+
+  it("does not spend network capacity on nonexistent, expired, or exhausted codes", async () => {
+    const expiredHash = createHash("sha256")
+      .update("class-code:1234EXPIREDX")
+      .digest("hex");
+    const exhaustedHash = createHash("sha256")
+      .update("class-code:1234EXHAUSTD")
+      .digest("hex");
+    const validHash = createHash("sha256")
+      .update("class-code:1234ABCDEFGH")
+      .digest("hex");
+    repository.classCodes.set(expiredHash, {
+      maximumUses: 1,
+      uses: 0,
+      expiresAt: "2026-08-01T00:00:00Z",
+    });
+    repository.classCodes.set(exhaustedHash, {
+      maximumUses: 1,
+      uses: 1,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    repository.classCodes.set(validHash, {
+      maximumUses: 1,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: { ...config, dailyNetworkRegistrationLimit: 1 },
+      sources: new MemorySourceStore(),
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    expect((await register("1234NOTFOUND")).status).toBe(403);
+    expect((await register("1234EXPIREDX")).status).toBe(403);
+    expect((await register("1234EXHAUSTD")).status).toBe(403);
+    expect((await register("1234ABCDEFGH")).status).toBe(201);
+    expect(repository.classCodes.get(validHash)?.uses).toBe(1);
+  });
+
+  it("atomically caps concurrent successful registrations", async () => {
+    const hash = createHash("sha256")
+      .update("class-code:1234ABCDEFGH")
+      .digest("hex");
+    repository.classCodes.set(hash, {
+      maximumUses: 5,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, () => register("1234ABCDEFGH")),
+    );
+    expect(responses.filter(({ status }) => status === 201)).toHaveLength(5);
+    expect(repository.classCodes.get(hash)?.uses).toBe(5);
   });
 
   it("registers eight-letter class codes and strips every hyphen", async () => {
@@ -172,6 +234,34 @@ describe("Tapplet API registration and public HTML", () => {
     expect((await register("1234WXYZABCD")).status).toBe(403);
     expect((await register("1234WXYZABCD")).status).toBe(429);
     expect((await register("1234ABCDEFGH")).status).toBe(201);
+  });
+
+  it("caps varied invalid attempts separately without blocking a valid registration", async () => {
+    const correct = createHash("sha256")
+      .update("class-code:1234ABCDEFGH")
+      .digest("hex");
+    repository.classCodes.set(correct, {
+      maximumUses: 1,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: { ...config, dailyNetworkClassCodeFailureLimit: 2 },
+      sources: new MemorySourceStore(),
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    expect((await register("1234NOTFONDA")).status).toBe(403);
+    expect((await register("1234NOTFONDB")).status).toBe(403);
+    const locked = await register("1234NOTFONDC");
+    expect(locked.status).toBe(429);
+    expect(
+      ((await locked.json()) as { error: { code: string } }).error.code,
+    ).toBe("CLASS_CODE_NETWORK_LOCKED");
+    expect((await register("1234ABCDEFGH")).status).toBe(201);
+    expect(repository.classCodes.get(correct)?.uses).toBe(1);
   });
 
   it("injects one scoped base and one report control without changing the source", () => {

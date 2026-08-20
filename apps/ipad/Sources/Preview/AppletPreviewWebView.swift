@@ -1,6 +1,25 @@
 import SwiftUI
 @preconcurrency import WebKit
 
+enum PreviewContentSecurity {
+    static let ruleListIdentifier = "tapplet-preview-offline-v2"
+    static let encodedRules = #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}},{"trigger":{"url-filter":"^(about:blank|tapplet-preview://preview/|data:|blob:)"},"action":{"type":"ignore-previous-rules"}}]"#
+
+    static func allowsNavigation(to url: URL?, isMainFrame: Bool, isFormSubmission: Bool) -> Bool {
+        guard isMainFrame, !isFormSubmission, let url else { return false }
+        return (url.scheme == AssetSchemeHandler.scheme && url.host == "preview")
+            || url.absoluteString == "about:blank"
+    }
+}
+
+enum PreviewProtectionReadiness: Equatable {
+    case compiling
+    case installed
+    case failed(String)
+
+    var permitsLoading: Bool { self == .installed }
+}
+
 enum PreviewLoadState: Equatable {
     case loading
     case ready
@@ -48,6 +67,7 @@ struct AppletPreviewWebView: UIViewRepresentable {
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.allowsBackForwardNavigationGestures = false
         context.coordinator.view = view
+        context.coordinator.installProtection(in: configuration.userContentController)
         context.coordinator.load(source)
         return view
     }
@@ -76,6 +96,7 @@ struct AppletPreviewWebView: UIViewRepresentable {
         private var rejectedRevisionID: String?
         private var restoring = false
         private var snapshottedRevisionIDs: Set<String> = []
+        private var protection: PreviewProtectionReadiness = .compiling
 
         init(state: Binding<PreviewLoadState>, presentableError: Binding<String?>, onSnapshot: ((Data) -> Void)?, assets: [LocalAppletAssetFile]) {
             self.state = state
@@ -88,14 +109,62 @@ struct AppletPreviewWebView: UIViewRepresentable {
             guard source.revision.id != rejectedRevisionID,
                   source.revision.id != requested?.revision.id
             else { return }
+            if case let .failed(message) = protection {
+                state.wrappedValue = .failed(message)
+                presentableError.wrappedValue = message
+                return
+            }
             rejectedRevisionID = nil
             requested = source
             restoring = false
             state.wrappedValue = .loading
+            guard protection.permitsLoading else { return }
+            loadRequestedSource()
+        }
+
+        func installProtection(in userContentController: WKUserContentController) {
+            WKContentRuleListStore.default().compileContentRuleList(
+                forIdentifier: PreviewContentSecurity.ruleListIdentifier,
+                encodedContentRuleList: PreviewContentSecurity.encodedRules
+            ) { [weak self, weak userContentController] ruleList, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    guard let ruleList, error == nil, let userContentController else {
+                        let detail = error?.localizedDescription ?? "WebKit did not return an offline rule list."
+                        let message = "The preview could not be secured and was not opened. \(detail)"
+                        self.protection = .failed(message)
+                        self.state.wrappedValue = .failed(message)
+                        self.presentableError.wrappedValue = message
+                        self.requested = nil
+                        return
+                    }
+                    userContentController.add(ruleList)
+                    self.protection = .installed
+                    self.loadRequestedSource()
+                }
+            }
+        }
+
+        private func loadRequestedSource() {
+            guard protection.permitsLoading, let requested else { return }
             activeNavigation = view?.loadHTMLString(
-                source.html,
+                requested.html,
                 baseURL: AssetSchemeHandler.documentBaseURL
             )
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            let type = navigationAction.navigationType
+            let allowed = PreviewContentSecurity.allowsNavigation(
+                to: navigationAction.request.url,
+                isMainFrame: navigationAction.targetFrame?.isMainFrame == true,
+                isFormSubmission: type == .formSubmitted || type == .formResubmitted
+            )
+            decisionHandler(allowed ? .allow : .cancel)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

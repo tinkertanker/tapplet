@@ -7,6 +7,7 @@ import type {
   PublicationRecord,
   RetrievalEntry,
   RevisionRecord,
+  RegistrationResult,
   StudioRepository,
 } from "./repository";
 import { CURATED_SEED_OWNER, retrievalDescriptor } from "./repository";
@@ -34,11 +35,22 @@ export class MemoryStudioRepository implements StudioRepository {
     for (const k of this.usage.keys())
       if (k.slice(-10) < b) this.usage.delete(k);
   }
-  async consumeClassCode(h: string, n: string) {
+  async consumeRegistration(
+    h: string,
+    n: string,
+    s: string,
+    d: string,
+    l: number,
+  ): Promise<RegistrationResult> {
     const c = this.classCodes.get(h);
-    if (!c || c.expiresAt <= n || c.uses >= c.maximumUses) return false;
+    if (!c || c.expiresAt <= n || c.uses >= c.maximumUses)
+      return "invalid-class-code";
+    const k = `${s}:${d}`,
+      uses = this.usage.get(k) ?? 0;
+    if (uses >= l) return "network-limit";
     c.uses++;
-    return true;
+    this.usage.set(k, uses + 1);
+    return "success";
   }
   async getOwnerTokenVersion(o: string) {
     return this.ownerTokenVersions.get(o) ?? 0;
