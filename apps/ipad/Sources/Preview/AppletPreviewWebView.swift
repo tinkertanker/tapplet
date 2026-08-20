@@ -2,8 +2,8 @@ import SwiftUI
 @preconcurrency import WebKit
 
 enum PreviewContentSecurity {
-    static let ruleListIdentifier = "tapplet-preview-offline-v2"
-    static let encodedRules = #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}},{"trigger":{"url-filter":"^(about:blank|tapplet-preview://preview/|data:|blob:)"},"action":{"type":"ignore-previous-rules"}}]"#
+    static let ruleListIdentifier = "tapplet-preview-offline-v3"
+    static let encodedRules = #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}},{"trigger":{"url-filter":"^about:blank$"},"action":{"type":"ignore-previous-rules"}},{"trigger":{"url-filter":"^tapplet-preview://preview/"},"action":{"type":"ignore-previous-rules"}},{"trigger":{"url-filter":"^data:"},"action":{"type":"ignore-previous-rules"}},{"trigger":{"url-filter":"^blob:"},"action":{"type":"ignore-previous-rules"}}]"#
 
     @MainActor
     static func allowsNavigation(to url: URL?, isMainFrame: Bool, isFormSubmission: Bool) -> Bool {

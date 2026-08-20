@@ -1,4 +1,6 @@
+import SwiftUI
 import XCTest
+@preconcurrency import WebKit
 @testable import Tapplet
 
 final class AppletPreviewSecurityTests: XCTestCase {
@@ -7,20 +9,70 @@ final class AppletPreviewSecurityTests: XCTestCase {
         let rules = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
         let blockTrigger = try XCTUnwrap(rules[0]["trigger"] as? [String: Any])
         let blockAction = try XCTUnwrap(rules[0]["action"] as? [String: Any])
-        let localTrigger = try XCTUnwrap(rules[1]["trigger"] as? [String: Any])
-        let localAction = try XCTUnwrap(rules[1]["action"] as? [String: Any])
 
-        XCTAssertEqual(rules.count, 2)
+        XCTAssertEqual(rules.count, 5)
         XCTAssertEqual(blockTrigger["url-filter"] as? String, ".*")
         XCTAssertEqual(blockAction["type"] as? String, "block")
-        XCTAssertEqual(localAction["type"] as? String, "ignore-previous-rules")
-        let localFilter = try XCTUnwrap(localTrigger["url-filter"] as? String)
-        for scheme in ["about:blank", "tapplet-preview://preview/", "data:", "blob:"] {
-            XCTAssertTrue(localFilter.contains(scheme))
+        let localFilters = try rules.dropFirst().map { rule in
+            let action = try XCTUnwrap(rule["action"] as? [String: Any])
+            XCTAssertEqual(action["type"] as? String, "ignore-previous-rules")
+            let trigger = try XCTUnwrap(rule["trigger"] as? [String: Any])
+            return try XCTUnwrap(trigger["url-filter"] as? String)
         }
+        XCTAssertEqual(Set(localFilters), Set(["^about:blank$", "^tapplet-preview://preview/", "^data:", "^blob:"]))
         for externalScheme in ["http:", "https:", "ws:", "wss:", "ftp:"] {
-            XCTAssertFalse(localFilter.contains(externalScheme))
+            XCTAssertFalse(localFilters.contains(where: { $0.contains(externalScheme) }))
         }
+    }
+
+    @MainActor
+    func testOfflineRuleListCompilesAndBundledPreviewReachesReady() async throws {
+        let storageDirectory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: storageDirectory) }
+        let store = TappletStore(
+            storageDirectory: storageDirectory,
+            bundle: Bundle(for: TappletStore.self)
+        )
+        let source = try XCTUnwrap(store.examples.first?.source)
+        var loadState = PreviewLoadState.loading
+        var presentableError: String?
+        let ready = expectation(description: "Bundled preview reaches ready after offline rules install")
+        let coordinator = AppletPreviewWebView.Coordinator(
+            state: Binding(
+                get: { loadState },
+                set: {
+                    loadState = $0
+                    if $0 == .ready { ready.fulfill() }
+                }
+            ),
+            presentableError: Binding(
+                get: { presentableError },
+                set: { presentableError = $0 }
+            ),
+            onSnapshot: nil,
+            assets: []
+        )
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.setURLSchemeHandler(
+            coordinator.handler,
+            forURLScheme: AssetSchemeHandler.scheme
+        )
+        let webView = WKWebView(
+            frame: CGRect(x: 0, y: 0, width: 1024, height: 768),
+            configuration: configuration
+        )
+        coordinator.view = webView
+        webView.navigationDelegate = coordinator
+
+        coordinator.installProtection(in: configuration.userContentController)
+        coordinator.load(source)
+
+        await fulfillment(of: [ready], timeout: 10)
+        XCTAssertEqual(loadState, .ready)
+        XCTAssertNil(presentableError)
+        withExtendedLifetime(webView) {}
     }
 
     func testProtectionReadinessFailsClosedUntilRuleListIsInstalled() {
