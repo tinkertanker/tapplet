@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateHtmlArtifact } from "./lib/html-artifact.mjs";
+import {
+  liveImageFixture,
+  readLiveImageFixture,
+} from "./lib/live-image-fixture.mjs";
 
 const origin = (
   process.env.STUDIO_LIVE_ORIGIN ??
@@ -184,25 +188,19 @@ async function main() {
       "Head restore",
     );
 
-    const imageBytes = stripPngTextMetadata(
-      readFileSync(
-        resolve(
-          "apps/ipad/Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
-        ),
-      ),
-    );
+    const imageBytes = readLiveImageFixture();
     const uploadedImage = await fetch(`${origin}/v1/assets`, {
       method: "POST",
       headers: {
         Accept: "application/json",
-        "Content-Type": "image/png",
+        "Content-Type": liveImageFixture.mediaType,
         "X-Device-Token": token,
-        "X-Image-Width": "1024",
-        "X-Image-Height": "1024",
+        "X-Image-Width": String(liveImageFixture.width),
+        "X-Image-Height": String(liveImageFixture.height),
         "X-Image-Sha256": createHash("sha256").update(imageBytes).digest("hex"),
-        "X-Image-Alt-Base64": Buffer.from(
-          "The Tapplet app icon showing interactive activity cards.",
-        ).toString("base64"),
+        "X-Image-Alt-Base64": Buffer.from(liveImageFixture.alternativeText).toString(
+          "base64",
+        ),
         "X-Image-Decorative": "false",
       },
       body: Uint8Array.from(imageBytes),
@@ -223,7 +221,7 @@ async function main() {
         {
           method: "POST",
           body: JSON.stringify({
-            instruction: `Add the uploaded image using the exact relative URL assets/${assetId}. Give it the alternative text “The Tapplet app icon showing interactive activity cards.”`,
+            instruction: `Add the uploaded image using the exact relative URL assets/${assetId}. Give it the alternative text “${liveImageFixture.alternativeText}”`,
             expectedHeadRevisionId: returnedToLatest.headRevision.id,
           }),
         },
@@ -398,23 +396,6 @@ async function main() {
       console.error(`Live cleanup warning: ${cleanupErrors.join("; ")}`);
     throw error;
   }
-}
-
-function stripPngTextMetadata(bytes: Buffer): Buffer {
-  const blocked = new Set(["eXIf", "iTXt", "tEXt", "zTXt"]);
-  const chunks = [bytes.subarray(0, 8)];
-  let offset = 8;
-  while (offset + 12 <= bytes.length) {
-    const length = bytes.readUInt32BE(offset);
-    const type = bytes.toString("ascii", offset + 4, offset + 8);
-    const next = offset + 12 + length;
-    if (next > bytes.length)
-      throw new Error("The Tapplet icon is not a valid PNG.");
-    if (!blocked.has(type)) chunks.push(bytes.subarray(offset, next));
-    offset = next;
-    if (type === "IEND") break;
-  }
-  return Buffer.concat(chunks);
 }
 
 void main().catch((error: unknown) => {

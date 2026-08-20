@@ -15,7 +15,7 @@
     "api:test": "npm run test -w @tinkercademy/tapplet-api",
     "api:typecheck": "npm run typecheck -w @tinkercademy/tapplet-api",
     "api:db:migrate:local": "npm run db:migrate:local -w @tinkercademy/tapplet-api",
-    "test": "node --test scripts/class-access.test.mjs scripts/examples.test.mjs evals/model/artifact-eval.test.mjs",
+    "test": "node --test scripts/class-access.test.mjs scripts/examples.test.mjs scripts/live-image-fixture.test.mjs evals/model/artifact-eval.test.mjs",
     "verify": "npm test && npm run api:test && npm run api:typecheck && npm run examples:validate && npm run eval:artifacts",
     "examples:package": "node scripts/examples.mjs package",
     "examples:validate": "node scripts/examples.mjs validate",

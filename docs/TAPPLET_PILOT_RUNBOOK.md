@@ -137,7 +137,9 @@ then unset it; do not rotate it as a routine import step.
    Set `STUDIO_CLASS_ACCESS_CODE` to that code and run
    `npm run verify:live`, then immediately `unset STUDIO_CLASS_ACCESS_CODE`.
    Later runs reuse the ignored, owner-only `.studio-smoke-token` file without
-   consuming another activation.
+   consuming another activation. The flow uploads the dedicated person-free
+   balanced-forces classroom fixture; a rejected safety review still consumes
+   owner and network upload quota and must be included in the postflight audit.
 6. For external TestFlight or App Store review, place a still-valid multi-use
    workshop code in App Review notes. Verify it immediately before submission
    and keep it valid until review has completed; never put it in source control
