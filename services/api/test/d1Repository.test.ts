@@ -48,6 +48,10 @@ function sqliteD1Database() {
   );
   const database = {
     prepare(query: string) {
+      const parameterIndexes = [...query.matchAll(/\?(\d+)/g)].map(
+        (match) => Number(match[1]) - 1,
+      );
+      const sqliteQuery = query.replace(/\?\d+/g, "?");
       let values: Array<string | number | bigint | null> = [];
       const statement = {
         bind(...bound: unknown[]) {
@@ -65,7 +69,15 @@ function sqliteD1Database() {
           return statement;
         },
         async run() {
-          const result = sqlite.prepare(query).run(...values);
+          const positionalValues = parameterIndexes.length
+            ? parameterIndexes.map((index) => {
+                const value = values[index];
+                if (value === undefined)
+                  throw new Error("Missing SQLite test binding");
+                return value;
+              })
+            : values;
+          const result = sqlite.prepare(sqliteQuery).run(...positionalValues);
           return { meta: { changes: Number(result.changes) } };
         },
       };
