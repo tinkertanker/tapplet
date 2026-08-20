@@ -1,5 +1,6 @@
 import { createModelProvider } from "./ai/createProvider";
 import { createStudioApp } from "./app";
+import { FAVICON_SVG, publicationErrorResponse } from "./brand";
 import { CloudflareAssetStore } from "./assets";
 import { readConfig, type StudioEnv } from "./env";
 import { CloudflareImageSafetyInspector } from "./imageSafety";
@@ -75,7 +76,8 @@ export function injectPublicHtml(source: string, slug: string): string {
   const report = `<script ${PUBLIC_REPORT_MARKER}>window.addEventListener('DOMContentLoaded',()=>{const b=document.createElement('button');b.textContent='Report this activity';b.setAttribute('aria-label','Report this activity');Object.assign(b.style,{position:'fixed',right:'12px',bottom:'12px',zIndex:'2147483647'});b.onclick=()=>{const reasons=['inappropriate','personal-data','copyright','accessibility','other'];const reason=prompt('Reason: inappropriate, personal-data, copyright, accessibility, or other','other');if(!reason||!reasons.includes(reason))return;fetch('/v1/publications/${slug}/reports',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reason})}).then(response=>{if(!response.ok)throw new Error();b.textContent='Report sent'}).catch(()=>{b.textContent='Report failed — try again'})};document.body.append(b)})</script>`;
   const withBase = source.replace(
     /<head(\s[^>]*)?>/i,
-    (head) => `${head}<base href="/${slug}/">`,
+    (head) =>
+      `${head}<base href="/${slug}/"><link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
   );
   const structure = withBase.replace(
     /<!--[\s\S]*?-->|<(script|style|textarea|title)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
@@ -94,16 +96,38 @@ async function servePublic(
 ): Promise<Response> {
   if (request.method !== "GET")
     return new Response("Not found.", { status: 404 });
-  const parts = new URL(request.url).pathname.split("/").filter(Boolean);
+  const pathname = new URL(request.url).pathname;
+  if (pathname === "/favicon.svg" || pathname === "/favicon.ico")
+    return new Response(FAVICON_SVG, {
+      headers: {
+        "content-type": "image/svg+xml",
+        "cache-control": "public, max-age=86400",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  const parts = pathname.split("/").filter(Boolean);
   const repository = new D1StudioRepository(env.DB);
   const publication = parts[0]
     ? await repository.getPublication(parts[0])
     : null;
-  if (!publication) return new Response("Applet not found.", { status: 404 });
+  if (!publication)
+    return publicationErrorResponse(
+      404,
+      "No applet lives here",
+      "Check the link with your teacher — this address does not match a shared Tapplet activity.",
+    );
   if (publication.revokedAt)
-    return new Response("This applet was unpublished.", { status: 410 });
+    return publicationErrorResponse(
+      410,
+      "This applet was unpublished",
+      "Your teacher has taken this activity down. Ask them for a fresh link if you still need it.",
+    );
   if (Date.parse(publication.expiresAt) <= Date.now())
-    return new Response("This applet link expired.", { status: 410 });
+    return publicationErrorResponse(
+      410,
+      "This applet link expired",
+      "Shared links only last a while. Ask your teacher to share the activity again.",
+    );
   if (parts[1] === "assets" && parts[2]) {
     if (
       !(await repository.publicationReferencesAsset(publication.slug, parts[2]))
@@ -124,7 +148,12 @@ async function servePublic(
   const source = await new R2SourceStore(env.MEDIA).getSource(
     publication.sourceHash,
   );
-  if (!source) return new Response("Applet unavailable.", { status: 503 });
+  if (!source)
+    return publicationErrorResponse(
+      503,
+      "This applet is taking a break",
+      "Tapplet could not fetch the activity right now. Try again in a moment.",
+    );
   const html = injectPublicHtml(source, publication.slug);
   const headers = new Headers({ "content-type": "text/html; charset=utf-8" });
   headers.set(

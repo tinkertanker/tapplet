@@ -133,6 +133,15 @@ describe("Tapplet API registration and public HTML", () => {
     expect(source).not.toContain("<base");
   });
 
+  it("injects one favicon link into the served head", () => {
+    const source =
+      "<!doctype html><html><head></head><body><main>Widget</main></body></html>";
+    const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
+    expect(served.match(/rel="icon"/g)).toHaveLength(1);
+    expect(served).toContain('href="/favicon.svg"');
+    expect(source).not.toContain("rel=");
+  });
+
   it("injects the report control at the closing body rather than script text", () => {
     const source =
       '<!doctype html><html><head></head><body><script>const closing = "</body>";</script></body></html>';

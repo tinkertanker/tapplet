@@ -24,10 +24,13 @@ struct MyAppletsView: View {
                 }
 
                 if store.projects.isEmpty {
-                    ContentUnavailableView(
-                        "Your applets will appear here",
-                        systemImage: "square.stack.3d.up"
-                    )
+                    ContentUnavailableView {
+                        Label {
+                            Text("Your applets will appear here")
+                        } icon: {
+                            PressedAppletMark(size: 72)
+                        }
+                    }
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 280))], spacing: 18) {
                         ForEach(store.projects.sorted { $0.updatedAt > $1.updatedAt }) { project in
