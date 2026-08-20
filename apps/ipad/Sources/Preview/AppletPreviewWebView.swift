@@ -5,6 +5,7 @@ enum PreviewContentSecurity {
     static let ruleListIdentifier = "tapplet-preview-offline-v2"
     static let encodedRules = #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}},{"trigger":{"url-filter":"^(about:blank|tapplet-preview://preview/|data:|blob:)"},"action":{"type":"ignore-previous-rules"}}]"#
 
+    @MainActor
     static func allowsNavigation(to url: URL?, isMainFrame: Bool, isFormSubmission: Bool) -> Bool {
         guard isMainFrame, !isFormSubmission, let url else { return false }
         return (url.scheme == AssetSchemeHandler.scheme && url.host == "preview")
@@ -156,7 +157,7 @@ struct AppletPreviewWebView: UIViewRepresentable {
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             let type = navigationAction.navigationType
             let allowed = PreviewContentSecurity.allowsNavigation(

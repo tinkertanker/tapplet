@@ -29,6 +29,7 @@ final class AppletPreviewSecurityTests: XCTestCase {
         XCTAssertFalse(PreviewProtectionReadiness.failed("compile failed").permitsLoading)
     }
 
+    @MainActor
     func testNavigationPolicyOnlyAllowsInitialManagedMainFrameNavigation() throws {
         let managed = try XCTUnwrap(URL(string: "tapplet-preview://preview/"))
         let external = try XCTUnwrap(URL(string: "https://example.com/collect"))
