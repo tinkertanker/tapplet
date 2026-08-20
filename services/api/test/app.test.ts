@@ -94,11 +94,12 @@ describe("Tapplet API registration and public HTML", () => {
       uses: 0,
       expiresAt: "2026-08-03T00:00:00Z",
     });
-    for (let use = 0; use < 100; use += 1) {
-      expect(
-        (await register(use === 0 ? "1234-abcd-efgh" : "1234ABCDEFGH")).status,
-      ).toBe(201);
-    }
+    const responses = await Promise.all(
+      Array.from({ length: 100 }, (_, use) =>
+        register(use === 0 ? "1234-abcd-efgh" : "1234ABCDEFGH"),
+      ),
+    );
+    expect(responses.every(({ status }) => status === 201)).toBe(true);
     expect((await register("1234ABCDEFGH")).status).toBe(403);
     expect(repository.classCodes.get(hash)?.uses).toBe(100);
   });
