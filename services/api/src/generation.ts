@@ -13,6 +13,11 @@ export class InvalidModelOutputError extends Error {
     super("Invalid generated HTML");
   }
 }
+export interface RequiredManagedAsset {
+  id: string;
+  alternativeText: string | null;
+  decorative: boolean;
+}
 const MAX_HTML_BYTES = 200_000;
 const URL_ATTRIBUTE =
   /\b(src|href|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
@@ -53,6 +58,21 @@ export function referencedAssetIds(html: string): string[] {
     if (asset?.[1]) ids.push(asset[1]);
   }
   return [...new Set(ids)];
+}
+
+function referencedImageAssetIds(html: string): Set<string> {
+  const ids = new Set<string>(),
+    document = parseHtml(html);
+  function visit(node: DefaultTreeAdapterTypes.Node) {
+    if ("tagName" in node && node.tagName === "img") {
+      const source = node.attrs.find((attribute) => attribute.name === "src")?.value,
+        asset = source && MANAGED_ASSET.exec(source);
+      if (asset?.[1]) ids.add(asset[1]);
+    }
+    if ("childNodes" in node) node.childNodes.forEach(visit);
+  }
+  visit(document);
+  return ids;
 }
 
 function validateScripts(html: string, issues: string[]) {
@@ -214,33 +234,89 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
 }
 function validateCandidate(
   candidate: unknown,
-  requiredAssetIds: string[],
+  requiredAssets: RequiredManagedAsset[],
 ): GeneratedArtifact {
   const artifact = validateHtmlOutput(candidate),
-    referenced = new Set(referencedAssetIds(artifact.html)),
-    missing = [...new Set(requiredAssetIds)].filter((id) => !referenced.has(id));
+    referenced = referencedImageAssetIds(artifact.html),
+    missing = [...new Set(requiredAssets.map((asset) => asset.id))].filter(
+      (id) => !referenced.has(id),
+    );
   if (missing.length)
     throw new InvalidModelOutputError(
       missing.map(
         (id) =>
-          `HTML must reference the required managed image URL assets/${id} in src, href or CSS url().`,
+          `HTML must include an img with the required managed image URL assets/${id}.`,
       ),
     );
   return artifact;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character]!,
+  );
+}
+
+function insertMissingRequiredAssets(
+  artifact: GeneratedArtifact,
+  requiredAssets: RequiredManagedAsset[],
+): GeneratedArtifact {
+  const referenced = referencedImageAssetIds(artifact.html),
+    missing = requiredAssets.filter(
+      (asset, index) =>
+        !referenced.has(asset.id) &&
+        requiredAssets.findIndex((candidate) => candidate.id === asset.id) === index,
+    );
+  if (!missing.length) return artifact;
+  const document = parseHtml(artifact.html, { sourceCodeLocationInfo: true });
+  let bodyEnd: number | undefined;
+  function visit(node: DefaultTreeAdapterTypes.Node) {
+    if ("tagName" in node && node.tagName === "body")
+      bodyEnd = node.sourceCodeLocation?.endTag?.startOffset;
+    if ("childNodes" in node) node.childNodes.forEach(visit);
+  }
+  visit(document);
+  if (bodyEnd === undefined)
+    throw new InvalidModelOutputError([
+      "HTML must have an explicit closing body tag.",
+    ]);
+  const markup = missing
+    .map((asset) => {
+      const alt = asset.decorative
+        ? ""
+        : escapeHtmlAttribute(asset.alternativeText ?? "");
+      return `<figure data-tapplet-managed-image="${asset.id}" style="margin:1rem auto;text-align:center"><img src="assets/${asset.id}" alt="${alt}"${asset.decorative ? ' role="presentation" aria-hidden="true"' : ""} style="max-width:100%;height:auto"></figure>`;
+    })
+    .join("\n");
+  return {
+    ...artifact,
+    html: `${artifact.html.slice(0, bodyEnd)}\n${markup}\n${artifact.html.slice(bodyEnd)}`,
+  };
+}
+
 async function oneRepair(
   provider: ModelProvider,
   candidate: unknown,
-  requiredAssetIds: string[] = [],
+  requiredAssets: RequiredManagedAsset[] = [],
 ): Promise<GeneratedArtifact> {
   try {
-    return validateCandidate(candidate, requiredAssetIds);
+    return validateCandidate(candidate, requiredAssets);
   } catch (error) {
     if (!(error instanceof InvalidModelOutputError)) throw error;
-    return validateCandidate(
+    const repaired = validateHtmlOutput(
       await provider.repair(candidate, error.issues),
-      requiredAssetIds,
+    );
+    return validateCandidate(
+      insertMissingRequiredAssets(repaired, requiredAssets),
+      requiredAssets,
     );
   }
 }
@@ -260,11 +336,11 @@ export async function reviseArtifact(
   card: DesignCard | undefined,
   instruction: string,
   brief: TeacherBrief,
-  requiredAssetIds: string[] = [],
+  requiredAssets: RequiredManagedAsset[] = [],
 ) {
   return oneRepair(
     provider,
     await provider.revise(html, card, instruction, brief),
-    requiredAssetIds,
+    requiredAssets,
   );
 }

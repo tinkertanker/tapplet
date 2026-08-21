@@ -166,18 +166,74 @@ describe("HTML generation contract", () => {
           learningObjective: "Fractions",
           studentAction: "Choose",
         },
-        ["required-image"],
+        [
+          {
+            id: "required-image",
+            alternativeText: "A fraction diagram",
+            decorative: false,
+          },
+        ],
       ),
     ).resolves.toEqual({ html: repaired });
     expect(provider.repair).toHaveBeenCalledWith(
       { html },
       [
-        "HTML must reference the required managed image URL assets/required-image in src, href or CSS url().",
+        "HTML must include an img with the required managed image URL assets/required-image.",
       ],
     );
   });
 
-  it("stops after one repair when a required managed image is still missing", async () => {
+  it.each([
+    html.replace(
+      "<script>",
+      '<script>const fake = \'src="assets/required-image"\';',
+    ),
+    html.replace("Hello", '<!-- <img src="assets/required-image"> -->Hello'),
+    html.replace("Hello", '<a href="assets/required-image">Image</a>Hello'),
+    html.replace(
+      "Hello",
+      '<template><img src="assets/required-image"></template>Hello',
+    ),
+    html.replace(
+      "</style>",
+      ".fake{background:url(assets/required-image)}</style>",
+    ),
+  ])("does not treat non-image asset text as a required image", async (candidate) => {
+    const provider = {
+      name: "fixed",
+      generate: vi.fn(),
+      repair: vi.fn().mockResolvedValueOnce({ html: candidate }),
+      revise: vi.fn().mockResolvedValueOnce({ html: candidate }),
+      moderate: vi.fn(),
+    } as unknown as ModelProvider;
+
+    const revised = await reviseArtifact(
+      provider,
+      html,
+      undefined,
+      "Insert the uploaded image.",
+      {
+        level: "P5",
+        subject: "Maths",
+        learningObjective: "Fractions",
+        studentAction: "Choose",
+      },
+      [
+        {
+          id: "required-image",
+          alternativeText: "A fraction diagram",
+          decorative: false,
+        },
+      ],
+    );
+
+    expect(revised.html).toContain(
+      'data-tapplet-managed-image="required-image"',
+    );
+    expect(revised.html).toContain('src="assets/required-image"');
+  });
+
+  it("inserts a safe fallback after one repair still omits a required image", async () => {
     const provider = {
       name: "fixed",
       generate: vi.fn(),
@@ -186,21 +242,31 @@ describe("HTML generation contract", () => {
       moderate: vi.fn(),
     } as unknown as ModelProvider;
 
-    await expect(
-      reviseArtifact(
-        provider,
-        html,
-        undefined,
-        "Insert the uploaded image.",
+    const revised = await reviseArtifact(
+      provider,
+      html,
+      undefined,
+      "Insert the uploaded image.",
+      {
+        level: "P5",
+        subject: "Maths",
+        learningObjective: "Fractions",
+        studentAction: "Choose",
+      },
+      [
         {
-          level: "P5",
-          subject: "Maths",
-          learningObjective: "Fractions",
-          studentAction: "Choose",
+          id: "required-image",
+          alternativeText: 'A "quoted" <diagram>',
+          decorative: false,
         },
-        ["required-image"],
-      ),
-    ).rejects.toThrow("Invalid generated HTML");
+      ],
+    );
+
+    expect(referencedAssetIds(revised.html)).toContain("required-image");
+    expect(revised.html).toContain(
+      'alt="A &quot;quoted&quot; &lt;diagram&gt;"',
+    );
+    expect(() => validateHtmlOutput(revised)).not.toThrow();
     expect(provider.repair).toHaveBeenCalledOnce();
   });
 

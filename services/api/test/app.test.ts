@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FixtureModelProvider } from "../src/ai/fixtureProvider";
-import type { AssetStore } from "../src/assets";
-import { issueDeviceToken } from "../src/auth";
+import type { AssetStore, StoredAsset } from "../src/assets";
+import { issueDeviceToken, ownerHashFrom } from "../src/auth";
 import { createStudioApp } from "../src/app";
 import { injectPublicHtml } from "../src/index";
 import { MemorySourceStore } from "../src/sourceStore";
@@ -591,6 +591,62 @@ describe("Tapplet API registration and public HTML", () => {
     });
     expect(revise).not.toHaveBeenCalled();
     expect(repository.revisions.size).toBe(1);
+  });
+
+  it("inserts an owned required image when the model repair still omits it", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string };
+      headRevision: { id: string };
+    };
+    const ownerHash = await ownerHashFrom(
+      authenticated("/v1/artifacts"),
+      secret,
+      Date.parse("2026-08-02T00:00:00Z"),
+      repository,
+    );
+    const stored = {
+      record: {
+        id: "required-image",
+        ownerHash,
+        objectKey: "assets/owner/required-image.jpg",
+        contentType: "image/jpeg",
+        byteLength: 3,
+        width: 1,
+        height: 1,
+        sha256: "hash",
+        alternativeText: "A force diagram",
+        decorative: false,
+        createdAt: "2026-08-02T00:00:00Z",
+      },
+      object: {},
+    } as unknown as StoredAsset;
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config,
+      sources,
+      assets: { get: vi.fn().mockResolvedValue(stored) } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const response = await app.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}/revisions`, "POST", {
+        instruction: "Insert the uploaded image.",
+        requiredAssetId: "required-image",
+        expectedHeadRevisionId: first.headRevision.id,
+      }),
+    );
+    const revised = (await response.json()) as { html: string };
+
+    expect(response.status).toBe(201);
+    expect(revised.html).toContain('src="assets/required-image"');
+    expect(revised.html).toContain('alt="A force diagram"');
+    expect(await repository.ownerReferencesAsset(ownerHash, "required-image")).toBe(
+      true,
+    );
   });
 
   it("removes deleted screenshots without racing shared content-addressed sources", async () => {

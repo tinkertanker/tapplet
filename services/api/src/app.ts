@@ -1,6 +1,6 @@
 import type { ModelProvider, TeacherBrief, DesignCard } from "./ai/provider";
 import { ModelProviderError } from "./ai/provider";
-import type { AssetStore, StoredAsset } from "./assets";
+import type { AssetRecord, AssetStore, StoredAsset } from "./assets";
 import {
   DEVICE_TOKEN_RECOVERY_DAYS,
   issueDeviceToken,
@@ -387,6 +387,7 @@ export function createStudioApp(d: Deps) {
     o: string,
     allowReferenced = false,
   ) {
+    const validated: AssetRecord[] = [];
     if (ids.length && !d.assets)
       throw new HttpError(
         503,
@@ -406,7 +407,9 @@ export function createStudioApp(d: Deps) {
           "INVALID_ARTIFACT_ASSET",
           `Asset ${x} is not owned by this device.`,
         );
+      validated.push(a.record);
     }
+    return validated;
   }
   async function assets(html: string, o: string, allowReferenced = false) {
     const ids = referencedAssetIds(html);
@@ -937,8 +940,9 @@ export function createStudioApp(d: Deps) {
             "HEAD_REVISION_CONFLICT",
             "Artifact head changed.",
           );
-        if (requiredAssetId)
-          await validateAssetReferences([requiredAssetId], o);
+        const requiredAssets = requiredAssetId
+          ? await validateAssetReferences([requiredAssetId], o)
+          : [];
         const warnings = advisoryWarnings("prompt", inspectText(instruction));
         await quota(r, o, "generation");
         const current = await d.repository.getRevision(expected),
@@ -955,7 +959,11 @@ export function createStudioApp(d: Deps) {
             design(current),
             instruction,
             JSON.parse(a.generationBrief) as TeacherBrief,
-            requiredAssetId ? [requiredAssetId] : [],
+            requiredAssets.map((asset) => ({
+              id: asset.id,
+              alternativeText: asset.alternativeText,
+              decorative: asset.decorative,
+            })),
           ),
           rid = id(),
           hash = await persist(out.html),
