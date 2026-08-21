@@ -40,12 +40,13 @@ const artifact: ArtifactRecord = {
   updatedAt: revision.createdAt,
 };
 
-function sqliteD1Database() {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(
+function sqliteD1Database(
+  schema =
     "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT);" +
-      "CREATE TABLE generation_usage(owner_hash TEXT NOT NULL,usage_date TEXT NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_hash,usage_date));",
-  );
+    "CREATE TABLE generation_usage(owner_hash TEXT NOT NULL,usage_date TEXT NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_hash,usage_date));",
+) {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(schema);
   const database = {
     prepare(query: string) {
       const parameterIndexes = [...query.matchAll(/\?(\d+)/g)].map(
@@ -77,8 +78,21 @@ function sqliteD1Database() {
                 return value;
               })
             : values;
-          const result = sqlite.prepare(sqliteQuery).run(...positionalValues);
-          return { meta: { changes: Number(result.changes) } };
+          const prepared = sqlite.prepare(sqliteQuery),
+            before = (
+              sqlite.prepare("SELECT total_changes() changes").get() as {
+                changes: number;
+              }
+            ).changes;
+          const results = prepared.columns().length
+            ? prepared.all(...positionalValues)
+            : (prepared.run(...positionalValues), []);
+          const after = (
+            sqlite.prepare("SELECT total_changes() changes").get() as {
+              changes: number;
+            }
+          ).changes;
+          return { results, meta: { changes: after - before } };
         },
       };
       return statement;
@@ -189,39 +203,154 @@ describe("D1StudioRepository conditional revision writes", () => {
 
   it("publishes and updates retrieval in one guarded batch", async () => {
     const sql: string[] = [];
+    const publication = {
+      slug: "new-slug",
+      artifact_id: artifact.id,
+      revision_id: revision.id,
+      owner_hash: artifact.ownerHash,
+      title: artifact.title,
+      source_hash: revision.sourceHash,
+      created_at: revision.createdAt,
+      expires_at: "2026-09-01T00:00:00Z",
+      revoked_at: null,
+    };
+    const retrieval = {
+      artifact_id: artifact.id,
+      revision_id: revision.id,
+      descriptor: "<!doctype html><html></html>",
+      curated: 0,
+      updated_at: revision.createdAt,
+    };
     const database = {
       prepare(text: string) {
         sql.push(text);
         const statement = {
           bind: () => statement,
-          first: () => Promise.resolve(null),
         };
         return statement;
       },
       batch(statements: unknown[]) {
         expect(statements).toHaveLength(2);
         return Promise.resolve([
-          { meta: { changes: 1 } },
-          { meta: { changes: 1 } },
+          { meta: { changes: 1 }, results: [publication] },
+          { meta: { changes: 4 }, results: [retrieval] },
         ]);
       },
     } as unknown as D1Database;
 
-    await new D1StudioRepository(database).publish(
-      "new-slug",
-      artifact,
-      revision,
-      "2026-09-01T00:00:00Z",
-      revision.createdAt,
-      "<!doctype html><html></html>",
-    );
+    await expect(
+      new D1StudioRepository(database).publish(
+        "new-slug",
+        artifact,
+        revision,
+        "2026-09-01T00:00:00Z",
+        revision.createdAt,
+        "<!doctype html><html></html>",
+      ),
+    ).resolves.toMatchObject({
+      slug: "new-slug",
+      artifactId: artifact.id,
+      revisionId: revision.id,
+    });
 
     expect(sql[0]).toContain(
       "ON CONFLICT(artifact_id) WHERE revoked_at IS NULL",
     );
     expect(sql[0]).toContain("head_revision_id=?3");
     expect(sql[0]).toContain("publications.owner_hash=?4");
-    expect(sql[1]).toContain("revision_id=?2 AND revoked_at IS NULL");
+    expect(sql[0]).toContain("RETURNING *");
+    expect(sql[1]).toContain("p.revision_id=?2 AND p.revoked_at IS NULL");
+    expect(sql[1]).toContain("a.head_revision_id=?2");
+    expect(sql[1]).toContain("RETURNING artifact_id,revision_id");
+  });
+
+  it("executes guarded publication and retrieval upserts with FTS triggers", async () => {
+    const { database, sqlite } = sqliteD1Database(
+      "CREATE TABLE artifacts(id TEXT PRIMARY KEY,owner_hash TEXT NOT NULL,title TEXT NOT NULL,head_revision_id TEXT NOT NULL);" +
+        "CREATE TABLE revisions(id TEXT PRIMARY KEY,artifact_id TEXT NOT NULL);" +
+        "CREATE TABLE publications(slug TEXT PRIMARY KEY,artifact_id TEXT NOT NULL,revision_id TEXT NOT NULL,owner_hash TEXT NOT NULL,title TEXT NOT NULL,source_hash TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,revoked_at TEXT);" +
+        "CREATE UNIQUE INDEX publications_one_active ON publications(artifact_id) WHERE revoked_at IS NULL;" +
+        "CREATE TABLE retrieval_entries(artifact_id TEXT PRIMARY KEY,revision_id TEXT NOT NULL,descriptor TEXT NOT NULL,curated INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);" +
+        "CREATE VIRTUAL TABLE retrieval_fts USING fts5(artifact_id UNINDEXED,title,descriptor);" +
+        "CREATE TRIGGER retrieval_ai AFTER INSERT ON retrieval_entries BEGIN INSERT INTO retrieval_fts(artifact_id,title,descriptor) SELECT new.artifact_id,title,new.descriptor FROM artifacts WHERE id=new.artifact_id; END;" +
+        "CREATE TRIGGER retrieval_au AFTER UPDATE ON retrieval_entries BEGIN DELETE FROM retrieval_fts WHERE artifact_id=old.artifact_id; INSERT INTO retrieval_fts(artifact_id,title,descriptor) SELECT new.artifact_id,title,new.descriptor FROM artifacts WHERE id=new.artifact_id; END;",
+    );
+    sqlite
+      .prepare(
+        "INSERT INTO artifacts(id,owner_hash,title,head_revision_id) VALUES(?,?,?,?)",
+      )
+      .run(artifact.id, artifact.ownerHash, artifact.title, revision.id);
+    sqlite
+      .prepare("INSERT INTO revisions(id,artifact_id) VALUES(?,?)")
+      .run(revision.id, artifact.id);
+    const repository = new D1StudioRepository(database),
+      descriptor = "<!doctype html><html></html>";
+
+    await expect(
+      repository.publish(
+        "new-slug",
+        artifact,
+        revision,
+        "2026-09-01T00:00:00Z",
+        revision.createdAt,
+        descriptor,
+      ),
+    ).resolves.toMatchObject({
+      artifactId: artifact.id,
+      revisionId: revision.id,
+    });
+    expect(
+      sqlite
+        .prepare("SELECT descriptor FROM retrieval_fts WHERE artifact_id=?")
+        .get(artifact.id),
+    ).toEqual({ descriptor });
+
+    sqlite
+      .prepare("UPDATE artifacts SET head_revision_id='competing-revision'")
+      .run();
+    await expect(
+      repository.publish(
+        "unused-slug",
+        artifact,
+        revision,
+        "2026-10-01T00:00:00Z",
+        "2026-08-03T00:00:00Z",
+        "stale descriptor",
+      ),
+    ).resolves.toBeNull();
+    expect(
+      sqlite
+        .prepare(
+          "SELECT revision_id,descriptor FROM retrieval_entries WHERE artifact_id=?",
+        )
+        .get(artifact.id),
+    ).toEqual({ revision_id: revision.id, descriptor });
+  });
+
+  it("rejects publish batches that did not return both guarded writes", async () => {
+    const database = {
+      prepare() {
+        const statement = { bind: () => statement };
+        return statement;
+      },
+      batch() {
+        return Promise.resolve([
+          { meta: { changes: 1 }, results: [] },
+          { meta: { changes: 3 }, results: [] },
+        ]);
+      },
+    } as unknown as D1Database;
+
+    await expect(
+      new D1StudioRepository(database).publish(
+        "new-slug",
+        artifact,
+        revision,
+        "2026-09-01T00:00:00Z",
+        revision.createdAt,
+        "<!doctype html><html></html>",
+      ),
+    ).resolves.toBeNull();
   });
 
   it("upserts curated seed metadata, revision, and retrieval atomically", async () => {

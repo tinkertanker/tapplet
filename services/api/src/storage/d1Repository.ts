@@ -496,7 +496,8 @@ FROM artifacts
 WHERE id=?2 AND owner_hash=?4 AND head_revision_id=?3
 ON CONFLICT(artifact_id) WHERE revoked_at IS NULL DO UPDATE SET
   revision_id=?3,title=?5,source_hash=?6,expires_at=?8
-WHERE publications.owner_hash=?4`,
+WHERE publications.owner_hash=?4
+RETURNING *`,
       slug,
       a.id,
       r.id,
@@ -508,10 +509,11 @@ WHERE publications.owner_hash=?4`,
     );
     const retrievalWrite = this.p(
       `INSERT INTO retrieval_entries(artifact_id,revision_id,descriptor,curated,updated_at)
-SELECT ?1,?2,?3,0,?4 FROM publications
-WHERE artifact_id=?1 AND owner_hash=?5 AND revision_id=?2 AND revoked_at IS NULL
+SELECT ?1,?2,?3,0,?4 FROM publications p JOIN artifacts a ON a.id=p.artifact_id
+WHERE p.artifact_id=?1 AND p.owner_hash=?5 AND p.revision_id=?2 AND p.revoked_at IS NULL AND a.owner_hash=?5 AND a.head_revision_id=?2
 ON CONFLICT(artifact_id) DO UPDATE SET
-  revision_id=?2,descriptor=?3,updated_at=?4`,
+  revision_id=?2,descriptor=?3,updated_at=?4
+RETURNING artifact_id,revision_id,descriptor,curated,updated_at`,
       a.id,
       r.id,
       descriptor,
@@ -519,12 +521,33 @@ ON CONFLICT(artifact_id) DO UPDATE SET
       a.ownerHash,
     );
     const result = await this.db.batch([publicationWrite, retrievalWrite]);
+    const publicationRows = result[0]?.results as Row[] | undefined,
+      retrievalRows = result[1]?.results as Row[] | undefined,
+      publicationRow = publicationRows?.[0],
+      retrieval = retrievalRows?.[0];
     if (
-      (result[0]?.meta.changes ?? 0) !== 1 ||
-      (result[1]?.meta.changes ?? 0) !== 1
+      publicationRows?.length !== 1 ||
+      retrievalRows?.length !== 1 ||
+      !publicationRow ||
+      !retrieval
     )
       return null;
-    return this.getActivePublicationForArtifact(a.id, a.ownerHash);
+    const publication = pub(publicationRow);
+    if (
+      publication.artifactId !== a.id ||
+      publication.revisionId !== r.id ||
+      publication.ownerHash !== a.ownerHash ||
+      publication.title !== a.title ||
+      publication.sourceHash !== r.sourceHash ||
+      publication.expiresAt !== e ||
+      publication.revokedAt !== null ||
+      retrieval.artifact_id !== a.id ||
+      retrieval.revision_id !== r.id ||
+      retrieval.descriptor !== descriptor ||
+      retrieval.updated_at !== n
+    )
+      return null;
+    return publication;
   }
   async getActivePublicationForArtifact(id: string, o: string) {
     const r = await this.p(
