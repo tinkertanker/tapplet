@@ -64,8 +64,8 @@ by the default `muse-spark-1.2-contributor` model. For OpenRouter, use an
 OpenRouter model slug. Provider credentials are Wrangler secrets in deployed
 environments; never put them in
 `wrangler.jsonc`. Tapplet requests maximum reasoning for generation, revision
-and repair (`max` on OpenCode chat completions and `xhigh` on Muse Spark and
-OpenRouter); this can increase
+and repair (`max` on OpenCode's DeepSeek chat models and `xhigh` on Muse Spark
+and OpenRouter); this can increase
 latency and token cost. Uploaded-image safety review uses `gpt-5.6-luna`
 through OpenCode Go with reasoning disabled and requires `OPENCODE_API_KEY`.
 

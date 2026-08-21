@@ -47,10 +47,7 @@ export function createModelProvider(env: StudioEnv): ModelProvider {
       "opencode",
       "OPENCODE_API_KEY",
       undefined,
-      {
-        thinking: { type: "enabled" },
-        reasoning_effort: "max",
-      },
+      openCodeChatReasoningOptions(env.AI_MODEL),
     );
   }
 
@@ -64,10 +61,7 @@ export function createModelProvider(env: StudioEnv): ModelProvider {
       undefined,
       env.AI_MODEL === "muse-spark-1.2-contributor"
         ? { reasoning: { effort: "xhigh" } }
-        : {
-            thinking: { type: "enabled" },
-            reasoning_effort: "max",
-          },
+        : openCodeChatReasoningOptions(env.AI_MODEL),
       env.AI_MODEL === "muse-spark-1.2-contributor"
         ? "responses"
         : "chat-completions",
@@ -97,6 +91,16 @@ export function createModelProvider(env: StudioEnv): ModelProvider {
   return new UnavailableModelProvider(
     `Unsupported AI provider: ${env.AI_PROVIDER}`,
   );
+}
+
+function openCodeChatReasoningOptions(
+  model: string,
+): Readonly<Record<string, unknown>> | undefined {
+  if (!model.startsWith("deepseek-")) return undefined;
+  return {
+    thinking: { type: "enabled" },
+    reasoning_effort: "max",
+  };
 }
 
 function openAiCompatibleProvider(
