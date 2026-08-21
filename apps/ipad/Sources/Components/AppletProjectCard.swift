@@ -60,6 +60,14 @@ struct AppletProjectCard: View {
             minHeight: dynamicTypeSize.isAccessibilitySize ? nil : 250,
             alignment: .leading
         )
+        .background {
+            Image(subjectBackgroundImageName)
+                .resizable()
+                .scaledToFill()
+                .opacity(0.15)
+                .accessibilityHidden(true)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .tappletCard()
     }
 
@@ -78,6 +86,7 @@ struct AppletProjectCard: View {
             .frame(maxWidth: expanded ? .infinity : nil)
         }
         .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.roundedRectangle(radius: TappletTheme.actionCornerRadius))
         .controlSize(.large)
         .disabled(primaryIsDisabled || primaryIsLoading)
         .accessibilityHint(primaryAccessibilityHint ?? "")
@@ -116,5 +125,18 @@ struct AppletProjectCard: View {
             .replacingOccurrences(of: "-", with: " ")
             .replacingOccurrences(of: "_", with: " ")
             .capitalized
+    }
+
+    private var subjectBackgroundImageName: String {
+        switch project.artifact.subject?.lowercased() {
+        case "mathematics": "SubjectMathematicsBackground"
+        case "science": "SubjectScienceBackground"
+        case "english": "SubjectEnglishBackground"
+        case "humanities": "SubjectHumanitiesBackground"
+        case "civics": "SubjectCivicsBackground"
+        case "languages": "SubjectLanguagesBackground"
+        case "other", nil: "SubjectClassroomBackground"
+        default: "SubjectOtherBackground"
+        }
     }
 }
