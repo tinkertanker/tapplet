@@ -1,14 +1,15 @@
 # Tapplet Studio design guide
 
-This guide currently defines only Tapplet Studio's first-party colour system. Layout,
-typography, motion and illustration rules have not been standardised here yet.
-Follow native iPad patterns and nearby components for those decisions rather
-than treating this document as a complete design system.
+This guide defines Tapplet Studio's first-party colour system and action-button
+shape. Layout, typography, motion and illustration rules have not been
+standardised here yet. Follow native iPad patterns and nearby components for
+those decisions rather than treating this document as a complete design system.
 
 ## Scope
 
 These colours apply to the SwiftUI app chrome: navigation, buttons, filters,
-forms, cards, status and feedback. Their source of truth is
+forms, cards, status and feedback. The shared corner radius applies specifically
+to first-party primary and secondary action buttons. Their source of truth is
 `apps/ipad/Sources/Design/TappletTheme.swift`; the asset-catalog `AccentColor`
 must match the primary action accent.
 
@@ -61,6 +62,9 @@ blue within its own isolated design.
 - Use `TappletSecondaryButtonStyle` for explicit secondary actions. It renders
   near-black text on warm greige rather than asking SwiftUI to derive a pale
   coral fill from the global tint.
+- Primary and secondary action buttons use the shared 12-point rounded rectangle
+  defined by `TappletTheme.actionCornerRadius`. Reserve capsules for compact
+  filter and suggestion pills rather than mixing the two shapes in an action group.
 - Plain actions and links may use `accent`. Do not fill every available action;
   hierarchy comes from reserving the solid accent for the productive next step.
 - Destructive controls must use a destructive role, explicit wording and an

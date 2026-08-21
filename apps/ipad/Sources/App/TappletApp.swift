@@ -8,6 +8,7 @@ struct TappletApp: App {
         WindowGroup {
             TappletRootView(store: store)
                 .tint(TappletTheme.accent)
+                .buttonBorderShape(.roundedRectangle(radius: TappletTheme.actionCornerRadius))
                 .preferredColorScheme(.light)
         }
     }

@@ -17,6 +17,7 @@ enum TappletTheme {
     static let ink = Color(red: 23 / 255, green: 23 / 255, blue: 24 / 255)
     static let mutedInk = Color(red: 111 / 255, green: 109 / 255, blue: 103 / 255)
     static let border = Color(red: 223 / 255, green: 222 / 255, blue: 218 / 255)
+    static let actionCornerRadius: CGFloat = 12
 
     enum Typography {
         static let display = Font.system(.largeTitle, design: .rounded, weight: .bold)
@@ -56,7 +57,7 @@ struct TappletSecondaryButtonStyle: ButtonStyle {
     private var shape: AnyShape {
         switch borderShape {
         case .roundedRectangle:
-            AnyShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            AnyShape(RoundedRectangle(cornerRadius: TappletTheme.actionCornerRadius, style: .continuous))
         case .capsule:
             AnyShape(Capsule())
         }
