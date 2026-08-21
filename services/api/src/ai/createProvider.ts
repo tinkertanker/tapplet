@@ -30,19 +30,99 @@ export function createModelProvider(env: StudioEnv): ModelProvider {
   if (env.AI_PROVIDER === "fixture") return new FixtureModelProvider();
 
   if (env.AI_PROVIDER === "openai-compatible") {
-    if (!env.AI_API_KEY) {
-      return new UnavailableModelProvider(
-        "The configured model provider has no API key.",
-      );
-    }
-    return new OpenAiCompatibleProvider({
-      baseUrl: env.AI_BASE_URL,
-      apiKey: env.AI_API_KEY,
-      model: env.AI_MODEL,
-    });
+    return openAiCompatibleProvider(
+      env,
+      env.AI_BASE_URL,
+      env.AI_API_KEY,
+      "openai-compatible",
+      "AI_API_KEY",
+    );
+  }
+
+  if (env.AI_PROVIDER === "opencode") {
+    return openAiCompatibleProvider(
+      env,
+      "https://opencode.ai/zen/v1",
+      env.OPENCODE_API_KEY,
+      "opencode",
+      "OPENCODE_API_KEY",
+      undefined,
+      {
+        thinking: { type: "enabled" },
+        reasoning_effort: "max",
+      },
+    );
+  }
+
+  if (env.AI_PROVIDER === "opencode-go") {
+    return openAiCompatibleProvider(
+      env,
+      "https://opencode.ai/zen/go/v1",
+      env.OPENCODE_API_KEY,
+      "opencode-go",
+      "OPENCODE_API_KEY",
+      undefined,
+      env.AI_MODEL === "muse-spark-1.2-contributor"
+        ? { reasoning: { effort: "xhigh" } }
+        : {
+            thinking: { type: "enabled" },
+            reasoning_effort: "max",
+          },
+      env.AI_MODEL === "muse-spark-1.2-contributor"
+        ? "responses"
+        : "chat-completions",
+      env.AI_MODEL === "muse-spark-1.2-contributor"
+        ? { reasoning: { effort: "minimal" } }
+        : undefined,
+    );
+  }
+
+  if (env.AI_PROVIDER === "openrouter") {
+    return openAiCompatibleProvider(
+      env,
+      "https://openrouter.ai/api/v1",
+      env.OPENROUTER_API_KEY,
+      "openrouter",
+      "OPENROUTER_API_KEY",
+      {
+        "HTTP-Referer": env.PUBLIC_PLAYER_ORIGIN,
+        "X-OpenRouter-Title": "Tapplet Studio",
+      },
+      {
+        reasoning: { effort: "xhigh", exclude: true },
+      },
+    );
   }
 
   return new UnavailableModelProvider(
     `Unsupported AI provider: ${env.AI_PROVIDER}`,
   );
+}
+
+function openAiCompatibleProvider(
+  env: StudioEnv,
+  baseUrl: string,
+  apiKey: string | undefined,
+  providerName: string,
+  apiKeyName: string,
+  headers?: Readonly<Record<string, string>>,
+  reasoningOptions?: Readonly<Record<string, unknown>>,
+  api?: "chat-completions" | "responses",
+  moderationReasoningOptions?: Readonly<Record<string, unknown>>,
+): ModelProvider {
+  if (!apiKey) {
+    return new UnavailableModelProvider(
+      `The configured model provider has no ${apiKeyName}.`,
+    );
+  }
+  return new OpenAiCompatibleProvider({
+    baseUrl,
+    apiKey,
+    model: env.AI_MODEL,
+    ...(api ? { api } : {}),
+    providerName,
+    ...(headers ? { headers } : {}),
+    ...(reasoningOptions ? { reasoningOptions } : {}),
+    ...(moderationReasoningOptions ? { moderationReasoningOptions } : {}),
+  });
 }

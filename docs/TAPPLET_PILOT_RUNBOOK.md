@@ -132,7 +132,9 @@ them.
    need to register again. If no artifact or publication can identify the iPad's
    owner, per-owner revocation is not possible; global
    `DEVICE_TOKEN_SIGNING_SECRET` rotation remains the last resort and invalidates
-   every pilot iPad. Confirm `AI_API_KEY` is also configured.
+   every pilot iPad. Confirm the active provider credential (`AI_API_KEY`,
+   `OPENCODE_API_KEY`, or `OPENROUTER_API_KEY`) is configured. Also confirm
+   `OPENCODE_API_KEY` is configured for uploaded-image safety review.
 4. Provision one shared code for each class with an explicit reviewed expiry:
    `npm run class-access:provision -- 1234 30 2026-08-24T00:00:00.000Z`,
    replacing every example argument (including the expiry) with workshop
@@ -245,7 +247,8 @@ one is current.
 ## Incident and rollback
 
 - To stop new AI generation while keeping student links available, remove or
-  rotate `AI_API_KEY`; generation will fail closed while stored HTML
+  rotate the active provider credential (`AI_API_KEY`, `OPENCODE_API_KEY`, or
+  `OPENROUTER_API_KEY`); generation will fail closed while stored HTML
   publications remain readable. Publication review outages are warning-only,
   so revoke affected links separately if new publishing must also stop.
 - To remove one unsafe tapplet, revoke only its validated slug as above.

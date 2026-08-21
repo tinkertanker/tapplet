@@ -17,26 +17,55 @@ export interface OpenAiCompatibleProviderOptions {
   baseUrl: string;
   apiKey: string;
   model: string;
+  api?: "chat-completions" | "responses";
+  providerName?: string;
+  headers?: Readonly<Record<string, string>>;
+  reasoningOptions?: Readonly<Record<string, unknown>>;
+  moderationReasoningOptions?: Readonly<Record<string, unknown>>;
   fetch?: typeof fetch;
 }
 export class OpenAiCompatibleProvider implements ModelProvider {
   readonly name: string;
   private f: typeof fetch;
   constructor(private o: OpenAiCompatibleProviderOptions) {
-    this.name = `openai-compatible:${o.model}`;
+    this.name = `${o.providerName ?? "openai-compatible"}:${o.model}`;
     this.f = o.fetch ?? globalThis.fetch.bind(globalThis);
   }
   generate(b: TeacherBrief, e: Exemplar[]) {
-    return this.complete(SYSTEM_PROMPT, generationPrompt(b, e), 32000);
+    return this.complete(
+      SYSTEM_PROMPT,
+      generationPrompt(b, e),
+      32000,
+      false,
+      this.o.reasoningOptions,
+    );
   }
   revise(h: string, c: DesignCard | undefined, i: string, b: TeacherBrief) {
-    return this.complete(SYSTEM_PROMPT, revisionPrompt(h, c, i, b), 32000);
+    return this.complete(
+      SYSTEM_PROMPT,
+      revisionPrompt(h, c, i, b),
+      32000,
+      false,
+      this.o.reasoningOptions,
+    );
   }
   repair(c: unknown, i: string[]) {
-    return this.complete(SYSTEM_PROMPT, repairPrompt(c, i), 32000);
+    return this.complete(
+      SYSTEM_PROMPT,
+      repairPrompt(c, i),
+      32000,
+      false,
+      this.o.reasoningOptions,
+    );
   }
   async moderate(html: string): Promise<ModerationDecision> {
-    const r = await this.complete(MODERATION_SYSTEM_PROMPT, html, 500, true);
+    const r = await this.complete(
+      MODERATION_SYSTEM_PROMPT,
+      html,
+      500,
+      true,
+      this.o.moderationReasoningOptions,
+    );
     if (
       !r ||
       typeof r !== "object" ||
@@ -54,30 +83,45 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     user: string,
     max_tokens: number,
     requireJson = false,
+    reasoningOptions?: Readonly<Record<string, unknown>>,
   ): Promise<unknown> {
+    const responsesApi = this.o.api === "responses";
     let response: Response;
     try {
       response = await this.f(
-        `${this.o.baseUrl.replace(/\/$/, "")}/chat/completions`,
+        `${this.o.baseUrl.replace(/\/$/, "")}/${responsesApi ? "responses" : "chat/completions"}`,
         {
           method: "POST",
           headers: {
             authorization: `Bearer ${this.o.apiKey}`,
             "content-type": "application/json",
+            ...this.o.headers,
           },
-          body: JSON.stringify({
-            model: this.o.model,
-            messages: [
-              { role: "system", content: system },
-              { role: "user", content: user },
-            ],
-            response_format: { type: "json_object" },
-            max_tokens,
-            temperature: 0.2,
-            ...(new URL(this.o.baseUrl).hostname === "api.deepseek.com"
-              ? { thinking: { type: "disabled" } }
-              : {}),
-          }),
+          body: JSON.stringify(
+            responsesApi
+              ? {
+                  model: this.o.model,
+                  instructions: system,
+                  input: user,
+                  text: { format: { type: "json_object" } },
+                  max_output_tokens: max_tokens,
+                  ...reasoningOptions,
+                }
+              : {
+                  model: this.o.model,
+                  messages: [
+                    { role: "system", content: system },
+                    { role: "user", content: user },
+                  ],
+                  response_format: { type: "json_object" },
+                  max_tokens,
+                  temperature: 0.2,
+                  ...(new URL(this.o.baseUrl).hostname === "api.deepseek.com"
+                    ? { thinking: { type: "disabled" } }
+                    : {}),
+                  ...reasoningOptions,
+                },
+          ),
           signal: AbortSignal.timeout(45000),
         },
       );
@@ -89,6 +133,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     }
     const body = (await response.json().catch(() => null)) as {
       choices?: { message?: { content?: string } }[];
+      output?: { content?: { type?: string; text?: string }[] }[];
       error?: { message?: string };
     } | null;
     if (!response.ok)
@@ -96,7 +141,13 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         body?.error?.message ?? `HTTP ${response.status}`,
         response.status === 429 || response.status >= 500,
       );
-    const text = body?.choices?.[0]?.message?.content;
+    const text = responsesApi
+      ? body?.output
+          ?.flatMap((item) => item.content ?? [])
+          .filter((item) => item.type === "output_text" && item.text)
+          .map((item) => item.text)
+          .join("")
+      : body?.choices?.[0]?.message?.content;
     if (!text) throw new ModelProviderError("No model output", true);
     try {
       return JSON.parse(text);

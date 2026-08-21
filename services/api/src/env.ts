@@ -1,12 +1,14 @@
 export interface StudioEnv {
   DB: D1Database;
   MEDIA: R2Bucket;
-  AI: Ai;
   IMAGES: ImagesBinding;
   AI_PROVIDER: string;
   AI_MODEL: string;
   AI_BASE_URL: string;
   AI_API_KEY?: string;
+  OPENCODE_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
+  IMAGE_SAFETY_MODEL: string;
   DEVICE_TOKEN_SIGNING_SECRET?: string;
   STUDIO_SEED_IMPORT_TOKEN?: string;
   PUBLIC_PLAYER_ORIGIN: string;

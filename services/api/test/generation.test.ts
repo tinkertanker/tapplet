@@ -395,5 +395,57 @@ describe("HTML generation contract", () => {
       [],
     );
     expect(body).not.toHaveProperty("thinking");
+    expect(body).not.toHaveProperty("reasoning");
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("does not spend the moderation response budget on reasoning", async () => {
+    let body: Record<string, unknown> | undefined;
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "secret",
+      model: "model",
+      reasoningOptions: {
+        reasoning: { effort: "xhigh", exclude: true },
+      },
+      fetch: vi.fn(async (_url, init) => {
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ safe: true, categories: [] }),
+              },
+            },
+          ],
+        });
+      }),
+    });
+
+    await provider.moderate(html);
+
+    expect(body).not.toHaveProperty("reasoning");
+  });
+
+  it("combines split Responses API output text", async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "secret",
+      model: "model",
+      api: "responses",
+      fetch: vi.fn(async () => Response.json({
+        output: [
+          { content: [{ type: "output_text", text: '{"html":' }] },
+          { content: [{ type: "output_text", text: JSON.stringify(html) + "}" }] },
+        ],
+      })),
+    });
+
+    await expect(provider.generate({
+      level: "P5",
+      subject: "Maths",
+      learningObjective: "Fractions",
+      studentAction: "Choose",
+    }, [])).resolves.toEqual({ html });
   });
 });

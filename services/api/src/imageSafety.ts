@@ -7,19 +7,12 @@ export type ImageSafetyReview =
   | { status: 'flagged'; reason?: string }
   | { status: 'unavailable' };
 
-interface WorkersAIImageBinding {
-  run(model: string, input: Record<string, unknown>): Promise<unknown>;
+interface OpenCodeGoImageSafetyInspectorOptions {
+  apiKey: string;
+  model: string;
+  fetch?: typeof fetch;
 }
 
-interface VisionAnswer {
-  answer?: string;
-}
-
-interface WorkersAIEnvelope {
-  result?: VisionAnswer;
-}
-
-const MODEL = '@cf/moondream/moondream3.1-9B-A2B';
 const QUESTION = `Classify this teacher-uploaded classroom image.
 Reply on the first line with exactly SAFE or UNSAFE, then one short reason.
 Mark UNSAFE if it contains any visible person or face, nudity or sexual content, graphic injury,
@@ -27,20 +20,38 @@ weapons or illegal drugs, hateful symbols, or visible personal information such 
 email address, phone number, identity number or class list.
 Ordinary diagrams, worksheets, teacher sketches and logos are SAFE when none of those are present.`;
 
-export class CloudflareImageSafetyInspector implements ImageSafetyInspector {
-  constructor(private readonly ai: WorkersAIImageBinding) {}
+export class OpenCodeGoImageSafetyInspector implements ImageSafetyInspector {
+  private readonly request: typeof fetch;
+
+  constructor(private readonly options: OpenCodeGoImageSafetyInspectorOptions) {
+    this.request = options.fetch ?? globalThis.fetch.bind(globalThis);
+  }
 
   async inspect(bytes: Uint8Array, mediaType: string): Promise<ImageSafetyReview> {
-    let result: unknown;
+    let response: Response;
     try {
-      result = await this.ai.run(MODEL, {
-        task: 'query',
-        image: `data:${mediaType};base64,${base64(bytes)}`,
-        question: QUESTION,
-        reasoning: false,
-        temperature: 0,
-        max_tokens: 80,
-        stream: false,
+      response = await this.request('https://opencode.ai/zen/go/v1/responses', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.options.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.options.model,
+          input: [{
+            role: 'user',
+            content: [
+              { type: 'input_text', text: QUESTION },
+              {
+                type: 'input_image',
+                image_url: `data:${mediaType};base64,${base64(bytes)}`,
+              },
+            ],
+          }],
+          reasoning: { effort: 'none' },
+          max_output_tokens: 500,
+        }),
+        signal: AbortSignal.timeout(45_000),
       });
     } catch (error) {
       const diagnostic = error instanceof Error
@@ -50,12 +61,22 @@ export class CloudflareImageSafetyInspector implements ImageSafetyInspector {
       return { status: 'unavailable' };
     }
 
-    const answer = result !== null && typeof result === 'object'
-      ? (
-          (result as VisionAnswer).answer ??
-          (result as WorkersAIEnvelope).result?.answer
-        )?.trim()
-      : undefined;
+    const result = await response.json().catch(() => null) as {
+      output?: { content?: { type?: string; text?: string }[] }[];
+      error?: { message?: string };
+    } | null;
+    if (!response.ok) {
+      console.error(
+        `Image safety review failed: ${result?.error?.message ?? `HTTP ${response.status}`}`,
+      );
+      return { status: 'unavailable' };
+    }
+    const answer = result?.output
+      ?.flatMap((item) => item.content ?? [])
+      .filter((item) => item.type === 'output_text' && item.text)
+      .map((item) => item.text)
+      .join('')
+      .trim();
     if (!answer) {
       console.error(`Image safety review returned no answer: ${serialiseDiagnostic(result)}`);
       return { status: 'unavailable' };

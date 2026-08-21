@@ -3,7 +3,7 @@ import { createStudioApp } from "./app";
 import { FAVICON_SVG, publicationErrorResponse } from "./brand";
 import { CloudflareAssetStore } from "./assets";
 import { readConfig, type StudioEnv } from "./env";
-import { CloudflareImageSafetyInspector } from "./imageSafety";
+import { OpenCodeGoImageSafetyInspector } from "./imageSafety";
 import { CloudflareImageNormalizer } from "./imageNormalizer";
 import { D1StudioRepository } from "./storage/d1Repository";
 import { cleanupArtifactStorage, R2SourceStore } from "./sourceStore";
@@ -34,7 +34,12 @@ export default {
         env.DB,
         env.MEDIA,
         new CloudflareImageNormalizer(env.IMAGES),
-        new CloudflareImageSafetyInspector(env.AI),
+        env.OPENCODE_API_KEY
+          ? new OpenCodeGoImageSafetyInspector({
+              apiKey: env.OPENCODE_API_KEY,
+              model: env.IMAGE_SAFETY_MODEL,
+            })
+          : undefined,
       ),
     }).fetch(request);
   },

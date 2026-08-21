@@ -47,6 +47,28 @@ npm run api:db:migrate:local
 npm run api:dev
 ```
 
+The API selects its text model with `AI_PROVIDER` and `AI_MODEL`. Supported
+providers are:
+
+| `AI_PROVIDER` | Credential | Endpoint |
+| --- | --- | --- |
+| `openai-compatible` | `AI_API_KEY` | `AI_BASE_URL` |
+| `opencode` | `OPENCODE_API_KEY` | OpenCode Zen |
+| `opencode-go` | `OPENCODE_API_KEY` | OpenCode Go |
+| `openrouter` | `OPENROUTER_API_KEY` | OpenRouter |
+| `fixture` | none | deterministic local fixture |
+
+For OpenCode Zen or Go, use a model ID listed in the provider's endpoint table;
+Tapplet supports OpenAI-compatible chat completions and the Responses API used
+by the default `muse-spark-1.2-contributor` model. For OpenRouter, use an
+OpenRouter model slug. Provider credentials are Wrangler secrets in deployed
+environments; never put them in
+`wrangler.jsonc`. Tapplet requests maximum reasoning for generation, revision
+and repair (`max` on OpenCode chat completions and `xhigh` on Muse Spark and
+OpenRouter); this can increase
+latency and token cost. Uploaded-image safety review uses `gpt-5.6-luna`
+through OpenCode Go with reasoning disabled and requires `OPENCODE_API_KEY`.
+
 Useful commands are `api:dev`, `api:build`, `api:test`, `api:typecheck`, `api:db:migrate:local`, `examples:validate`, `examples:package`, `examples:import`, `eval:artifacts`, `eval:model`, `eval:model-moderation`, `verify:live`, and `class-access:provision`.
 
 Run all offline repository verification with:
