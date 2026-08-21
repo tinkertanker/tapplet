@@ -27,6 +27,32 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSuccessfulGenerationPresentsAdvisoryWithoutDiscardingTheProject() async throws {
+        let generated = makeProject(revisionID: "r1", html: "<html><h1>Generated</h1></html>")
+        let warning = AdvisoryWarning(
+            source: "prompt",
+            code: "POSSIBLE_EMAIL",
+            message: "AI review flagged a possible email address.",
+            categories: ["personal information"]
+        )
+        let api = ArtifactAPIStub(generated: generated, revised: generated, warnings: [warning])
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        var brief = GuidedBriefDraft()
+        brief.learningObjective = "Explain balanced forces"
+        brief.studentAction = "Choose and explain"
+
+        let project = try await store.createApprovedBrief(brief)
+
+        XCTAssertEqual(project.id, generated.id)
+        XCTAssertEqual(store.projects.first?.id, generated.id)
+        XCTAssertEqual(store.advisoryNotice, warning.message)
+    }
+
+    @MainActor
     func testStarterPlanPrefillsBriefAndPinsExampleRevision() async throws {
         let directory = temporaryDirectory()
         let generated = makeProject(revisionID: "r1", html: "<html><h1>Generated</h1></html>")
@@ -92,6 +118,101 @@ final class TappletStoreTests: XCTestCase {
         XCTAssertEqual(request?.instruction, "Use larger labels")
         XCTAssertEqual(request?.expectedHeadRevisionID, "r1")
         XCTAssertEqual(store.projects.first?.source.html, revised.source.html)
+    }
+
+    @MainActor
+    func testSuccessfulRefinementPresentsAdvisoryAndKeepsTheRevisedProject() async throws {
+        let original = makeProject(revisionID: "r1", html: "<html>Original</html>")
+        let revised = makeProject(
+            revisionID: "r2",
+            parentRevisionID: "r1",
+            html: "<html>Revised</html>"
+        )
+        let warning = AdvisoryWarning(
+            source: "prompt",
+            code: "POSSIBLE_EMAIL",
+            message: "AI review flagged a possible email address.",
+            categories: ["personal information"]
+        )
+        let api = ArtifactAPIStub(generated: original, revised: revised, warnings: [warning])
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        var brief = GuidedBriefDraft()
+        brief.learningObjective = "Forces"
+        brief.studentAction = "Choose"
+        _ = try await store.createApprovedBrief(brief)
+        store.advisoryNotice = nil
+
+        let warnings = try await store.refine("Use larger labels", projectID: original.id)
+
+        XCTAssertEqual(warnings, [warning])
+        XCTAssertEqual(store.projects.first?.source.html, revised.source.html)
+        XCTAssertEqual(store.advisoryNotice, warning.message)
+    }
+
+    @MainActor
+    func testTechnicalRefinementFailurePreservesTheExistingAdvisory() async throws {
+        let project = makeProject(revisionID: "r1", html: "<html>Original</html>")
+        let warning = AdvisoryWarning(
+            source: "prompt",
+            code: "POSSIBLE_EMAIL",
+            message: "AI review flagged a possible email address.",
+            categories: nil
+        )
+        let api = ArtifactAPIStub(
+            generated: project,
+            revised: project,
+            revisionError: .transport("offline"),
+            warnings: [warning]
+        )
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        var brief = GuidedBriefDraft()
+        brief.learningObjective = "Forces"
+        brief.studentAction = "Choose"
+        _ = try await store.createApprovedBrief(brief)
+
+        do {
+            _ = try await store.refine("Use larger labels", projectID: project.id)
+            XCTFail("Expected the technical failure to remain blocking")
+        } catch {}
+
+        XCTAssertEqual(store.projects.first?.source.html, project.source.html)
+        XCTAssertEqual(store.advisoryNotice, warning.message)
+    }
+
+    @MainActor
+    func testSuccessfulPublishKeepsThePublicationAndPresentsItsAdvisory() async throws {
+        let project = makeProject(revisionID: "r1", html: "<html>Original</html>")
+        let warning = AdvisoryWarning(
+            source: "publication",
+            code: "AI_CONTENT_REVIEW_FLAGGED",
+            message: "AI review flagged content that may need attention.",
+            categories: nil
+        )
+        let api = ArtifactAPIStub(generated: project, revised: project, warnings: [warning])
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        var brief = GuidedBriefDraft()
+        brief.learningObjective = "Forces"
+        brief.studentAction = "Choose"
+        _ = try await store.createApprovedBrief(brief)
+        store.advisoryNotice = nil
+
+        let publication = try await store.publish(projectID: project.id)
+
+        XCTAssertEqual(publication.slug, "class")
+        XCTAssertEqual(store.projects.first?.artifact.publication?.slug, publication.slug)
+        XCTAssertEqual(store.advisoryNotice, warning.message)
     }
 
     @MainActor
@@ -398,6 +519,8 @@ private actor ArtifactAPIStub: TappletAPI {
     let listedArtifacts: [Artifact]
     let artifactErrors: [String: TappletAPIError]
     let deleteError: TappletAPIError?
+    let revisionError: TappletAPIError?
+    let warnings: [AdvisoryWarning]
     private(set) var lastGenerationRequest: GuidedGenerationRequest?
     private(set) var lastRevisionRequest: RevisionRequest?
     private(set) var lastRemixRequest: RemixRequest?
@@ -408,7 +531,9 @@ private actor ArtifactAPIStub: TappletAPI {
         hasCredential: Bool = true,
         listedArtifacts: [Artifact]? = nil,
         artifactErrors: [String: TappletAPIError] = [:],
-        deleteError: TappletAPIError? = nil
+        deleteError: TappletAPIError? = nil,
+        revisionError: TappletAPIError? = nil,
+        warnings: [AdvisoryWarning] = []
     ) {
         self.generated = generated
         self.revised = revised
@@ -416,13 +541,15 @@ private actor ArtifactAPIStub: TappletAPI {
         self.listedArtifacts = listedArtifacts ?? [generated.artifact]
         self.artifactErrors = artifactErrors
         self.deleteError = deleteError
+        self.revisionError = revisionError
+        self.warnings = warnings
     }
 
     func hasDeviceCredential() async -> Bool { hasCredential }
     func registerDevice(accessCode: String) async throws {}
-    func generate(request: GuidedGenerationRequest) async throws -> ArtifactProject {
+    func generate(request: GuidedGenerationRequest) async throws -> AdvisoryResult<ArtifactProject> {
         lastGenerationRequest = request
-        return generated
+        return AdvisoryResult(value: generated, warnings: warnings)
     }
     func listArtifacts() async throws -> [Artifact] { listedArtifacts }
     func searchExamples(brief: String) async throws -> [ExampleSearchDescriptor] { [] }
@@ -430,47 +557,50 @@ private actor ArtifactAPIStub: TappletAPI {
         if let error = artifactErrors[id] { throw error }
         return generated
     }
-    func updateArtifact(_ artifact: Artifact) async throws -> Artifact { artifact }
+    func updateArtifact(_ artifact: Artifact) async throws -> AdvisoryResult<Artifact> {
+        AdvisoryResult(value: artifact, warnings: warnings)
+    }
     func deleteArtifact(id: String) async throws {
         if let deleteError { throw deleteError }
     }
-    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> ArtifactProject {
+    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> AdvisoryResult<ArtifactProject> {
+        if let revisionError { throw revisionError }
         lastRevisionRequest = RevisionRequest(
             instruction: instruction,
             expectedHeadRevisionID: expectedHeadRevisionId
         )
-        return revised
+        return AdvisoryResult(value: revised, warnings: warnings)
     }
     func revisions(id: String) async throws -> [ArtifactRevision] { generated.revisions }
     func source(revision: ArtifactRevision) async throws -> ArtifactSource { generated.source }
     func setHead(id: String, revisionId: String, expectedHeadRevisionId: String) async throws -> ArtifactProject { revised }
-    func remix(id: String, revisionId: String?) async throws -> ArtifactProject {
+    func remix(id: String, revisionId: String?) async throws -> AdvisoryResult<ArtifactProject> {
         lastRemixRequest = RemixRequest(artifactID: id, revisionID: revisionId)
-        return revised
+        return AdvisoryResult(value: revised, warnings: warnings)
     }
     func downloadAsset(id: String) async throws -> DownloadedAppletAsset {
         DownloadedAppletAsset(data: Data([1, 2, 3]), mediaType: "image/jpeg")
     }
     func uploadScreenshot(revisionId: String, jpeg: Data) async throws {}
-    func publish(id: String, revisionId: String) async throws -> ArtifactPublication {
-        ArtifactPublication(
+    func publish(id: String, revisionId: String) async throws -> AdvisoryResult<ArtifactPublication> {
+        AdvisoryResult(value: ArtifactPublication(
             slug: "class",
             url: URL(string: "https://example.test/class")!,
             title: "Artifact",
             createdAt: "2026-08-02T00:00:00Z",
             expiresAt: "2026-11-02T00:00:00Z"
-        )
+        ), warnings: warnings)
     }
     func revoke(slug: String) async throws {}
     func extend(slug: String, days: Int) async throws -> ArtifactPublication {
-        try await publish(id: generated.id, revisionId: "r1")
+        (try await publish(id: generated.id, revisionId: "r1")).value
     }
     func uploadImage(
         _ image: PreparedAppletImage,
         alternativeText: String?,
         decorative: Bool
-    ) async throws -> UploadedAppletImage {
-        UploadedAppletImage(
+    ) async throws -> AdvisoryResult<UploadedAppletImage> {
+        AdvisoryResult(value: UploadedAppletImage(
             asset: AppletImageAssetRecord(
                 id: "asset-1",
                 kind: "image",
@@ -481,7 +611,7 @@ private actor ArtifactAPIStub: TappletAPI {
                 sha256: image.sha256
             ),
             accessibility: .init(alternativeText: alternativeText, decorative: decorative)
-        )
+        ), warnings: warnings)
     }
 }
 

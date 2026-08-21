@@ -63,15 +63,18 @@ collect student identity or submit student work. Teacher images use relative
 `assets/<assetId>` references and are resolved by the iPad preview and public
 publication routes.
 
-The service applies deterministic checks before saving a generated revision:
+The service applies structural checks before saving a generated revision:
 
 - complete HTML document with `doctype`, `head` and `body`;
 - at most 200 KB (the generation prompt targets substantially less);
 - no external scripts, styles, packages, frames or arbitrary resource URLs;
 - no network APIs;
 - only existing images owned by the teacher's device;
-- deterministic text moderation;
-- one bounded model repair when generated output fails the checks.
+- one bounded model repair when generated output fails those structural checks.
+
+Deterministic text review runs alongside these checks, but its findings are
+advisory: the revision is preserved and the teacher can edit, re-prompt or
+continue.
 
 The generation prompt asks for a compact, touch-first classroom applet, one
 coherent interaction system and simple readable JavaScript. The model returns
@@ -149,8 +152,15 @@ a simulation should centre on one model with its controls, readouts and graph
 rather than several unrelated activities.
 
 V1 supports teacher images through Photos, Files and Camera. Inputs remain
-size-limited, normalised, safety-checked and stripped of metadata by the
-existing image pipeline before they can be referenced by generated HTML.
+size-limited, normalised and stripped of metadata before generated HTML can
+reference them. On-device and server AI review may return a visible advisory
+warning, but does not discard or block the teacher's image. Invalid files,
+ownership, quotas, storage and managed-asset references remain hard constraints.
+
+The same warning-only review applies to teacher prompts, revision instructions,
+generated content and publication review. Warnings name the possible concern
+and preserve the work so a teacher can edit, re-prompt, remove or continue.
+Structural HTML and sandbox controls remain blocking.
 
 ## Explicit non-goals
 
@@ -175,11 +185,12 @@ V1 does not provide:
 - Bundled iPad examples are byte-for-byte copies of the canonical corpus.
 - Model evaluation measures first-pass validity, one-repair success and whether
   requested interactions/content appear in the artifact.
-- Live verification covers generate, revise, restore, image use, publish,
-  anonymous Safari delivery, report, extension, revocation and deletion.
+- Live verification covers generate, a deliberately triggered warning-only
+  advisory, revise, restore, image use, publish, anonymous Safari delivery,
+  report, extension, revocation and deletion.
 - Before pilot release, the physical iPad flow must complete generation,
-  revision while preserving the old preview, history restore, image use,
-  publication in Safari and revocation.
+  revision while preserving the old preview, history restore, image use, an
+  advisory warning with work preserved, publication in Safari and revocation.
 
 This release is a clean pre-launch cutover. Legacy schema drafts and
 publications are reset by migration; no conversion or dual renderer is

@@ -38,8 +38,8 @@ struct AppletEditorView: View {
                     Task {
                         defer { working = false }
                         do {
-                            try await store.refine(prompt, projectID: project.id)
-                            prompt = ""
+                            let warnings = try await store.refine(prompt, projectID: project.id)
+                            if warnings.isEmpty { prompt = "" }
                         } catch {
                             operationError = error.localizedDescription
                         }
@@ -83,6 +83,7 @@ struct AppletEditorView: View {
             }
         }
         .formStyle(.grouped)
+        .accessibilityIdentifier("tapplet-editor-form")
     }
 }
 
@@ -121,7 +122,7 @@ private struct ImageManagementView: View {
                 .disabled(!decorative && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         if let error { Text(error).foregroundStyle(TappletTheme.danger) }
-        Text("Images are prepared and checked on this iPad. Tapplet Studio inserts them through a new revision; the HTML is never edited directly.")
+        Text("Images are prepared and checked on this iPad. AI review warnings do not block uploads; check flagged images before sharing.")
             .font(.footnote).foregroundStyle(.secondary)
         .onChange(of: photo) { _, item in Task { pendingData = try? await item?.loadTransferable(type: Data.self) } }
         .fileImporter(isPresented: $importsFile, allowedContentTypes: [.image]) { result in
@@ -187,9 +188,61 @@ struct StudentPreviewView: View {
     }
 }
 
-private struct ShareArtifactView: View { let store: TappletStore; let projectID: String; @Environment(\.dismiss) var dismiss; @State private var working = false; @State private var error: String?
+private struct ShareArtifactView: View {
+    let store: TappletStore
+    let projectID: String
+    @Environment(\.dismiss) var dismiss
+    @State private var working = false
+    @State private var error: String?
+
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } }
-    var body: some View { NavigationStack { VStack(spacing: 20) { if let publication = project?.artifact.publication { if let qr = qrCode(publication.url) { Image(uiImage: qr).interpolation(.none).resizable().frame(width: 220, height: 220).accessibilityLabel("QR code for student link") }; Text(publication.url.absoluteString).textSelection(.enabled); ShareLink(item: publication.url); Text("Expires \(publication.formattedExpirationDate())"); Button("Extend 90 days") { perform { try await store.extendPublication(projectID: projectID) } }; Button("Turn off link", role: .destructive) { perform { try await store.unpublish(projectID: projectID) } } } else { Button("Create student link") { perform { _ = try await store.publish(projectID: projectID) } }.disabled(working) }; if let error { Text(error).foregroundStyle(TappletTheme.danger) } }.padding().navigationTitle("Share with students").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } } }
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    if let advisory = store.advisoryNotice {
+                        HStack(spacing: 12) {
+                            Label(advisory, systemImage: "exclamationmark.triangle.fill")
+                            Button {
+                                store.advisoryNotice = nil
+                            } label: {
+                                Image(systemName: "xmark").frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Dismiss warning")
+                        }
+                        .foregroundStyle(TappletTheme.ink)
+                        .padding()
+                        .background(TappletTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("advisory-warning")
+                    }
+                    if let publication = project?.artifact.publication {
+                        if let qr = qrCode(publication.url) {
+                            Image(uiImage: qr)
+                                .interpolation(.none)
+                                .resizable()
+                                .frame(width: 220, height: 220)
+                                .accessibilityLabel("QR code for student link")
+                        }
+                        Text(publication.url.absoluteString).textSelection(.enabled)
+                        ShareLink(item: publication.url)
+                        Text("Expires \(publication.formattedExpirationDate())")
+                        Button("Extend 90 days") { perform { try await store.extendPublication(projectID: projectID) } }
+                        Button("Turn off link", role: .destructive) { perform { try await store.unpublish(projectID: projectID) } }
+                    } else {
+                        Button("Create student link") { perform { _ = try await store.publish(projectID: projectID) } }
+                            .disabled(working)
+                    }
+                    if let error { Text(error).foregroundStyle(TappletTheme.danger) }
+                }
+                .padding()
+            }
+            .navigationTitle("Share with students")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+
     private func perform(_ operation: @escaping @MainActor () async throws -> Void) { working = true; error = nil; Task { defer { working = false }; do { try await operation() } catch { self.error = error.localizedDescription } } }
     private func qrCode(_ url: URL) -> UIImage? { let filter = CIFilter.qrCodeGenerator(); filter.message = Data(url.absoluteString.utf8); filter.correctionLevel = "M"; guard let output = filter.outputImage else { return nil }; return UIImage(ciImage: output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))) }
 }

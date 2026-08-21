@@ -97,15 +97,19 @@ struct TappletRootView: View {
             Text(store.recoveryNotice ?? "")
         }
         .overlay(alignment: .bottom) {
-            if let notice = store.notice {
+            if let notice = store.advisoryNotice ?? store.notice {
+                let isAdvisory = store.advisoryNotice != nil
                 HStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: isAdvisory ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                         .foregroundStyle(TappletTheme.accent)
                         .accessibilityHidden(true)
                     Text(notice)
                         .font(.callout.weight(.medium))
                     Button {
-                        withAnimation { store.notice = nil }
+                        withAnimation {
+                            if isAdvisory { store.advisoryNotice = nil }
+                            else { store.notice = nil }
+                        }
                     } label: {
                         Image(systemName: "xmark")
                             .frame(width: 44, height: 44)
@@ -117,14 +121,16 @@ struct TappletRootView: View {
                 .padding(.leading, 16)
                 .padding(.trailing, 8)
                 .padding(.vertical, 8)
-                .background(.regularMaterial, in: Capsule())
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
                 .overlay {
-                    Capsule().stroke(TappletTheme.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 18).stroke(TappletTheme.border, lineWidth: 1)
                 }
                 .padding(20)
                 .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
                 .accessibilityElement(children: .contain)
+                .accessibilityIdentifier(isAdvisory ? "advisory-warning" : "notice")
                 .task(id: notice) {
+                    guard !isAdvisory else { return }
                     guard !UIAccessibility.isVoiceOverRunning else { return }
                     try? await Task.sleep(for: .seconds(4))
                     guard store.notice == notice else { return }
@@ -134,7 +140,12 @@ struct TappletRootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: store.notice)
+        .animation(.easeInOut(duration: 0.2), value: store.advisoryNotice)
         .onChange(of: store.notice) { _, notice in
+            guard let notice else { return }
+            UIAccessibility.post(notification: .announcement, argument: notice)
+        }
+        .onChange(of: store.advisoryNotice) { _, notice in
             guard let notice else { return }
             UIAccessibility.post(notification: .announcement, argument: notice)
         }

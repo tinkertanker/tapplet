@@ -15,7 +15,17 @@ final class TappletAPIClientTests: XCTestCase {
     }
 
     func testGenerateSendsStructuredGuidedBriefAndDecodesProjectEnvelope() async throws {
-        let transport = RecordingTransport(responses: [projectEnvelopeData, revisionsData])
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: projectEnvelopeData) as? [String: Any])
+        envelope["warnings"] = [[
+            "source": "prompt",
+            "code": "POSSIBLE_EMAIL",
+            "message": "AI review flagged a possible email address.",
+            "categories": ["personal information"]
+        ]]
+        let transport = RecordingTransport(responses: [
+            try JSONSerialization.data(withJSONObject: envelope),
+            revisionsData
+        ])
         let request = GuidedGenerationRequest(
             creationBrief: "A guided brief",
             brief: .init(
@@ -30,7 +40,7 @@ final class TappletAPIClientTests: XCTestCase {
             preferredExampleRevisionId: nil
         )
 
-        _ = try await client(transport).generate(request: request)
+        let result = try await client(transport).generate(request: request)
 
         let sent = await transport.requests[0]
         XCTAssertEqual(sent.url?.path, "/v1/artifacts/generate")
@@ -39,6 +49,8 @@ final class TappletAPIClientTests: XCTestCase {
         XCTAssertEqual((body["brief"] as? [String: Any])?["learnerContext"] as? String, "Primary 5 Mathematics")
         XCTAssertNil((body["brief"] as? [String: Any])?["format"])
         XCTAssertNil(body["preferredExampleRevisionId"], "nil optional fields are omitted by Swift's encoder")
+        XCTAssertEqual(result.warnings.first?.code, "POSSIBLE_EMAIL")
+        XCTAssertEqual(result.warnings.first?.categories, ["personal information"])
     }
 
     func testArtifactGETDecodesDirectArtifactThenFetchesRevisionList() async throws {
@@ -69,12 +81,22 @@ final class TappletAPIClientTests: XCTestCase {
     }
 
     func testReviseSendsConcurrencyBody() async throws {
-        let transport = RecordingTransport(responses: [projectEnvelopeData, revisionsData])
-        _ = try await client(transport).revise(id: "a1", instruction: "Use larger labels", expectedHeadRevisionId: "r0")
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: projectEnvelopeData) as? [String: Any])
+        envelope["warnings"] = [[
+            "source": "prompt",
+            "code": "POSSIBLE_EMAIL",
+            "message": "AI review flagged a possible email address."
+        ]]
+        let transport = RecordingTransport(responses: [
+            try JSONSerialization.data(withJSONObject: envelope),
+            revisionsData
+        ])
+        let result = try await client(transport).revise(id: "a1", instruction: "Use larger labels", expectedHeadRevisionId: "r0")
         let request = await transport.requests[0]
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.url?.path, "/v1/artifacts/a1/revisions")
         XCTAssertEqual(try JSONSerialization.jsonObject(with: request.httpBody!) as? NSDictionary, ["instruction": "Use larger labels", "expectedHeadRevisionId": "r0"])
+        XCTAssertEqual(result.warnings.first?.code, "POSSIBLE_EMAIL")
     }
 
     func testServerErrorDescriptionsSurfaceServerMessages() {
@@ -89,12 +111,12 @@ final class TappletAPIClientTests: XCTestCase {
     }
 
     func testSetHeadAndPublishUseExpectedHeadContracts() async throws {
-        let publication = Data(#"{"publication":{"slug":"class-1","url":"https://example.test/class-1","title":"Forces","createdAt":"2026-08-02T00:00:00Z","expiresAt":"2026-11-01T00:00:00Z"}}"#.utf8)
+        let publication = Data(#"{"publication":{"slug":"class-1","url":"https://example.test/class-1","title":"Forces","createdAt":"2026-08-02T00:00:00Z","expiresAt":"2026-11-01T00:00:00Z"},"warnings":[{"source":"publication","code":"AI_CONTENT_REVIEW_FLAGGED","message":"AI review flagged content that may need attention."}]}"#.utf8)
         let transport = RecordingTransport(responses: [projectEnvelopeData, revisionsData, publication])
         let client = client(transport)
 
         _ = try await client.setHead(id: "a1", revisionId: "r1", expectedHeadRevisionId: "r2")
-        _ = try await client.publish(id: "a1", revisionId: "r1")
+        let published = try await client.publish(id: "a1", revisionId: "r1")
 
         let requests = await transport.requests
         XCTAssertEqual(requests[0].url?.path, "/v1/artifacts/a1")
@@ -108,6 +130,8 @@ final class TappletAPIClientTests: XCTestCase {
             try JSONSerialization.jsonObject(with: requests[2].httpBody!) as? NSDictionary,
             ["expectedHeadRevisionId": "r1"]
         )
+        XCTAssertEqual(published.value.slug, "class-1")
+        XCTAssertEqual(published.warnings.first?.code, "AI_CONTENT_REVIEW_FLAGGED")
     }
 
     func testExampleSearchPostsBriefBody() async throws {
@@ -132,14 +156,16 @@ final class TappletAPIClientTests: XCTestCase {
     }
 
     func testAssetUploadUsesExistingHeaderContract() async throws {
-        let response = Data(#"{"asset":{"id":"image-1","kind":"image","mediaType":"image/jpeg","width":10,"height":20,"byteLength":3,"sha256":"hash"},"accessibility":{"alternativeText":"A diagram","decorative":false}}"#.utf8)
+        let response = Data(#"{"asset":{"id":"image-1","kind":"image","mediaType":"image/jpeg","width":10,"height":20,"byteLength":3,"sha256":"hash"},"accessibility":{"alternativeText":"A diagram","decorative":false},"warnings":[{"source":"image","code":"AI_IMAGE_REVIEW_FLAGGED","message":"AI review flagged a possible person."}]}"#.utf8)
         let transport = RecordingTransport(responses: [response])
         let image = PreparedAppletImage(data: Data([1, 2, 3]), mediaType: "image/jpeg", width: 10, height: 20, sha256: "hash")
-        _ = try await client(transport).uploadImage(image, alternativeText: "A diagram", decorative: false)
+        let result = try await client(transport).uploadImage(image, alternativeText: "A diagram", decorative: false)
         let request = await transport.requests[0]
         XCTAssertEqual(request.url?.path, "/v1/assets")
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Image-Width"), "10")
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Image-Alt-Base64"), Data("A diagram".utf8).base64EncodedString())
+        XCTAssertEqual(result.value.asset.id, "image-1")
+        XCTAssertEqual(result.warnings.first?.code, "AI_IMAGE_REVIEW_FLAGGED")
     }
 
     private func client(_ transport: RecordingTransport) -> TappletAPIClient {

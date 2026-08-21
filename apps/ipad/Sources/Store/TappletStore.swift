@@ -15,6 +15,7 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
     var projects: [ArtifactProject] = []
     var examples: [ArtifactProject] = []
     var notice: String?
+    var advisoryNotice: String?
     var recoveryNotice: String?
     var workshopAccessState: WorkshopAccessState = .checking
     var showsWorkshopAccess = false
@@ -115,6 +116,16 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         let text = brief.answers.enumerated().map { "\(BriefQuestion.all[$0.offset].prompt)\n\($0.element)" }.joined(separator: "\n\n")
         if isUITesting {
             let project = Self.testingProject(brief: brief, creationBrief: text)
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing-advisory-warning") {
+                presentAdvisories([
+                    AdvisoryWarning(
+                        source: "prompt",
+                        code: "POSSIBLE_EMAIL",
+                        message: "AI review flagged a possible email address. Check the content or re-prompt.",
+                        categories: ["personal information"]
+                    )
+                ])
+            }
             upsert(project)
             open(project)
             return project
@@ -124,13 +135,17 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
             studentAction: brief.studentAction, sourceContent: brief.sourceContent.isEmpty ? nil : brief.sourceContent,
             feedback: brief.feedback, classroomFit: brief.classroomFit, format: brief.format?.rawValue
         ), preferredExampleRevisionId: guidedMakeEffectivePreferredExampleRevisionId)
-        let project = try await api.generate(request: request); upsert(project); open(project); return project
+        let result = try await api.generate(request: request)
+        presentAdvisories(result.warnings)
+        upsert(result.value)
+        open(result.value)
+        return result.value
     }
     func remix(_ example: ArtifactProject) async throws {
         let project: ArtifactProject
         if example.artifact.id == "example-fallback" {
             let artifact = example.artifact
-            project = try await api.generate(request: GuidedGenerationRequest(
+            let result = try await api.generate(request: GuidedGenerationRequest(
                 creationBrief: artifact.creationBrief,
                 brief: .init(
                     learnerContext: artifact.level ?? artifact.subject ?? "General learners",
@@ -143,19 +158,26 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
                 ),
                 preferredExampleRevisionId: nil
             ))
+            presentAdvisories(result.warnings)
+            project = result.value
         } else {
-            project = try await api.remix(
+            let result = try await api.remix(
                 id: example.artifact.id,
                 revisionId: example.source.revision.id
             )
+            presentAdvisories(result.warnings)
+            project = result.value
         }
         upsert(project)
         open(project)
     }
-    func refine(_ instruction: String, projectID: String) async throws {
+    @discardableResult
+    func refine(_ instruction: String, projectID: String) async throws -> [AdvisoryWarning] {
         let current = try project(projectID)
-        let updated = try await api.revise(id: projectID, instruction: instruction, expectedHeadRevisionId: current.artifact.headRevisionId)
-        upsert(updated)
+        let result = try await api.revise(id: projectID, instruction: instruction, expectedHeadRevisionId: current.artifact.headRevisionId)
+        presentAdvisories(result.warnings)
+        upsert(result.value)
+        return result.warnings
     }
     func restore(revision: ArtifactRevision, projectID: String) async throws {
         let current = try project(projectID)
@@ -165,10 +187,18 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         let current = try project(projectID); guard let parent = current.source.revision.parentRevisionId else { return }
         upsert(try await api.setHead(id: projectID, revisionId: parent, expectedHeadRevisionId: current.artifact.headRevisionId))
     }
-    func updateDetails(_ artifact: Artifact) async throws { var current = try project(artifact.id); current.artifact = try await api.updateArtifact(artifact); upsert(current) }
+    func updateDetails(_ artifact: Artifact) async throws {
+        var current = try project(artifact.id)
+        let result = try await api.updateArtifact(artifact)
+        current.artifact = result.value
+        presentAdvisories(result.warnings)
+        upsert(current)
+    }
     func publish(projectID: String) async throws -> ArtifactPublication {
-        let publication = try await api.publish(id: projectID, revisionId: try project(projectID).artifact.headRevisionId)
-        var current = try project(projectID); current.artifact.publication = publication; current.artifact.publicationStale = false; upsert(current); return publication
+        let result = try await api.publish(id: projectID, revisionId: try project(projectID).artifact.headRevisionId)
+        var current = try project(projectID); current.artifact.publication = result.value; current.artifact.publicationStale = false; upsert(current)
+        presentAdvisories(result.warnings)
+        return result.value
     }
     func unpublish(projectID: String) async throws { var current = try project(projectID); if let slug = current.artifact.publication?.slug { try await api.revoke(slug: slug) }; current.artifact.publication = nil; upsert(current) }
     func extendPublication(projectID: String) async throws { var current = try project(projectID); guard let slug = current.artifact.publication?.slug else { return }; current.artifact.publication = try await api.extend(slug: slug, days: 90); upsert(current) }
@@ -233,15 +263,16 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
             try AppletImageProcessor.prepare(data)
         }.value
         let upload = try await api.uploadImage(image, alternativeText: decorative ? nil : description, decorative: decorative)
-        let local = try LocalAppletAssetStorage.store(image, id: upload.asset.id)
+        let local = try LocalAppletAssetStorage.store(image, id: upload.value.asset.id)
         do {
             let context = decorative ? "decorative and ignored by assistive technology" : "described as: \(description)"
-            try await refine("Insert the uploaded image using relative URL assets/\(upload.asset.id). It is \(context).", projectID: projectID)
+            let revisionWarnings = try await refine("Insert the uploaded image using relative URL assets/\(upload.value.asset.id). It is \(context).", projectID: projectID)
             if let index = projects.firstIndex(where: { $0.id == projectID }) {
                 projects[index].localAssets.removeAll { $0.id == local.id }
                 projects[index].localAssets.append(local)
                 persist(projects[index])
             }
+            presentAdvisories(image.warnings + upload.warnings + revisionWarnings)
         } catch {
             LocalAppletAssetStorage.remove(local)
             throw error
@@ -261,6 +292,12 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         persist(projects[index])
     }
     private func project(_ id: String) throws -> ArtifactProject { guard let result = projects.first(where: { $0.id == id }) else { throw TappletAPIError.invalidResponse }; return result }
+    private func presentAdvisories(_ warnings: [AdvisoryWarning]) {
+        let messages = warnings.reduce(into: [String]()) { result, warning in
+            if !result.contains(warning.message) { result.append(warning.message) }
+        }
+        advisoryNotice = messages.isEmpty ? nil : messages.joined(separator: "\n")
+    }
     private func cacheAssets(in project: ArtifactProject) async throws -> ArtifactProject {
         var project = project
         let existingIDs = Set(project.localAssets.map(\.id))

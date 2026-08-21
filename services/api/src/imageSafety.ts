@@ -1,8 +1,11 @@
-import { HttpError } from './http';
-
 export interface ImageSafetyInspector {
-  inspect(bytes: Uint8Array, mediaType: string): Promise<void>;
+  inspect(bytes: Uint8Array, mediaType: string): Promise<ImageSafetyReview>;
 }
+
+export type ImageSafetyReview =
+  | { status: 'clear' }
+  | { status: 'flagged'; reason?: string }
+  | { status: 'unavailable' };
 
 interface WorkersAIImageBinding {
   run(model: string, input: Record<string, unknown>): Promise<unknown>;
@@ -27,7 +30,7 @@ Ordinary diagrams, worksheets, teacher sketches and logos are SAFE when none of 
 export class CloudflareImageSafetyInspector implements ImageSafetyInspector {
   constructor(private readonly ai: WorkersAIImageBinding) {}
 
-  async inspect(bytes: Uint8Array, mediaType: string): Promise<void> {
+  async inspect(bytes: Uint8Array, mediaType: string): Promise<ImageSafetyReview> {
     let result: unknown;
     try {
       result = await this.ai.run(MODEL, {
@@ -44,11 +47,7 @@ export class CloudflareImageSafetyInspector implements ImageSafetyInspector {
         ? `${error.name}: ${error.message}`
         : String(error);
       console.error(`Image safety review failed: ${diagnostic}`);
-      throw new HttpError(
-        503,
-        'IMAGE_SAFETY_REVIEW_UNAVAILABLE',
-        'The image safety check is temporarily unavailable. Try again shortly.',
-      );
+      return { status: 'unavailable' };
     }
 
     const answer = result !== null && typeof result === 'object'
@@ -59,19 +58,19 @@ export class CloudflareImageSafetyInspector implements ImageSafetyInspector {
       : undefined;
     if (!answer) {
       console.error(`Image safety review returned no answer: ${serialiseDiagnostic(result)}`);
-      throw new HttpError(
-        503,
-        'IMAGE_SAFETY_REVIEW_UNAVAILABLE',
-        'The image safety check is temporarily unavailable. Try again shortly.',
-      );
+      return { status: 'unavailable' };
     }
-    if (!/^SAFE\b/i.test(answer)) {
-      throw new HttpError(
-        422,
-        'IMAGE_NOT_ALLOWED',
-        'Choose a classroom image without people, personal information or unsafe content.',
-      );
+    if (/^SAFE\b/i.test(answer)) return { status: 'clear' };
+    if (/^UNSAFE\b/i.test(answer)) {
+      const reason = answer
+        .replace(/^UNSAFE\b[\s:.-]*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 240);
+      return { status: 'flagged', ...(reason ? { reason } : {}) };
     }
+    console.error(`Image safety review returned an invalid answer: ${serialiseDiagnostic(result)}`);
+    return { status: 'unavailable' };
   }
 }
 

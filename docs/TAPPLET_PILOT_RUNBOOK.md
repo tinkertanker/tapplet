@@ -81,6 +81,20 @@ then unset it; do not rotate it as a routine import step.
 - Revoke first when safety is uncertain. A teacher can correct and republish
   after review.
 
+## Advisory AI review
+
+AI review is deliberately warning-only for this pre-launch teacher workshop.
+If a prompt, generated tapplet, publication or image is flagged, Tapplet Studio
+names the possible concern and preserves the teacher's work. The teacher may
+edit or re-prompt, remove an image, or continue. A warning is not a factual
+determination that content is unsafe, and it is not a publication approval.
+
+Technical and security checks remain blocking: malformed or oversized input,
+invalid executable HTML, external requests or unsupported capabilities,
+authentication, ownership, quotas, storage and publication integrity. Do not
+describe these failures as moderation warnings or add a warning-only bypass for
+them.
+
 ## Before inviting teachers
 
 **Important:** Before any class-code verification, trash the legacy `.studio-pilot-codes.txt` and any stale pre-cutover `.studio-smoke-token` from prior pilot runs. The new `.studio-smoke-token` created afterwards remains active and ignored.
@@ -137,19 +151,22 @@ then unset it; do not rotate it as a routine import step.
    Set `STUDIO_CLASS_ACCESS_CODE` to that code and run
    `npm run verify:live`, then immediately `unset STUDIO_CLASS_ACCESS_CODE`.
    Later runs reuse the ignored, owner-only `.studio-smoke-token` file without
-   consuming another activation. The flow uploads the dedicated person-free
-   balanced-forces classroom fixture; a rejected safety review still consumes
-   owner and network upload quota and must be included in the postflight audit.
+   consuming another activation. The flow deliberately triggers and validates
+   one warning-only prompt advisory without echoing its test marker, then
+   completes image upload, publication, reporting, revocation and cleanup. An
+   image review warning must not stop the flow; invalid files, ownership
+   failures and other technical checks still must.
 6. For external TestFlight or App Store review, place a still-valid multi-use
    workshop code in App Review notes. Verify it immediately before submission
    and keep it valid until review has completed; never put it in source control
    or public metadata.
 7. Install the Release build on a physical A16 iPad. Complete the full flow for
    at least three representative tapplets, including a simulation: generate,
-   revise, add a non-personal image where appropriate, publish, and open each
-   resulting URL on a separate device in Safari. Across the three flows, test
-   VoiceOver, portrait and landscape. Revoke every link and verify that the
-   student sees the unavailable state.
+   revise, add a classroom image where appropriate, publish, and open each
+   resulting URL on a separate device in Safari. Exercise one advisory warning
+   and verify that the work remains available to edit, re-prompt, remove or
+   continue. Across the three flows, test VoiceOver, portrait and landscape.
+   Revoke every link and verify that the student sees the unavailable state.
 
 ## TestFlight release gate
 
@@ -228,8 +245,9 @@ one is current.
 ## Incident and rollback
 
 - To stop new AI generation while keeping student links available, remove or
-  rotate `AI_API_KEY`; generation and model moderation will fail closed
-  while stored HTML publications remain readable.
+  rotate `AI_API_KEY`; generation will fail closed while stored HTML
+  publications remain readable. Publication review outages are warning-only,
+  so revoke affected links separately if new publishing must also stop.
 - To remove one unsafe tapplet, revoke only its validated slug as above.
 - To roll back a bad Worker deployment, inspect the recent deployment list with
   `npx wrangler deployments list --profile tinkertanker`, then run

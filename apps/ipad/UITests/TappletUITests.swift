@@ -89,6 +89,55 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
         app.buttons["Make my tapplet"].tap()
         XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        let photos = app.buttons["Choose from Photos"]
+        let editorForm = app.descendants(matching: .any)["tapplet-editor-form"]
+        XCTAssertTrue(editorForm.waitForExistence(timeout: 3))
+        for _ in 0..<3 {
+            if photos.exists { break }
+            editorForm.swipeUp()
+        }
+        XCTAssertTrue(photos.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Choose a file"].exists)
+    }
+
+    @MainActor
+    func testAdvisoryWarningKeepsTheTappletAndRepromptSurfaceAvailable() {
+        let app = launchApp(extraArguments: ["--ui-testing-advisory-warning"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+
+        app.buttons["Make my tapplet"].tap()
+
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        let warning = app.staticTexts["AI review flagged a possible email address. Check the content or re-prompt."]
+        XCTAssertTrue(warning.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Make this change"].exists)
+
+        app.buttons["Dismiss message"].tap()
+        XCTAssertTrue(warning.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Make this change"].exists)
+    }
+
+    @MainActor
+    func testAdvisoryWarningCanBeDismissedInsideTheShareSheet() {
+        let app = launchApp(extraArguments: ["--ui-testing-advisory-warning"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+
+        app.buttons["Share"].tap()
+
+        let warning = app.staticTexts["AI review flagged a possible email address. Check the content or re-prompt."]
+        XCTAssertTrue(warning.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Dismiss warning"].isHittable)
+        app.buttons["Dismiss warning"].tap()
+        XCTAssertTrue(warning.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Create student link"].exists)
     }
 
     @MainActor

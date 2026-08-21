@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CloudflareImageSafetyInspector } from '../src/imageSafety';
-import { HttpError } from '../src/http';
 
 describe('image safety review', () => {
   it('accepts an explicitly safe classroom image classification', async () => {
@@ -10,28 +9,36 @@ describe('image safety review', () => {
     });
     const inspector = new CloudflareImageSafetyInspector({ run });
 
-    await expect(inspector.inspect(new Uint8Array([1, 2, 3]), 'image/png')).resolves.toBeUndefined();
+    await expect(inspector.inspect(new Uint8Array([1, 2, 3]), 'image/png')).resolves.toEqual({
+      status: 'clear',
+    });
     expect(run).toHaveBeenCalledWith(
       '@cf/moondream/moondream3.1-9B-A2B',
       expect.objectContaining({ task: 'query', stream: false, reasoning: false }),
     );
   });
 
-  it('rejects people, personal data or unsafe pixels and fails closed on outages', async () => {
-    const unsafe = new CloudflareImageSafetyInspector({
+  it('returns advisory findings for flagged pixels and review outages', async () => {
+    const flagged = new CloudflareImageSafetyInspector({
       run: vi.fn().mockResolvedValue({ answer: 'UNSAFE\nA pupil face is visible.' }),
     });
-    await expect(unsafe.inspect(new Uint8Array([1]), 'image/jpeg')).rejects.toMatchObject({
-      status: 422,
-      code: 'IMAGE_NOT_ALLOWED',
-    } satisfies Partial<HttpError>);
+    await expect(flagged.inspect(new Uint8Array([1]), 'image/jpeg')).resolves.toEqual({
+      status: 'flagged',
+      reason: 'A pupil face is visible.',
+    });
 
     const unavailable = new CloudflareImageSafetyInspector({
       run: vi.fn().mockRejectedValue(new Error('offline')),
     });
-    await expect(unavailable.inspect(new Uint8Array([1]), 'image/jpeg')).rejects.toMatchObject({
-      status: 503,
-      code: 'IMAGE_SAFETY_REVIEW_UNAVAILABLE',
-    } satisfies Partial<HttpError>);
+    await expect(unavailable.inspect(new Uint8Array([1]), 'image/jpeg')).resolves.toEqual({
+      status: 'unavailable',
+    });
+
+    const malformed = new CloudflareImageSafetyInspector({
+      run: vi.fn().mockResolvedValue({ answer: 'maybe' }),
+    });
+    await expect(malformed.inspect(new Uint8Array([1]), 'image/jpeg')).resolves.toEqual({
+      status: 'unavailable',
+    });
   });
 });

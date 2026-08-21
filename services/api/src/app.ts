@@ -28,7 +28,14 @@ import {
   readJson,
   withCors,
 } from "./http";
-import { inspectTeacherBrief, inspectText } from "./moderation";
+import {
+  advisoryWarnings,
+  inspectHtml,
+  inspectTeacherBrief,
+  inspectText,
+  inspectUnknownText,
+  type AdvisoryWarning,
+} from "./moderation";
 import { PROMPT_VERSION } from "./ai/prompts";
 import { cleanupArtifactStorage, type SourceStore } from "./sourceStore";
 import type {
@@ -282,6 +289,52 @@ function assetResponse(asset: StoredAsset["record"]) {
       alternativeText: asset.alternativeText,
       decorative: asset.decorative,
     },
+    ...(asset.warnings?.length ? { warnings: asset.warnings } : {}),
+  };
+}
+
+function publicationReviewWarning(categories: string[]): AdvisoryWarning {
+  const labels = [
+    ...new Set(
+      categories
+        .filter((category): category is string => typeof category === "string")
+        .flatMap(moderationCategoryLabel),
+    ),
+  ];
+  return {
+    source: "publication",
+    code: "AI_CONTENT_REVIEW_FLAGGED",
+    message: labels.length
+      ? `AI review flagged possible ${labels.join(", ")}. Check the tapplet; you can keep sharing it or edit and publish again.`
+      : "AI review flagged content that may need attention. Check the tapplet; you can keep sharing it or edit and publish again.",
+    ...(labels.length ? { categories: labels } : {}),
+  };
+}
+
+function moderationCategoryLabel(category: string): string[] {
+  const value = category.toLowerCase().replaceAll("_", " ").replaceAll("-", " ");
+  if (value.includes("personal") || value.includes("privacy"))
+    return ["personal information"];
+  if (value.includes("minor") || value.includes("child"))
+    return ["content involving children"];
+  if (value.includes("sexual") || value.includes("nudity"))
+    return ["sexual content"];
+  if (value.includes("self harm") || value.includes("suicide"))
+    return ["self-harm content"];
+  if (value.includes("violent") || value.includes("violence") || value.includes("harm"))
+    return ["harmful or violent content"];
+  if (value.includes("hate")) return ["hateful content"];
+  if (value.includes("weapon") || value.includes("drug"))
+    return ["weapons or illegal drugs"];
+  return [];
+}
+
+function moderationUnavailableWarning(): AdvisoryWarning {
+  return {
+    source: "publication",
+    code: "AI_CONTENT_REVIEW_UNAVAILABLE",
+    message:
+      "AI review was unavailable. Check the tapplet before sharing; you can continue or edit and publish again.",
   };
 }
 export function createStudioApp(d: Deps) {
@@ -589,16 +642,11 @@ export function createStudioApp(d: Deps) {
     if (r.method === "POST" && u.pathname === "/v1/artifacts/generate") {
       const o = await owner(r),
         request = brief(obj(await readJson(r, 16000))),
-        b = request.brief;
-      if (
-        inspectTeacherBrief(b).length ||
-        inspectText(request.creationBrief).length
-      )
-        throw new HttpError(
-          422,
-          "UNSAFE_CONTENT",
-          "Brief cannot be processed.",
-        );
+        b = request.brief,
+        warnings = advisoryWarnings("prompt", [
+          ...inspectTeacherBrief(b),
+          ...inspectText(request.creationBrief),
+        ]);
       await reserveArtifactCreation(r, o);
       await quota(r, o, "generation");
       const query = generationRetrievalQuery(b);
@@ -632,6 +680,12 @@ export function createStudioApp(d: Deps) {
           });
       }
       const out = await generateArtifact(d.provider, b, ex);
+      warnings.push(
+        ...advisoryWarnings("generated_content", [
+          ...inspectHtml(out.html),
+          ...inspectUnknownText(out.designCard),
+        ]),
+      );
       const aid = id(),
         rid = id(),
         timestamp = now().toISOString(),
@@ -677,6 +731,7 @@ export function createStudioApp(d: Deps) {
       return json(
         {
           ...(await projectResponse(a, o, u.origin, rv)),
+          ...(warnings.length ? { warnings } : {}),
         },
         { status: 201 },
       );
@@ -792,23 +847,21 @@ export function createStudioApp(d: Deps) {
               : [],
             creationBrief: str(b.creationBrief, "Creation brief", 6000),
           };
-          if (
-            [
-              metadata.title,
-              metadata.summary,
-              metadata.learningObjective ?? "",
-              metadata.creationBrief,
-              ...metadata.tags,
-              ...(metadata.subject ? [metadata.subject] : []),
-              ...(metadata.level ? [metadata.level] : []),
-              ...(metadata.locale ? [metadata.locale] : []),
-            ].some((value) => inspectText(value).length)
-          )
-            throw new HttpError(
-              422,
-              "UNSAFE_CONTENT",
-              "Metadata cannot be processed.",
-            );
+          const warnings = advisoryWarnings(
+            "prompt",
+            inspectText(
+              [
+                metadata.title,
+                metadata.summary,
+                metadata.learningObjective ?? "",
+                metadata.creationBrief,
+                ...metadata.tags,
+                ...(metadata.subject ? [metadata.subject] : []),
+                ...(metadata.level ? [metadata.level] : []),
+                ...(metadata.locale ? [metadata.locale] : []),
+              ].join("\n"),
+            ),
+          );
           return json({
             artifact: await d.repository
               .updateArtifactMetadata(a.id, o, metadata, now().toISOString())
@@ -817,6 +870,7 @@ export function createStudioApp(d: Deps) {
                   ? (await projectResponse(value, o, u.origin)).artifact
                   : null,
               ),
+            ...(warnings.length ? { warnings } : {}),
           });
         }
         const head = str(b.headRevisionId, "headRevisionId", 100),
@@ -865,12 +919,7 @@ export function createStudioApp(d: Deps) {
             "HEAD_REVISION_CONFLICT",
             "Artifact head changed.",
           );
-        if (inspectText(instruction).length)
-          throw new HttpError(
-            422,
-            "UNSAFE_CONTENT",
-            "Instruction cannot be processed.",
-          );
+        const warnings = advisoryWarnings("prompt", inspectText(instruction));
         await quota(r, o, "generation");
         const current = await d.repository.getRevision(expected),
           html = current && (await d.sources.getSource(current.sourceHash));
@@ -905,6 +954,12 @@ export function createStudioApp(d: Deps) {
             screenshotKey: null,
             createdAt: timestamp,
           };
+        warnings.push(
+          ...advisoryWarnings("generated_content", [
+            ...inspectHtml(out.html),
+            ...inspectUnknownText(out.designCard),
+          ]),
+        );
         if (
           !(await d.repository.createRevision(
             rv,
@@ -919,11 +974,14 @@ export function createStudioApp(d: Deps) {
             "Artifact head changed.",
           );
         return json(
-          await projectResponse(
-            (await d.repository.getArtifact(a.id, o))!,
-            o,
-            u.origin,
-          ),
+          {
+            ...(await projectResponse(
+              (await d.repository.getArtifact(a.id, o))!,
+              o,
+              u.origin,
+            )),
+            ...(warnings.length ? { warnings } : {}),
+          },
           { status: 201 },
         );
       }
@@ -952,16 +1010,22 @@ export function createStudioApp(d: Deps) {
           html,
           ...(design(rv) ? { designCard: design(rv) } : {}),
         });
+        const warnings = advisoryWarnings(
+          "generated_content",
+          [...inspectHtml(html), ...inspectUnknownText(design(rv))],
+        );
         await assets(html, o);
         await quota(r, o, "safety");
-        const m = await d.provider.moderate(html);
-        if (!m.safe)
-          throw new HttpError(
-            422,
-            "UNSAFE_CONTENT",
-            "Applet failed safety review.",
-            m.categories,
-          );
+        try {
+          const m = await d.provider.moderate(html);
+          if (!m.safe) warnings.push(publicationReviewWarning(m.categories));
+        } catch (error) {
+          const diagnostic = error instanceof Error
+            ? `${error.name}: ${error.message}`
+            : String(error);
+          console.error(`Publication moderation failed: ${diagnostic}`);
+          warnings.push(moderationUnavailableWarning());
+        }
         const p = await d.repository.publish(
           slug(),
           a,
@@ -977,7 +1041,10 @@ export function createStudioApp(d: Deps) {
             "Artifact changed during review.",
           );
         return json(
-          { publication: publication(p, d.config.publicPlayerOrigin) },
+          {
+            publication: publication(p, d.config.publicPlayerOrigin),
+            ...(warnings.length ? { warnings } : {}),
+          },
           { status: 201 },
         );
       }
@@ -1048,12 +1115,10 @@ export function createStudioApp(d: Deps) {
           suppliedTitle =
             typeof b.title === "string" ? str(b.title, "Title", 200) : null,
           title = suppliedTitle ?? sourceArtifact.title;
-        if (suppliedTitle && inspectText(suppliedTitle).length)
-          throw new HttpError(
-            422,
-            "UNSAFE_CONTENT",
-            "Title cannot be processed.",
-          );
+        const warnings = advisoryWarnings(
+          "prompt",
+          suppliedTitle ? inspectText(suppliedTitle) : [],
+        );
         const html = await d.sources.getSource(rv.sourceHash);
         if (!html)
           throw new HttpError(404, "SOURCE_NOT_FOUND", "Source unavailable.");
@@ -1106,6 +1171,7 @@ export function createStudioApp(d: Deps) {
         return json(
           {
             ...(await projectResponse(artifact, o, u.origin, copy)),
+            ...(warnings.length ? { warnings } : {}),
           },
           { status: 201 },
         );

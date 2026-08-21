@@ -2,7 +2,11 @@ import { HttpError, readBodyBytes } from './http';
 import { inspectCanonicalJpeg } from './imageInspection';
 import type { ImageSafetyInspector } from './imageSafety';
 import type { ImageNormalizer } from './imageNormalizer';
-import { inspectText } from './moderation';
+import {
+  advisoryWarnings,
+  inspectText,
+  type AdvisoryWarning,
+} from './moderation';
 
 const MAXIMUM_ASSET_BYTES = 2_000_000;
 const MAXIMUM_DAILY_ASSETS = 12;
@@ -23,6 +27,7 @@ export interface AssetRecord {
   alternativeText: string | null;
   decorative: boolean;
   createdAt: string;
+  warnings?: AdvisoryWarning[];
 }
 
 export interface StoredAsset {
@@ -145,6 +150,9 @@ export class CloudflareAssetStore implements AssetStore {
     const height = positiveIntegerHeader(request, 'x-image-height', 4_096);
     const decorative = request.headers.get('x-image-decorative') === 'true';
     const alternativeText = imageAlternativeText(request);
+    const warnings = alternativeText
+      ? advisoryWarnings('image', inspectText(alternativeText))
+      : [];
     if (!decorative && !alternativeText) {
       throw new HttpError(
         422,
@@ -155,14 +163,6 @@ export class CloudflareAssetStore implements AssetStore {
     if (alternativeText && alternativeText.length > 500) {
       throw new HttpError(422, 'ALTERNATIVE_TEXT_TOO_LONG', 'Image descriptions must be 500 characters or fewer.');
     }
-    if (alternativeText && inspectText(alternativeText).length > 0) {
-      throw new HttpError(
-        422,
-        'POSSIBLE_PERSONAL_DATA',
-        'Remove possible personal information from the image description.',
-      );
-    }
-
     const bytes = await readBodyBytes(
       request,
       MAXIMUM_ASSET_BYTES,
@@ -264,16 +264,26 @@ export class CloudflareAssetStore implements AssetStore {
     ) as ArrayBuffer;
     const sha256 = hex(await crypto.subtle.digest('SHA-256', digestInput));
 
-    // Safety inference is also after quota reservation. Rejected images consume
-    // one upload allowance because paid processing has already been requested.
+    // Safety inference is also after quota reservation because paid processing
+    // has already been requested. Its findings are advisory for teacher review.
     if (!this.imageSafety) {
-      throw new HttpError(
-        503,
-        'IMAGE_SAFETY_REVIEW_UNAVAILABLE',
-        'The image safety check is temporarily unavailable. Try again shortly.',
-      );
+      warnings.push(imageReviewUnavailableWarning());
+    } else {
+      try {
+        const review = await this.imageSafety.inspect(canonicalBytes, 'image/jpeg');
+        if (review.status === 'flagged') {
+          warnings.push(imageReviewFlaggedWarning(review.reason));
+        } else if (review.status === 'unavailable') {
+          warnings.push(imageReviewUnavailableWarning());
+        }
+      } catch (error) {
+        const diagnostic = error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+        console.error(`Image safety review failed: ${diagnostic}`);
+        warnings.push(imageReviewUnavailableWarning());
+      }
     }
-    await this.imageSafety.inspect(canonicalBytes, 'image/jpeg');
 
     const id = randomAssetId();
     const canonicalContentType = 'image/jpeg';
@@ -322,6 +332,7 @@ export class CloudflareAssetStore implements AssetStore {
       alternativeText,
       decorative,
       createdAt: now,
+      ...(warnings.length ? { warnings } : {}),
     };
   }
 
@@ -448,4 +459,34 @@ export class CloudflareAssetStore implements AssetStore {
       .run();
     return (result.meta.changes ?? 0) === 1;
   }
+}
+
+function imageReviewUnavailableWarning(): AdvisoryWarning {
+  return {
+    source: 'image',
+    code: 'AI_IMAGE_REVIEW_UNAVAILABLE',
+    message:
+      'AI review was unavailable for this image. Check it for people, personal information and unsuitable content before sharing.',
+  };
+}
+
+function imageReviewFlaggedWarning(reason?: string): AdvisoryWarning {
+  const value = reason?.toLowerCase() ?? '';
+  const category = /\b(person|people|face|pupil|student|child)\b/.test(value)
+    ? 'person'
+    : /\b(name|email|phone|identity|personal|class list)\b/.test(value)
+      ? 'personal information'
+      : /\b(nudity|sexual)\b/.test(value)
+        ? 'sexual content'
+        : /\b(injury|weapon|drug|hate|violent|violence)\b/.test(value)
+          ? 'unsuitable content'
+          : null;
+  return {
+    source: 'image',
+    code: 'AI_IMAGE_REVIEW_FLAGGED',
+    message: category
+      ? `AI review flagged possible ${category} in this image. Check it before sharing.`
+      : 'AI review flagged possible people, personal information or unsuitable content in this image. Check it before sharing.',
+    ...(category ? { categories: [category] } : {}),
+  };
 }

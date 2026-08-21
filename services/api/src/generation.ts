@@ -5,7 +5,6 @@ import type {
   ModelProvider,
   TeacherBrief,
 } from "./ai/provider";
-import { inspectHtml } from "./moderation";
 export const PUBLIC_REPORT_MARKER = "data-studio-report";
 export class InvalidModelOutputError extends Error {
   constructor(readonly issues: string[]) {
@@ -104,8 +103,6 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
       );
     if (new RegExp(PUBLIC_REPORT_MARKER, "i").test(html))
       issues.push("Reserved server report marker is not allowed.");
-    if (inspectHtml(html).length)
-      issues.push("HTML failed deterministic content moderation.");
   }
   if (card !== undefined) {
     if (card === null || typeof card !== "object" || Array.isArray(card))

@@ -10,6 +10,19 @@ export interface ModerationFinding {
   message: string;
 }
 
+export type AdvisoryWarningSource =
+  | "prompt"
+  | "generated_content"
+  | "publication"
+  | "image";
+
+export interface AdvisoryWarning {
+  source: AdvisoryWarningSource;
+  code: string;
+  message: string;
+  categories?: string[];
+}
+
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const PHONE = /(?:^|\D)(?:\+?65[ -]?)?[689]\d{3}[ -]?\d{4}(?:\D|$)/;
 const SINGAPORE_ID = /\b[STFGM]\d{7}[A-Z]\b/i;
@@ -76,34 +89,50 @@ export function inspectText(text: string): ModerationFinding[] {
   if (EMAIL.test(text)) {
     findings.push({
       code: "POSSIBLE_EMAIL",
-      message: "Remove personal email addresses before continuing.",
+      message:
+        "AI review flagged a possible email address. Check that it does not identify a pupil or another person.",
     });
   }
   if (PHONE.test(text)) {
     findings.push({
       code: "POSSIBLE_PHONE",
-      message: "Remove personal phone numbers before continuing.",
+      message:
+        "AI review flagged a possible phone number. Check that it does not identify a pupil or another person.",
     });
   }
   if (SINGAPORE_ID.test(text)) {
     findings.push({
       code: "POSSIBLE_STUDENT_IDENTIFIER",
-      message: "Remove identity numbers before continuing.",
+      message:
+        "AI review flagged a possible identity number. Check that it does not identify a pupil or another person.",
     });
   }
   if (HARM_INSTRUCTION_PATTERNS.some((pattern) => pattern.test(text))) {
     findings.push({
       code: "UNSAFE_HARM_INSTRUCTION",
       message:
-        "This request asks for unsafe instructions and cannot be made into a tapplet.",
+        "AI review flagged possible instructions for serious harm. Check the content and re-prompt if that was not intended.",
     });
   }
   if (SEXUAL_MINOR_CONTENT.test(text)) {
     findings.push({
       code: "SEXUAL_CONTENT_INVOLVING_MINORS",
       message:
-        "This request contains unsafe sexual content involving children and cannot be processed.",
+        "AI review flagged possible sexual content involving children. Check the content and re-prompt if that was not intended.",
     });
   }
   return findings;
+}
+
+export function advisoryWarnings(
+  source: AdvisoryWarningSource,
+  findings: ModerationFinding[],
+): AdvisoryWarning[] {
+  const seen = new Set<string>();
+  return findings.flatMap((finding) => {
+    const key = `${source}:${finding.code}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ source, ...finding }];
+  });
 }

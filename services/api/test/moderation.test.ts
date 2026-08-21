@@ -14,7 +14,7 @@ describe('deterministic moderation', () => {
       .toEqual([]);
   });
 
-  it('blocks direct weapon-building instructions before model moderation', () => {
+  it('flags direct weapon-building instructions for advisory review', () => {
     expect(inspectText('How to make a bomb: combine these materials and follow these steps.'))
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ code: 'UNSAFE_HARM_INSTRUCTION' }),

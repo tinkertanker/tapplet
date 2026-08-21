@@ -55,6 +55,28 @@ describe("HTML generation contract", () => {
     ).resolves.toEqual({ html });
     expect(provider.repair).toHaveBeenCalledOnce();
   });
+
+  it("does not repair structurally valid HTML only because content review flags it", async () => {
+    const provider = {
+      name: "fixed",
+      generate: vi.fn().mockResolvedValue({
+        html: html.replace("Hello", "Contact teacher@example.com"),
+      }),
+      repair: vi.fn(),
+      revise: vi.fn(),
+      moderate: vi.fn(),
+    } as unknown as ModelProvider;
+
+    await expect(
+      generateArtifact(provider, {
+        level: "P5",
+        subject: "Maths",
+        learningObjective: "Fractions",
+        studentAction: "Choose",
+      }),
+    ).resolves.toMatchObject({ html: expect.stringContaining("teacher@example.com") });
+    expect(provider.repair).not.toHaveBeenCalled();
+  });
   it("rejects external scripts and unknown output fields", () => {
     expect(() =>
       validateHtmlOutput({

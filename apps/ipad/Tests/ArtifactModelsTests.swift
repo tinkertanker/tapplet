@@ -21,6 +21,19 @@ final class ArtifactModelsTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "tapplet-preview://preview/assets/image-1")
         XCTAssertEqual(AssetSchemeHandler.assetID(from: url), "image-1")
     }
+
+    func testOnDeviceImageReviewReturnsWarningsInsteadOfBlockingFindings() {
+        let warnings = AppletImagePrivacyScanner.warnings(
+            personDetected: true,
+            recognisedText: "teacher@example.com"
+        )
+
+        XCTAssertEqual(
+            warnings.map(\.code),
+            ["POSSIBLE_PERSON_IN_IMAGE", "POSSIBLE_PERSONAL_DATA_IN_IMAGE"]
+        )
+        XCTAssertTrue(warnings.allSatisfy { $0.source == "image" })
+    }
 }
 
 final class ExampleCatalogTests: XCTestCase {

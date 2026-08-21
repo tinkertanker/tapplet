@@ -11,6 +11,7 @@ struct PreparedAppletImage: Equatable, Sendable {
     let width: Int
     let height: Int
     let sha256: String
+    var warnings: [AdvisoryWarning] = []
 
     var fileExtension: String { "jpg" }
 }
@@ -72,7 +73,7 @@ enum AppletImageProcessor {
         guard let privacyImage = thumbnail(from: source, maximumDimension: 2_048) else {
             throw AppletImageError.invalidImage
         }
-        try AppletImagePrivacyScanner.validate(privacyImage)
+        let warnings = AppletImagePrivacyScanner.inspect(privacyImage)
 
         for maximumDimension in [2_048, 1_600, 1_280, 1_024] {
             guard let image = thumbnail(from: source, maximumDimension: maximumDimension),
@@ -87,7 +88,8 @@ enum AppletImageProcessor {
                         mediaType: "image/jpeg",
                         width: flattened.width,
                         height: flattened.height,
-                        sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                        sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+                        warnings: warnings
                     )
                 }
             }
@@ -141,7 +143,7 @@ enum AppletImageProcessor {
 }
 
 enum AppletImagePrivacyScanner {
-    static func validate(_ image: CGImage) throws {
+    static func inspect(_ image: CGImage) -> [AdvisoryWarning] {
         let faces = VNDetectFaceRectanglesRequest()
         let text = VNRecognizeTextRequest()
         text.recognitionLevel = .accurate
@@ -150,19 +152,48 @@ enum AppletImagePrivacyScanner {
         do {
             try VNImageRequestHandler(cgImage: image).perform([faces, text])
         } catch {
-            throw AppletImageError.privacyCheckFailed
-        }
-
-        if !(faces.results?.isEmpty ?? true) {
-            throw AppletImageError.identifiablePersonDetected
+            return [
+                AdvisoryWarning(
+                    source: "image",
+                    code: "ON_DEVICE_IMAGE_REVIEW_UNAVAILABLE",
+                    message: "AI review was unavailable on this iPad. Check the image for people and personal information before sharing.",
+                    categories: nil
+                )
+            ]
         }
 
         let recognisedText = (text.results ?? [])
             .compactMap { $0.topCandidates(1).first?.string }
             .joined(separator: "\n")
-        if containsObviousPersonalData(in: recognisedText) {
-            throw AppletImageError.personalDataDetected
+        return warnings(
+            personDetected: !(faces.results?.isEmpty ?? true),
+            recognisedText: recognisedText
+        )
+    }
+
+    static func warnings(personDetected: Bool, recognisedText: String) -> [AdvisoryWarning] {
+        var warnings: [AdvisoryWarning] = []
+        if personDetected {
+            warnings.append(
+                AdvisoryWarning(
+                    source: "image",
+                    code: "POSSIBLE_PERSON_IN_IMAGE",
+                    message: "AI review flagged a possible person in this image. Check it before sharing.",
+                    categories: ["person"]
+                )
+            )
         }
+        if containsObviousPersonalData(in: recognisedText) {
+            warnings.append(
+                AdvisoryWarning(
+                    source: "image",
+                    code: "POSSIBLE_PERSONAL_DATA_IN_IMAGE",
+                    message: "AI review flagged possible personal information in this image. Check it before sharing.",
+                    categories: ["personal information"]
+                )
+            )
+        }
+        return warnings
     }
 
     static func containsObviousPersonalData(in text: String) -> Bool {
@@ -249,9 +280,6 @@ enum AppletImageError: LocalizedError, Equatable {
     case couldNotReduceSize
     case limitReached
     case descriptionRequired
-    case identifiablePersonDetected
-    case personalDataDetected
-    case privacyCheckFailed
     case invalidRestoredAsset
 
     var errorDescription: String? {
@@ -264,12 +292,6 @@ enum AppletImageError: LocalizedError, Equatable {
             "A tapplet can contain up to three uploaded images."
         case .descriptionRequired:
             "Describe the image for students, or mark it as decorative."
-        case .identifiablePersonDetected:
-            "Choose an image without recognisable people. Tapplet Studio does not upload pupil or staff photos."
-        case .personalDataDetected:
-            "This image appears to contain an email address, Singapore phone number or identity number. Remove personal information before uploading it."
-        case .privacyCheckFailed:
-            "Tapplet Studio could not complete the on-device privacy check for this image. Choose a different image and try again."
         case .invalidRestoredAsset:
             "Tapplet Studio could not safely restore one of this tapplet’s images. The local tapplet was left unchanged."
         }

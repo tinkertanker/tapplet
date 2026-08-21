@@ -88,7 +88,10 @@ describe('asset reference ownership', () => {
 
     const bucketPut = vi.fn().mockResolvedValue(undefined);
     const normalize = vi.fn().mockResolvedValue(ONE_PIXEL_CANONICAL_JPEG);
-    const imageInspect = vi.fn().mockResolvedValue(undefined);
+    const imageInspect = vi.fn().mockResolvedValue({
+      status: 'flagged',
+      reason: 'A possible pupil face is visible.',
+    });
     const database = {
       prepare(sql: string) {
         const statement = {
@@ -150,6 +153,59 @@ describe('asset reference ownership', () => {
     expect(record.sha256).toBe(canonicalHash);
     expect(storedOptions.customMetadata.sha256).toBe(canonicalHash);
     expect(record.sha256).not.toBe(incomingHash);
+    expect(record.warnings).toEqual([
+      expect.objectContaining({
+        source: 'image',
+        code: 'AI_IMAGE_REVIEW_FLAGGED',
+        message: expect.stringContaining('possible person'),
+      }),
+    ]);
+  });
+
+  it('stores valid images with an advisory when image review is unavailable', async () => {
+    const reviewers = [
+      undefined,
+      { inspect: vi.fn().mockResolvedValue({ status: 'unavailable' }) },
+      { inspect: vi.fn().mockRejectedValue(new Error('review offline')) },
+    ];
+
+    for (const reviewer of reviewers) {
+      const bucketPut = vi.fn().mockResolvedValue(undefined);
+      const store = new CloudflareAssetStore(
+        fakeDatabase([]),
+        { put: bucketPut, delete: vi.fn() } as unknown as R2Bucket,
+        { normalize: vi.fn().mockResolvedValue(ONE_PIXEL_CANONICAL_JPEG) },
+        reviewer,
+      );
+      const upload = Uint8Array.from([1, 2, 3]);
+      const record = await store.put(
+        new Request('https://api.example.test/v1/assets', {
+          method: 'POST',
+          headers: {
+            'content-type': 'image/png',
+            'x-image-width': '1',
+            'x-image-height': '1',
+            'x-image-decorative': 'true',
+          },
+          body: upload,
+        }),
+        {
+          ownerHash: 'owner-a',
+          networkHash: 'network-a',
+          now: '2026-07-18T00:00:00.000Z',
+          maximumNetworkCount: 100,
+          maximumNetworkBytes: 10_000_000,
+        },
+      );
+
+      expect(record.warnings).toEqual([
+        expect.objectContaining({
+          source: 'image',
+          code: 'AI_IMAGE_REVIEW_UNAVAILABLE',
+        }),
+      ]);
+      expect(bucketPut).toHaveBeenCalledOnce();
+    }
   });
 
   it('fails closed when the injected normalizer returns malformed output', async () => {

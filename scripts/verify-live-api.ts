@@ -19,6 +19,7 @@ let token =
   (!explicitAccessCode && existsSync(tokenPath)
     ? readFileSync(tokenPath, "utf8").trim()
     : "");
+let registrationAccessCode: string | undefined;
 const jsonHeaders: Record<string, string> = {
   Accept: "application/json",
   "Content-Type": "application/json",
@@ -28,7 +29,34 @@ interface ArtifactEnvelope {
   artifact: { id: string; headRevisionId: string };
   headRevision: { id: string; parentRevisionId?: string | null };
   html: string;
+  warnings?: AdvisoryWarning[];
 }
+
+interface AdvisoryWarning {
+  source: string;
+  code: string;
+  message: string;
+  categories?: string[];
+}
+
+const advisoryTestMarker = "advisory-check@example.com";
+const advisoryWarningSources = new Set([
+  "prompt",
+  "generated_content",
+  "publication",
+  "image",
+]);
+const advisoryWarningCodes = new Set([
+  "POSSIBLE_EMAIL",
+  "POSSIBLE_PHONE",
+  "POSSIBLE_STUDENT_IDENTIFIER",
+  "UNSAFE_HARM_INSTRUCTION",
+  "SEXUAL_CONTENT_INVOLVING_MINORS",
+  "AI_CONTENT_REVIEW_FLAGGED",
+  "AI_CONTENT_REVIEW_UNAVAILABLE",
+  "AI_IMAGE_REVIEW_FLAGGED",
+  "AI_IMAGE_REVIEW_UNAVAILABLE",
+]);
 
 async function ensureDeviceToken(): Promise<void> {
   if (token) {
@@ -44,6 +72,7 @@ async function ensureDeviceToken(): Promise<void> {
       "Set STUDIO_CLASS_ACCESS_CODE for the first live verification, provision class 0000, or restore .studio-smoke-token.",
     );
   }
+  registrationAccessCode = accessCode;
   const response = await fetch(`${origin}/v1/devices/register`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -98,7 +127,60 @@ function artifactEnvelope(body: unknown, operation: string): ArtifactEnvelope {
         .join("; ")}`,
     );
   }
+  validateWarnings(envelope, operation);
   return envelope as ArtifactEnvelope;
+}
+
+function validateWarnings(body: unknown, operation: string): AdvisoryWarning[] {
+  const warnings = (body as { warnings?: unknown } | undefined)?.warnings;
+  if (warnings === undefined) return [];
+  if (!Array.isArray(warnings) || warnings.length > 20) {
+    throw new Error(`${operation} returned an invalid advisory warning.`);
+  }
+  for (const warning of warnings) {
+    if (!warning || typeof warning !== "object") {
+      throw new Error(`${operation} returned an invalid advisory warning.`);
+    }
+    const source = Reflect.get(warning, "source");
+    const code = Reflect.get(warning, "code");
+    const message = Reflect.get(warning, "message");
+    const categories = Reflect.get(warning, "categories");
+    if (
+      Object.keys(warning).some(
+        (key) => !["source", "code", "message", "categories"].includes(key),
+      ) ||
+      typeof source !== "string" ||
+      !advisoryWarningSources.has(source) ||
+      typeof code !== "string" ||
+      !advisoryWarningCodes.has(code) ||
+      typeof message !== "string" ||
+      message.trim().length === 0 ||
+      message.length > 600 ||
+      (categories !== undefined &&
+        (!Array.isArray(categories) ||
+          categories.length > 10 ||
+          categories.some(
+            (category) =>
+              typeof category !== "string" ||
+              category.trim().length === 0 ||
+              category.length > 100,
+          )))
+    ) {
+      throw new Error(`${operation} returned an invalid advisory warning.`);
+    }
+  }
+  const serialised = JSON.stringify(warnings).toLowerCase();
+  for (const privateValue of [
+    advisoryTestMarker,
+    token,
+    explicitAccessCode,
+    registrationAccessCode,
+  ]) {
+    if (privateValue && serialised.includes(privateValue.toLowerCase())) {
+      throw new Error(`${operation} echoed private input in an advisory warning.`);
+    }
+  }
+  return warnings as AdvisoryWarning[];
 }
 
 async function main() {
@@ -153,7 +235,7 @@ async function main() {
         {
           method: "POST",
           body: JSON.stringify({
-            instruction: "Make the student instructions more concise.",
+            instruction: `Make the student instructions more concise. Do not include the fictional verification marker ${advisoryTestMarker} in the tapplet.`,
             expectedHeadRevisionId: generated.headRevision.id,
           }),
         },
@@ -162,6 +244,16 @@ async function main() {
     );
     if (revised.headRevision.parentRevisionId !== generated.headRevision.id) {
       throw new Error("Revision did not preserve parent history.");
+    }
+    if (
+      !revised.warnings?.some(
+        (warning) =>
+          warning.source === "prompt" && warning.code === "POSSIBLE_EMAIL",
+      )
+    ) {
+      throw new Error(
+        "Revision did not return the expected warning-only prompt advisory.",
+      );
     }
 
     const restored = artifactEnvelope(
@@ -206,13 +298,17 @@ async function main() {
       body: Uint8Array.from(imageBytes),
     });
     const uploadedBody = (await uploadedImage.json().catch(() => undefined)) as
-      | { asset?: { id?: string; mediaType?: string; sha256?: string } }
+      | {
+          asset?: { id?: string; mediaType?: string; sha256?: string };
+          warnings?: AdvisoryWarning[];
+        }
       | undefined;
     if (!uploadedImage.ok || typeof uploadedBody?.asset?.id !== "string") {
       throw new Error(
         `Live image upload failed (${uploadedImage.status}): ${JSON.stringify(uploadedBody)}`,
       );
     }
+    validateWarnings(uploadedBody, "Image upload");
     assetId = uploadedBody.asset.id;
 
     const withImage = artifactEnvelope(
@@ -242,7 +338,10 @@ async function main() {
           expectedHeadRevisionId: withImage.headRevision.id,
         }),
       },
-    )) as { publication?: { slug?: string; url?: string; expiresAt?: string } };
+    )) as {
+      publication?: { slug?: string; url?: string; expiresAt?: string };
+      warnings?: AdvisoryWarning[];
+    };
     if (
       typeof published.publication?.slug !== "string" ||
       typeof published.publication.url !== "string" ||
@@ -250,6 +349,7 @@ async function main() {
     ) {
       throw new Error("Publish did not return a complete publication.");
     }
+    validateWarnings(published, "Publish");
     slug = published.publication.slug;
     const publicUrl = published.publication.url;
 
@@ -289,8 +389,7 @@ async function main() {
     const publicImageBytes = Buffer.from(await publicImage.arrayBuffer());
     if (
       !publicImage.ok ||
-      publicImage.headers.get("content-type") !==
-        uploadedBody.asset.mediaType ||
+      publicImage.headers.get("content-type") !== uploadedBody.asset.mediaType ||
       createHash("sha256").update(publicImageBytes).digest("hex") !==
         uploadedBody.asset.sha256
     ) {
@@ -340,7 +439,7 @@ async function main() {
     assetId = undefined;
 
     console.log(
-      "Live Tapplet flow passed: retrieval, generate, revise, restore, image, publish, extend, report, revoke, delete.",
+      "Live Tapplet flow passed: retrieval, generate, warning-only advisory, revise, restore, image, publish, extend, report, revoke, delete.",
     );
   } catch (error) {
     const cleanupErrors: string[] = [];

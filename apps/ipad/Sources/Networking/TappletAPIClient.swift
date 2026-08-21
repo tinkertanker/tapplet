@@ -4,23 +4,23 @@ import Security
 protocol TappletAPI: Sendable {
     func hasDeviceCredential() async -> Bool
     func registerDevice(accessCode: String) async throws
-    func generate(request: GuidedGenerationRequest) async throws -> ArtifactProject
+    func generate(request: GuidedGenerationRequest) async throws -> AdvisoryResult<ArtifactProject>
     func listArtifacts() async throws -> [Artifact]
     func searchExamples(brief: String) async throws -> [ExampleSearchDescriptor]
     func getArtifact(id: String) async throws -> ArtifactProject
-    func updateArtifact(_ artifact: Artifact) async throws -> Artifact
+    func updateArtifact(_ artifact: Artifact) async throws -> AdvisoryResult<Artifact>
     func deleteArtifact(id: String) async throws
-    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> ArtifactProject
+    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> AdvisoryResult<ArtifactProject>
     func revisions(id: String) async throws -> [ArtifactRevision]
     func source(revision: ArtifactRevision) async throws -> ArtifactSource
     func setHead(id: String, revisionId: String, expectedHeadRevisionId: String) async throws -> ArtifactProject
-    func remix(id: String, revisionId: String?) async throws -> ArtifactProject
+    func remix(id: String, revisionId: String?) async throws -> AdvisoryResult<ArtifactProject>
     func downloadAsset(id: String) async throws -> DownloadedAppletAsset
     func uploadScreenshot(revisionId: String, jpeg: Data) async throws
-    func publish(id: String, revisionId: String) async throws -> ArtifactPublication
+    func publish(id: String, revisionId: String) async throws -> AdvisoryResult<ArtifactPublication>
     func revoke(slug: String) async throws
     func extend(slug: String, days: Int) async throws -> ArtifactPublication
-    func uploadImage(_ image: PreparedAppletImage, alternativeText: String?, decorative: Bool) async throws -> UploadedAppletImage
+    func uploadImage(_ image: PreparedAppletImage, alternativeText: String?, decorative: Bool) async throws -> AdvisoryResult<UploadedAppletImage>
 }
 
 protocol DeviceTokenProviding: Sendable {
@@ -127,9 +127,12 @@ struct TappletAPIClient: TappletAPI, Sendable {
         try await tokenStore.storeToken(registration.token)
     }
 
-    func generate(request: GuidedGenerationRequest) async throws -> ArtifactProject {
+    func generate(request: GuidedGenerationRequest) async throws -> AdvisoryResult<ArtifactProject> {
         let envelope: ProjectEnvelope = try await send("/v1/artifacts/generate", method: "POST", body: request)
-        return try await hydrate(envelope)
+        return AdvisoryResult(
+            value: try await hydrate(envelope),
+            warnings: envelope.warnings ?? []
+        )
     }
 
     func listArtifacts() async throws -> [Artifact] {
@@ -151,7 +154,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
         return try await hydrate(envelope)
     }
 
-    func updateArtifact(_ artifact: Artifact) async throws -> Artifact {
+    func updateArtifact(_ artifact: Artifact) async throws -> AdvisoryResult<Artifact> {
         struct Body: Encodable {
             let title, summary: String
             let subject, level, locale, learningObjective: String?
@@ -162,15 +165,18 @@ struct TappletAPIClient: TappletAPI, Sendable {
             locale: artifact.locale, learningObjective: artifact.learningObjective, tags: artifact.tags,
             creationBrief: artifact.creationBrief
         ))
-        return envelope.artifact
+        return AdvisoryResult(value: envelope.artifact, warnings: envelope.warnings ?? [])
     }
 
     func deleteArtifact(id: String) async throws { try await sendEmpty("/v1/artifacts/\(path(id))", method: "DELETE") }
 
-    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> ArtifactProject {
+    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> AdvisoryResult<ArtifactProject> {
         struct Body: Encodable { let instruction, expectedHeadRevisionId: String }
         let envelope: ProjectEnvelope = try await send("/v1/artifacts/\(path(id))/revisions", method: "POST", body: Body(instruction: instruction, expectedHeadRevisionId: expectedHeadRevisionId))
-        return try await hydrate(envelope)
+        return AdvisoryResult(
+            value: try await hydrate(envelope),
+            warnings: envelope.warnings ?? []
+        )
     }
 
     func revisions(id: String) async throws -> [ArtifactRevision] {
@@ -190,7 +196,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
         return try await hydrate(envelope)
     }
 
-    func remix(id: String, revisionId: String?) async throws -> ArtifactProject {
+    func remix(id: String, revisionId: String?) async throws -> AdvisoryResult<ArtifactProject> {
         let selected: String
         if let revisionId {
             selected = revisionId
@@ -200,7 +206,10 @@ struct TappletAPIClient: TappletAPI, Sendable {
         }
         struct Body: Encodable { let title: String? }
         let envelope: ProjectEnvelope = try await send("/v1/revisions/\(path(selected))/remix", method: "POST", body: Body(title: nil))
-        return try await hydrate(envelope)
+        return AdvisoryResult(
+            value: try await hydrate(envelope),
+            warnings: envelope.warnings ?? []
+        )
     }
 
     func downloadAsset(id: String) async throws -> DownloadedAppletAsset {
@@ -225,10 +234,10 @@ struct TappletAPIClient: TappletAPI, Sendable {
         try await upload("/v1/revisions/\(path(revisionId))/screenshot", data: jpeg, contentType: "image/jpeg", headers: [:])
     }
 
-    func publish(id: String, revisionId: String) async throws -> ArtifactPublication {
+    func publish(id: String, revisionId: String) async throws -> AdvisoryResult<ArtifactPublication> {
         struct Body: Encodable { let expectedHeadRevisionId: String }
         let envelope: PublicationEnvelope = try await send("/v1/artifacts/\(path(id))/publish", method: "POST", body: Body(expectedHeadRevisionId: revisionId))
-        return envelope.publication
+        return AdvisoryResult(value: envelope.publication, warnings: envelope.warnings ?? [])
     }
 
     func revoke(slug: String) async throws { try await sendEmpty("/v1/publications/\(path(slug))", method: "DELETE") }
@@ -239,7 +248,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
         return envelope.publication
     }
 
-    func uploadImage(_ image: PreparedAppletImage, alternativeText: String?, decorative: Bool) async throws -> UploadedAppletImage {
+    func uploadImage(_ image: PreparedAppletImage, alternativeText: String?, decorative: Bool) async throws -> AdvisoryResult<UploadedAppletImage> {
         var headers = [
             "Content-Length": String(image.data.count), "X-Image-Width": String(image.width),
             "X-Image-Height": String(image.height), "X-Image-SHA256": image.sha256,
@@ -247,13 +256,22 @@ struct TappletAPIClient: TappletAPI, Sendable {
         ]
         if let alternativeText { headers["X-Image-Alt-Base64"] = Data(alternativeText.utf8).base64EncodedString() }
         let data = try await upload("/v1/assets", data: image.data, contentType: image.mediaType, headers: headers)
-        return try decode(data)
+        let envelope: ImageEnvelope = try decode(data)
+        return AdvisoryResult(
+            value: UploadedAppletImage(asset: envelope.asset, accessibility: envelope.accessibility),
+            warnings: envelope.warnings ?? []
+        )
     }
 
-    private struct ArtifactEnvelope: Decodable { let artifact: Artifact }
+    private struct ArtifactEnvelope: Decodable { let artifact: Artifact; let warnings: [AdvisoryWarning]? }
     private struct RevisionsEnvelope: Decodable { let revisions: [ArtifactRevision] }
-    private struct PublicationEnvelope: Decodable { let publication: ArtifactPublication }
-    private struct ProjectEnvelope: Decodable { let artifact: Artifact; let headRevision: ArtifactRevision; let html: String? }
+    private struct PublicationEnvelope: Decodable { let publication: ArtifactPublication; let warnings: [AdvisoryWarning]? }
+    private struct ProjectEnvelope: Decodable { let artifact: Artifact; let headRevision: ArtifactRevision; let html: String?; let warnings: [AdvisoryWarning]? }
+    private struct ImageEnvelope: Decodable {
+        let asset: AppletImageAssetRecord
+        let accessibility: UploadedAppletImage.Accessibility
+        let warnings: [AdvisoryWarning]?
+    }
 
     private func hydrate(_ envelope: ProjectEnvelope) async throws -> ArtifactProject {
         let source: ArtifactSource

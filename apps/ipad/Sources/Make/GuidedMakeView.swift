@@ -485,7 +485,7 @@ struct GuidedMakeView: View {
         Task {
             do {
                 _ = try await store.createApprovedBrief(store.guidedMakeDraft)
-                store.resetGuidedMake()
+                if store.advisoryNotice == nil { store.resetGuidedMake() }
             } catch {
                 creationError = store.present(error, during: .generation)
             }

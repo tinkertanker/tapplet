@@ -1,5 +1,17 @@
 import Foundation
 
+struct AdvisoryWarning: Codable, Equatable, Sendable {
+    let source: String
+    let code: String
+    let message: String
+    let categories: [String]?
+}
+
+struct AdvisoryResult<Value: Sendable>: Sendable {
+    let value: Value
+    let warnings: [AdvisoryWarning]
+}
+
 struct Artifact: Codable, Equatable, Identifiable, Sendable {
     var id: String
     var title: String
