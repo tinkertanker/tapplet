@@ -64,6 +64,7 @@ struct WorkshopAccessView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.roundedRectangle(radius: TappletTheme.actionCornerRadius))
                         .controlSize(.large)
                         .disabled(isRegistering)
                         .accessibilityIdentifier("explore-examples")
