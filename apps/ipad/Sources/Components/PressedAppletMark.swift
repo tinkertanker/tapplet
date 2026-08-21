@@ -50,3 +50,24 @@ struct PressedAppletMark: View {
         .accessibilityHidden(true)
     }
 }
+
+/// The mark caught mid-tap in a slow loop: a gentle rock and press for
+/// in-progress moments such as applet generation. Static under Reduce Motion.
+struct AnimatedPressedAppletMark: View {
+    var size: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pressed = false
+
+    var body: some View {
+        PressedAppletMark(size: size, rotation: .zero)
+            .rotationEffect(.degrees(pressed ? -4 : -13))
+            .scaleEffect(x: pressed ? 1.03 : 1, y: pressed ? 0.93 : 1, anchor: .bottom)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    pressed = true
+                }
+            }
+    }
+}

@@ -224,10 +224,7 @@ struct GuidedMakeView: View {
 
     private var generationStatus: some View {
         HStack(alignment: .top, spacing: 14) {
-            ProgressView()
-                .controlSize(.large)
-                .tint(TappletTheme.accent)
-                .accessibilityHidden(true)
+            AnimatedPressedAppletMark(size: 56)
             VStack(alignment: .leading, spacing: 5) {
                 Text("This usually takes one to two minutes.")
                     .font(.body.weight(.semibold))

@@ -57,10 +57,13 @@ Current wiring:
   (`services/api/src/brand.ts`).
 - **iPad app**: the reusable `PressedAppletMark` SwiftUI view
   (`apps/ipad/Sources/Components/PressedAppletMark.swift`) draws the motif at
-  any size/rotation; it anchors the empty states in My Applets and Explore.
-  Prefer it over new one-off artwork; leave T Krobot placements
-  (`TKRobotStickerView`) as the character voice and the motif as the product
-  voice.
+  any size/rotation, and `AnimatedPressedAppletMark` loops a gentle
+  rock-and-press for in-progress moments (static under Reduce Motion). Wired
+  into: the My Applets, Explore, and editor-fallback empty states; the
+  guided-make generation status; the share sheet before a link exists; and
+  the Tapplet access setup screen. Prefer these over new one-off artwork;
+  leave T Krobot placements (`TKRobotStickerView`) as the character voice and
+  the motif as the product voice.
 
 ## Exploration history
 
