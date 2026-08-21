@@ -10,7 +10,7 @@ protocol TappletAPI: Sendable {
     func getArtifact(id: String) async throws -> ArtifactProject
     func updateArtifact(_ artifact: Artifact) async throws -> AdvisoryResult<Artifact>
     func deleteArtifact(id: String) async throws
-    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> AdvisoryResult<ArtifactProject>
+    func revise(id: String, instruction: String, expectedHeadRevisionId: String, requiredAssetID: String?) async throws -> AdvisoryResult<ArtifactProject>
     func revisions(id: String) async throws -> [ArtifactRevision]
     func source(revision: ArtifactRevision) async throws -> ArtifactSource
     func setHead(id: String, revisionId: String, expectedHeadRevisionId: String) async throws -> ArtifactProject
@@ -170,9 +170,16 @@ struct TappletAPIClient: TappletAPI, Sendable {
 
     func deleteArtifact(id: String) async throws { try await sendEmpty("/v1/artifacts/\(path(id))", method: "DELETE") }
 
-    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> AdvisoryResult<ArtifactProject> {
-        struct Body: Encodable { let instruction, expectedHeadRevisionId: String }
-        let envelope: ProjectEnvelope = try await send("/v1/artifacts/\(path(id))/revisions", method: "POST", body: Body(instruction: instruction, expectedHeadRevisionId: expectedHeadRevisionId))
+    func revise(id: String, instruction: String, expectedHeadRevisionId: String, requiredAssetID: String?) async throws -> AdvisoryResult<ArtifactProject> {
+        struct Body: Encodable {
+            let instruction, expectedHeadRevisionId: String
+            let requiredAssetId: String?
+        }
+        let envelope: ProjectEnvelope = try await send("/v1/artifacts/\(path(id))/revisions", method: "POST", body: Body(
+            instruction: instruction,
+            expectedHeadRevisionId: expectedHeadRevisionId,
+            requiredAssetId: requiredAssetID
+        ))
         return AdvisoryResult(
             value: try await hydrate(envelope),
             warnings: envelope.warnings ?? []

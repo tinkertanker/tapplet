@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   generateArtifact,
   referencedAssetIds,
+  reviseArtifact,
   validateHtmlOutput,
 } from "../src/generation";
 import { generationPrompt, PROMPT_VERSION, SYSTEM_PROMPT } from "../src/ai/prompts";
@@ -53,6 +54,66 @@ describe("HTML generation contract", () => {
         studentAction: "Choose",
       }),
     ).resolves.toEqual({ html });
+    expect(provider.repair).toHaveBeenCalledOnce();
+  });
+
+  it("repairs a revision that omits an explicitly required managed image", async () => {
+    const repaired = html.replace("asset-one", "required-image"),
+      provider = {
+        name: "fixed",
+        generate: vi.fn(),
+        repair: vi.fn().mockResolvedValueOnce({ html: repaired }),
+        revise: vi.fn().mockResolvedValueOnce({ html }),
+        moderate: vi.fn(),
+      } as unknown as ModelProvider;
+
+    await expect(
+      reviseArtifact(
+        provider,
+        html,
+        undefined,
+        "Insert the uploaded image.",
+        {
+          level: "P5",
+          subject: "Maths",
+          learningObjective: "Fractions",
+          studentAction: "Choose",
+        },
+        ["required-image"],
+      ),
+    ).resolves.toEqual({ html: repaired });
+    expect(provider.repair).toHaveBeenCalledWith(
+      { html },
+      [
+        "HTML must reference the required managed image URL assets/required-image in src, href or CSS url().",
+      ],
+    );
+  });
+
+  it("stops after one repair when a required managed image is still missing", async () => {
+    const provider = {
+      name: "fixed",
+      generate: vi.fn(),
+      repair: vi.fn().mockResolvedValueOnce({ html }),
+      revise: vi.fn().mockResolvedValueOnce({ html }),
+      moderate: vi.fn(),
+    } as unknown as ModelProvider;
+
+    await expect(
+      reviseArtifact(
+        provider,
+        html,
+        undefined,
+        "Insert the uploaded image.",
+        {
+          level: "P5",
+          subject: "Maths",
+          learningObjective: "Fractions",
+          studentAction: "Choose",
+        },
+        ["required-image"],
+      ),
+    ).rejects.toThrow("Invalid generated HTML");
     expect(provider.repair).toHaveBeenCalledOnce();
   });
 

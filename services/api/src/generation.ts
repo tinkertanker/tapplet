@@ -143,15 +143,36 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
     ...(card === undefined ? {} : { designCard: card as DesignCard }),
   };
 }
+function validateCandidate(
+  candidate: unknown,
+  requiredAssetIds: string[],
+): GeneratedArtifact {
+  const artifact = validateHtmlOutput(candidate),
+    referenced = new Set(referencedAssetIds(artifact.html)),
+    missing = [...new Set(requiredAssetIds)].filter((id) => !referenced.has(id));
+  if (missing.length)
+    throw new InvalidModelOutputError(
+      missing.map(
+        (id) =>
+          `HTML must reference the required managed image URL assets/${id} in src, href or CSS url().`,
+      ),
+    );
+  return artifact;
+}
+
 async function oneRepair(
   provider: ModelProvider,
   candidate: unknown,
+  requiredAssetIds: string[] = [],
 ): Promise<GeneratedArtifact> {
   try {
-    return validateHtmlOutput(candidate);
+    return validateCandidate(candidate, requiredAssetIds);
   } catch (error) {
     if (!(error instanceof InvalidModelOutputError)) throw error;
-    return validateHtmlOutput(await provider.repair(candidate, error.issues));
+    return validateCandidate(
+      await provider.repair(candidate, error.issues),
+      requiredAssetIds,
+    );
   }
 }
 export async function generateArtifact(
@@ -170,9 +191,11 @@ export async function reviseArtifact(
   card: DesignCard | undefined,
   instruction: string,
   brief: TeacherBrief,
+  requiredAssetIds: string[] = [],
 ) {
   return oneRepair(
     provider,
     await provider.revise(html, card, instruction, brief),
+    requiredAssetIds,
   );
 }

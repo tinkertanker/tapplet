@@ -318,6 +318,7 @@ async function main() {
           method: "POST",
           body: JSON.stringify({
             instruction: `Add the uploaded image using the exact relative URL assets/${assetId}. Give it the alternative text “${liveImageFixture.alternativeText}”`,
+            requiredAssetId: assetId,
             expectedHeadRevisionId: returnedToLatest.headRevision.id,
           }),
         },

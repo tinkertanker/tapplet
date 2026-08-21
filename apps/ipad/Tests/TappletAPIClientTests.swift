@@ -91,11 +91,20 @@ final class TappletAPIClientTests: XCTestCase {
             try JSONSerialization.data(withJSONObject: envelope),
             revisionsData
         ])
-        let result = try await client(transport).revise(id: "a1", instruction: "Use larger labels", expectedHeadRevisionId: "r0")
+        let result = try await client(transport).revise(
+            id: "a1",
+            instruction: "Use larger labels",
+            expectedHeadRevisionId: "r0",
+            requiredAssetID: "asset-1"
+        )
         let request = await transport.requests[0]
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.url?.path, "/v1/artifacts/a1/revisions")
-        XCTAssertEqual(try JSONSerialization.jsonObject(with: request.httpBody!) as? NSDictionary, ["instruction": "Use larger labels", "expectedHeadRevisionId": "r0"])
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: request.httpBody!) as? NSDictionary, [
+            "instruction": "Use larger labels",
+            "expectedHeadRevisionId": "r0",
+            "requiredAssetId": "asset-1"
+        ])
         XCTAssertEqual(result.warnings.first?.code, "POSSIBLE_EMAIL")
     }
 

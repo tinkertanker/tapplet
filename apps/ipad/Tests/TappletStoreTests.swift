@@ -121,6 +121,35 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRefinementForwardsARequiredManagedAsset() async throws {
+        let original = makeProject(revisionID: "r1", html: "<html>Original</html>")
+        let revised = makeProject(
+            revisionID: "r2",
+            parentRevisionID: "r1",
+            html: "<html><img src=\"assets/asset-1\"></html>"
+        )
+        let api = ArtifactAPIStub(generated: original, revised: revised)
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        var brief = GuidedBriefDraft()
+        brief.learningObjective = "Forces"
+        brief.studentAction = "Choose"
+        _ = try await store.createApprovedBrief(brief)
+
+        try await store.refine(
+            "Insert the uploaded image.",
+            projectID: original.id,
+            requiredAssetID: "asset-1"
+        )
+
+        let request = await api.lastRevisionRequest
+        XCTAssertEqual(request?.requiredAssetID, "asset-1")
+    }
+
+    @MainActor
     func testSuccessfulRefinementPresentsAdvisoryAndKeepsTheRevisedProject() async throws {
         let original = makeProject(revisionID: "r1", html: "<html>Original</html>")
         let revised = makeProject(
@@ -507,6 +536,7 @@ private actor ArtifactAPIStub: TappletAPI {
     struct RevisionRequest: Sendable {
         let instruction: String
         let expectedHeadRevisionID: String
+        let requiredAssetID: String?
     }
     struct RemixRequest: Sendable {
         let artifactID: String
@@ -563,11 +593,12 @@ private actor ArtifactAPIStub: TappletAPI {
     func deleteArtifact(id: String) async throws {
         if let deleteError { throw deleteError }
     }
-    func revise(id: String, instruction: String, expectedHeadRevisionId: String) async throws -> AdvisoryResult<ArtifactProject> {
+    func revise(id: String, instruction: String, expectedHeadRevisionId: String, requiredAssetID: String?) async throws -> AdvisoryResult<ArtifactProject> {
         if let revisionError { throw revisionError }
         lastRevisionRequest = RevisionRequest(
             instruction: instruction,
-            expectedHeadRevisionID: expectedHeadRevisionId
+            expectedHeadRevisionID: expectedHeadRevisionId,
+            requiredAssetID: requiredAssetID
         )
         return AdvisoryResult(value: revised, warnings: warnings)
     }

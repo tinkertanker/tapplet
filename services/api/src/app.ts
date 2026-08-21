@@ -382,8 +382,11 @@ export function createStudioApp(d: Deps) {
         "Network safety limit reached.",
       );
   }
-  async function assets(html: string, o: string, allowReferenced = false) {
-    const ids = referencedAssetIds(html);
+  async function validateAssetReferences(
+    ids: string[],
+    o: string,
+    allowReferenced = false,
+  ) {
     if (ids.length && !d.assets)
       throw new HttpError(
         503,
@@ -404,6 +407,10 @@ export function createStudioApp(d: Deps) {
           `Asset ${x} is not owned by this device.`,
         );
     }
+  }
+  async function assets(html: string, o: string, allowReferenced = false) {
+    const ids = referencedAssetIds(html);
+    await validateAssetReferences(ids, o, allowReferenced);
     return ids;
   }
   async function projectResponse(
@@ -908,10 +915,21 @@ export function createStudioApp(d: Deps) {
       if (s[3] === "revisions" && s.length === 4 && r.method === "POST") {
         const b = obj(await readJson(r, 16000)),
           instruction = str(b.instruction, "Instruction", 2000),
+          requiredAssetId = optionalStr(
+            b.requiredAssetId,
+            "Required asset ID",
+            100,
+          ),
           expected = str(
             b.expectedHeadRevisionId,
             "expectedHeadRevisionId",
             100,
+          );
+        if (requiredAssetId && !ID.test(requiredAssetId))
+          throw new HttpError(
+            422,
+            "INVALID_INPUT",
+            "Required asset ID is invalid.",
           );
         if (a.headRevisionId !== expected)
           throw new HttpError(
@@ -919,6 +937,8 @@ export function createStudioApp(d: Deps) {
             "HEAD_REVISION_CONFLICT",
             "Artifact head changed.",
           );
+        if (requiredAssetId)
+          await validateAssetReferences([requiredAssetId], o);
         const warnings = advisoryWarnings("prompt", inspectText(instruction));
         await quota(r, o, "generation");
         const current = await d.repository.getRevision(expected),
@@ -935,6 +955,7 @@ export function createStudioApp(d: Deps) {
             design(current),
             instruction,
             JSON.parse(a.generationBrief) as TeacherBrief,
+            requiredAssetId ? [requiredAssetId] : [],
           ),
           rid = id(),
           hash = await persist(out.html),

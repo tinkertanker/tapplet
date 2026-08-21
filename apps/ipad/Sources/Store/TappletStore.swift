@@ -172,9 +172,14 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         open(project)
     }
     @discardableResult
-    func refine(_ instruction: String, projectID: String) async throws -> [AdvisoryWarning] {
+    func refine(_ instruction: String, projectID: String, requiredAssetID: String? = nil) async throws -> [AdvisoryWarning] {
         let current = try project(projectID)
-        let result = try await api.revise(id: projectID, instruction: instruction, expectedHeadRevisionId: current.artifact.headRevisionId)
+        let result = try await api.revise(
+            id: projectID,
+            instruction: instruction,
+            expectedHeadRevisionId: current.artifact.headRevisionId,
+            requiredAssetID: requiredAssetID
+        )
         presentAdvisories(result.warnings)
         upsert(result.value)
         return result.warnings
@@ -266,7 +271,11 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         let local = try LocalAppletAssetStorage.store(image, id: upload.value.asset.id)
         do {
             let context = decorative ? "decorative and ignored by assistive technology" : "described as: \(description)"
-            let revisionWarnings = try await refine("Insert the uploaded image using relative URL assets/\(upload.value.asset.id). It is \(context).", projectID: projectID)
+            let revisionWarnings = try await refine(
+                "Insert the uploaded image using relative URL assets/\(upload.value.asset.id). It is \(context).",
+                projectID: projectID,
+                requiredAssetID: upload.value.asset.id
+            )
             if let index = projects.firstIndex(where: { $0.id == projectID }) {
                 projects[index].localAssets.removeAll { $0.id == local.id }
                 projects[index].localAssets.append(local)

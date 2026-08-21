@@ -558,6 +558,41 @@ describe("Tapplet API registration and public HTML", () => {
     expect(remixed.headRevision.parentRevisionId).toBeNull();
   });
 
+  it("rejects an unavailable required revision asset before calling the model", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string };
+      headRevision: { id: string };
+    };
+    const provider = new FixtureModelProvider(),
+      revise = vi.spyOn(provider, "revise");
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      assets: { get: vi.fn().mockResolvedValue(null) } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const response = await app.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}/revisions`, "POST", {
+        instruction: "Insert the uploaded image.",
+        requiredAssetId: "missing-image",
+        expectedHeadRevisionId: first.headRevision.id,
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_ARTIFACT_ASSET" },
+    });
+    expect(revise).not.toHaveBeenCalled();
+    expect(repository.revisions.size).toBe(1);
+  });
+
   it("removes deleted screenshots without racing shared content-addressed sources", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
