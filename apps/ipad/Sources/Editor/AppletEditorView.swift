@@ -14,7 +14,7 @@ struct AppletEditorView: View {
             .padding().background(TappletTheme.surface)
         HStack(spacing: 0) { AppletPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
             VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { operationError = error.localizedDescription } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
-    }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }.sheet(isPresented: $showShare) { ShareArtifactView(store: store, projectID: projectID) }.alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView("This tapplet is unavailable", systemImage: "exclamationmark.triangle") } }
+    }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }.sheet(isPresented: $showShare) { ShareArtifactView(store: store, projectID: projectID) }.alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
     private func editor(_ project: ArtifactProject) -> some View {
         Form {
             Section("Ask Tapplet Studio") {
@@ -231,6 +231,7 @@ private struct ShareArtifactView: View {
                         Button("Extend 90 days") { perform { try await store.extendPublication(projectID: projectID) } }
                         Button("Turn off link", role: .destructive) { perform { try await store.unpublish(projectID: projectID) } }
                     } else {
+                        PressedAppletMark(size: 72, rotation: .degrees(12))
                         Button("Create student link") { perform { _ = try await store.publish(projectID: projectID) } }
                             .disabled(working)
                     }

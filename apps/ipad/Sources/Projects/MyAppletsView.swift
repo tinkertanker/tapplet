@@ -116,6 +116,7 @@ struct MyAppletsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
+            PressedAppletMark(size: 72)
             Text("Your tapplets will appear here")
                 .font(TappletTheme.Typography.question)
                 .foregroundStyle(TappletTheme.ink)

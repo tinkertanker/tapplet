@@ -287,11 +287,15 @@ struct ExploreView: View {
     }
 
     private var unavailableState: some View {
-        ContentUnavailableView(
-            "Examples are unavailable",
-            systemImage: "square.grid.2x2",
-            description: Text("Tapplet Studio could not load its bundled activities.")
-        )
+        ContentUnavailableView {
+            Label {
+                Text("Examples are unavailable")
+            } icon: {
+                PressedAppletMark(size: 72, rotation: .degrees(8))
+            }
+        } description: {
+            Text("Tapplet Studio could not load its bundled activities.")
+        }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 52)
     }

@@ -45,6 +45,7 @@ struct WorkshopAccessView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else {
+                        PressedAppletMark(size: 64, rotation: .degrees(-12))
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Browse examples on this iPad")
                                 .font(.largeTitle.bold())
