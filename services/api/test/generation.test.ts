@@ -57,6 +57,93 @@ describe("HTML generation contract", () => {
     expect(provider.repair).toHaveBeenCalledOnce();
   });
 
+  it("repairs invalid inline JavaScript before persisting model output", async () => {
+    const invalidHtml = html.replace(
+        "<script>",
+        "<script>const instruction = 'can't';",
+      ),
+      provider = {
+        name: "fixed",
+        generate: vi.fn().mockResolvedValueOnce({ html: invalidHtml }),
+        repair: vi.fn().mockResolvedValueOnce({ html }),
+        revise: vi.fn(),
+        moderate: vi.fn(),
+      } as unknown as ModelProvider;
+
+    await expect(
+      generateArtifact(provider, {
+        level: "P5",
+        subject: "Maths",
+        learningObjective: "Fractions",
+        studentAction: "Choose",
+      }),
+    ).resolves.toEqual({ html });
+    expect(provider.repair).toHaveBeenCalledWith(
+      { html: invalidHtml },
+      ["Inline JavaScript must use valid syntax."],
+    );
+  });
+
+  it.each([
+    html.replace("</script>", ""),
+    html.replace(
+      "<script>",
+      '<script data-note="src=assets/asset-one">const value = ;',
+    ),
+    html.replace("<script>", '<script src="assets/asset-one">'),
+    html.replace("<script>", '<script type="importmap">'),
+    html.replace("<script>", '<script type="speculationrules">'),
+    html.replace("<body>", '<body><button onclick="const value = ;">'),
+  ])("rejects malformed or externally sourced scripts", (candidate) => {
+    expect(() => validateHtmlOutput({ html: candidate })).toThrow(
+      "Invalid generated HTML",
+    );
+  });
+
+  it.each([
+    "application/ecmascript",
+    "application/javascript",
+    "application/x-ecmascript",
+    "application/x-javascript",
+    "text/ecmascript",
+    "text/javascript",
+    "text/javascript1.0",
+    "text/javascript1.1",
+    "text/javascript1.2",
+    "text/javascript1.3",
+    "text/javascript1.4",
+    "text/javascript1.5",
+    "text/jscript",
+    "text/livescript",
+    "text/x-ecmascript",
+    "text/x-javascript",
+  ])("validates executable script MIME type %s", (type) => {
+    const candidate = html.replace(
+      "<script>",
+      `<script type="${type}">const value = ;`,
+    );
+    expect(() => validateHtmlOutput({ html: candidate })).toThrow(
+      "Invalid generated HTML",
+    );
+  });
+
+  it.each([
+    html.replace(
+      "<script>",
+      "<script type=\"module\">export const enabled = true;",
+    ),
+    html.replace(
+      "<script>",
+      '<script type="application/json">{"enabled":true}</script><script>',
+    ),
+    html.replace(
+      "<script>",
+      '<script type="text/javascript; charset=utf-8">const value = ;',
+    ),
+  ])("accepts valid module and inert data scripts", (candidate) => {
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+  });
+
   it("repairs a revision that omits an explicitly required managed image", async () => {
     const repaired = html.replace("asset-one", "required-image"),
       provider = {

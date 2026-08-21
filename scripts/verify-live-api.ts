@@ -207,26 +207,33 @@ async function main() {
       );
     }
 
-    const generated = artifactEnvelope(
-      await jsonRequest("/v1/artifacts/generate", {
-        method: "POST",
-        body: JSON.stringify({
-          creationBrief:
-            "Create a concise Secondary 2 activity about balanced and unbalanced forces.",
-          brief: {
-            learnerContext: "Secondary 2 Science",
-            learningObjective:
-              "Distinguish balanced and unbalanced forces in familiar situations.",
-            studentAction:
-              "Classify situations and read immediate explanatory feedback.",
-            feedback: "Explain the resultant force after each answer.",
-            classroomFit: "Six minutes of independent practice.",
-          },
-          preferredExampleRevisionId,
-        }),
+    const generatedBody = await jsonRequest("/v1/artifacts/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        creationBrief:
+          "Create a concise Secondary 2 activity about balanced and unbalanced forces.",
+        brief: {
+          learnerContext: "Secondary 2 Science",
+          learningObjective:
+            "Distinguish balanced and unbalanced forces in familiar situations.",
+          studentAction:
+            "Classify situations and read immediate explanatory feedback.",
+          feedback: "Explain the resultant force after each answer.",
+          classroomFit: "Six minutes of independent practice.",
+        },
+        preferredExampleRevisionId,
       }),
-      "Generation",
-    );
+    });
+    const generatedArtifactId = (
+      generatedBody as Partial<ArtifactEnvelope> | undefined
+    )?.artifact?.id;
+    if (
+      typeof generatedArtifactId === "string" &&
+      /^[A-Za-z0-9_-]{1,100}$/.test(generatedArtifactId)
+    ) {
+      artifactId = generatedArtifactId;
+    }
+    const generated = artifactEnvelope(generatedBody, "Generation");
     artifactId = generated.artifact.id;
 
     const revised = artifactEnvelope(

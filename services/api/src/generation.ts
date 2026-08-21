@@ -1,3 +1,5 @@
+import { parse as parseJavaScript } from "acorn";
+import { parse as parseHtml, type DefaultTreeAdapterTypes } from "parse5";
 import type {
   DesignCard,
   Exemplar,
@@ -16,6 +18,25 @@ const URL_ATTRIBUTE =
   /\b(src|href|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
 const CSS_URL = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis;
 const MANAGED_ASSET = /^assets\/([A-Za-z0-9_-]+)$/;
+const JAVASCRIPT_TYPES = new Set([
+  "",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
 
 function attributeValue(match: RegExpMatchArray): string {
   return match[2] ?? match[3] ?? match[4] ?? "";
@@ -33,6 +54,53 @@ export function referencedAssetIds(html: string): string[] {
   }
   return [...new Set(ids)];
 }
+
+function validateScripts(html: string, issues: string[]) {
+  const document = parseHtml(html, { sourceCodeLocationInfo: true });
+  function validateJavaScript(source: string, sourceType: "script" | "module") {
+    try {
+      parseJavaScript(source, { ecmaVersion: "latest", sourceType });
+    } catch {
+      issues.push("Inline JavaScript must use valid syntax.");
+    }
+  }
+  function visit(node: DefaultTreeAdapterTypes.Node) {
+    if ("tagName" in node) {
+      const attributes = new Map(
+        node.attrs.map((attribute) => [attribute.name, attribute.value]),
+      );
+      for (const [name, value] of attributes) {
+        if (/^on[a-z]+$/.test(name))
+          validateJavaScript(`function eventHandler(event) {\n${value}\n}`, "script");
+      }
+      if (node.tagName === "script") {
+        if (attributes.has("src")) {
+          issues.push("External scripts are not allowed.");
+        } else if (!node.sourceCodeLocation?.endTag) {
+          issues.push("Script elements must have a closing tag.");
+        } else {
+          const type = (attributes.get("type") ?? "").trim().toLowerCase();
+          if (type === "importmap" || type === "speculationrules") {
+            issues.push("Import maps and speculation rules are not allowed.");
+          } else if (type === "module" || JAVASCRIPT_TYPES.has(type)) {
+            const source = node.childNodes
+              .filter(
+                (child): child is DefaultTreeAdapterTypes.TextNode =>
+                  child.nodeName === "#text",
+              )
+              .map((child) => child.value)
+              .join("");
+            validateJavaScript(source, type === "module" ? "module" : "script");
+          }
+        }
+      }
+    }
+    if ("childNodes" in node) node.childNodes.forEach(visit);
+    if ("content" in node) visit(node.content);
+  }
+  visit(document);
+}
+
 export function validateHtmlOutput(value: unknown): GeneratedArtifact {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new InvalidModelOutputError([
@@ -101,6 +169,7 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
       issues.push(
         "Storage APIs are not allowed; applets must keep all state in memory.",
       );
+    validateScripts(html, issues);
     if (new RegExp(PUBLIC_REPORT_MARKER, "i").test(html))
       issues.push("Reserved server report marker is not allowed.");
   }
