@@ -186,6 +186,19 @@ final class TappletUITests: XCTestCase {
     }
 
     @MainActor
+    func testMakeRequestsWorkshopAccessWhenCodeIsNeeded() {
+        let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
+        let explore = app.buttons["Explore examples"]
+        XCTAssertTrue(explore.waitForExistence(timeout: 5))
+        explore.tap()
+
+        selectSidebarItem(label: "Make", in: app)
+
+        XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["activate-workshop-access"].exists)
+    }
+
+    @MainActor
     func testWorkshopAccessExplainsAndValidatesAShortCodeWithoutClearingIt() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         let code = app.textFields["workshop-access-code"]

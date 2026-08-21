@@ -50,6 +50,11 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
     var selectedProject: ArtifactProject? { projects.first { $0.id == selectedProjectID } ?? examples.first { $0.id == selectedProjectID } }
     func open(_ project: ArtifactProject) { selectedProjectID = project.id }
     func closeEditor() { selectedProjectID = nil }
+    func openMake() {
+        selectedSection = .make
+        closeEditor()
+        if workshopAccessState == .registrationRequired { requestWorkshopAccess() }
+    }
     func dismissRecoveryNotice() { recoveryNotice = nil }
     func refreshWorkshopAccess() async {
         if isUITesting {
@@ -96,8 +101,7 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         guidedMakeShowsSummary = true
         guidedMakeQuestionIndex = 0
         guidedMakeResponse = ""
-        selectedSection = .make
-        closeEditor()
+        openMake()
     }
     var guidedMakePinnedPlan: StarterPlan? {
         guard let id = guidedMakePinnedPlanID else { return nil }

@@ -291,6 +291,24 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenMakeRequestsAccessWhenRegistrationIsRequired() {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        store.selectedProjectID = project.id
+        store.workshopAccessState = .registrationRequired
+
+        store.openMake()
+
+        XCTAssertEqual(store.selectedSection, .make)
+        XCTAssertNil(store.selectedProjectID)
+        XCTAssertTrue(store.showsWorkshopAccess)
+    }
+
+    @MainActor
     func testMissingCredentialAndRegistrationErrorReopenWorkshopAccess() async {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let api = ArtifactAPIStub(

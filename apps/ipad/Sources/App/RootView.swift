@@ -12,6 +12,10 @@ struct TappletRootView: View {
                     get: { store.selectedSection },
                     set: { section in
                         guard let section else { return }
+                        if section == .make {
+                            store.openMake()
+                            return
+                        }
                         store.selectedSection = section
                         store.closeEditor()
                     }
@@ -19,9 +23,23 @@ struct TappletRootView: View {
             ) {
                 Section {
                     ForEach(TappletSection.allCases) { section in
-                        Label(section.title, systemImage: section.symbolName)
-                            .tag(section)
-                            .accessibilityIdentifier("sidebar-\(section.rawValue)")
+                        HStack {
+                            Label(section.title, systemImage: section.symbolName)
+                            Spacer()
+                            if section == .make, store.workshopAccessState == .registrationRequired {
+                                Image(systemName: "lock.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(TappletTheme.mutedInk)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .tag(section)
+                        .accessibilityIdentifier("sidebar-\(section.rawValue)")
+                        .accessibilityHint(
+                            section == .make && store.workshopAccessState == .registrationRequired
+                                ? "Opens Tapplet Studio access."
+                                : ""
+                        )
                     }
                 }
 

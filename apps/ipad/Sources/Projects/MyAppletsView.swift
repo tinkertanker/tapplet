@@ -87,7 +87,7 @@ struct MyAppletsView: View {
     }
 
     private var makeButton: some View {
-        Button("Make a tapplet") { store.selectedSection = .make }
+        Button("Make a tapplet") { store.openMake() }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .accessibilityIdentifier("my-applets-make")
@@ -124,7 +124,7 @@ struct MyAppletsView: View {
             Text("Make one from a short plan, or copy an example from Explore.")
                 .foregroundStyle(TappletTheme.mutedInk)
                 .multilineTextAlignment(.center)
-            Button("Make a tapplet") { store.selectedSection = .make }
+            Button("Make a tapplet") { store.openMake() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .accessibilityIdentifier("empty-make-applet")
