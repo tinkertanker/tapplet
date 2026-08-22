@@ -76,7 +76,9 @@ enum AppletImageProcessor {
         let warnings = AppletImagePrivacyScanner.inspect(privacyImage)
 
         for maximumDimension in [2_048, 1_600, 1_280, 1_024] {
-            guard let image = thumbnail(from: source, maximumDimension: maximumDimension),
+            guard let image = maximumDimension == 2_048
+                    ? privacyImage
+                    : thumbnail(from: source, maximumDimension: maximumDimension),
                   let flattened = flattenOntoWhite(image)
             else { continue }
 

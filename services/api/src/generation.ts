@@ -60,9 +60,10 @@ export function referencedAssetIds(html: string): string[] {
   return [...new Set(ids)];
 }
 
-function referencedImageAssetIds(html: string): Set<string> {
-  const ids = new Set<string>(),
-    document = parseHtml(html);
+function referencedImageAssetIdsFrom(
+  document: DefaultTreeAdapterTypes.Document,
+): Set<string> {
+  const ids = new Set<string>();
   function visit(node: DefaultTreeAdapterTypes.Node) {
     if ("tagName" in node && node.tagName === "img") {
       const source = node.attrs.find((attribute) => attribute.name === "src")?.value,
@@ -75,8 +76,10 @@ function referencedImageAssetIds(html: string): Set<string> {
   return ids;
 }
 
-function validateScripts(html: string, issues: string[]) {
-  const document = parseHtml(html, { sourceCodeLocationInfo: true });
+function validateScripts(
+  document: DefaultTreeAdapterTypes.Document,
+  issues: string[],
+) {
   function validateJavaScript(source: string, sourceType: "script" | "module") {
     try {
       parseJavaScript(source, { ecmaVersion: "latest", sourceType });
@@ -121,7 +124,10 @@ function validateScripts(html: string, issues: string[]) {
   visit(document);
 }
 
-export function validateHtmlOutput(value: unknown): GeneratedArtifact {
+function inspectGeneratedOutput(value: unknown): {
+  artifact: GeneratedArtifact;
+  referencedImages: Set<string>;
+} {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new InvalidModelOutputError([
       "Output must be exactly a JSON object.",
@@ -134,6 +140,7 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
   const html = Reflect.get(value, "html");
   const card = Reflect.get(value, "designCard");
   const issues: string[] = [];
+  let referencedImages = new Set<string>();
   if (typeof html !== "string" || !html.trim())
     issues.push("html must be nonempty.");
   else {
@@ -189,7 +196,9 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
       issues.push(
         "Storage APIs are not allowed; applets must keep all state in memory.",
       );
-    validateScripts(html, issues);
+    const document = parseHtml(html, { sourceCodeLocationInfo: true });
+    validateScripts(document, issues);
+    referencedImages = referencedImageAssetIdsFrom(document);
     if (new RegExp(PUBLIC_REPORT_MARKER, "i").test(html))
       issues.push("Reserved server report marker is not allowed.");
   }
@@ -228,18 +237,24 @@ export function validateHtmlOutput(value: unknown): GeneratedArtifact {
   }
   if (issues.length) throw new InvalidModelOutputError(issues);
   return {
-    html,
-    ...(card === undefined ? {} : { designCard: card as DesignCard }),
+    artifact: {
+      html: html as string,
+      ...(card === undefined ? {} : { designCard: card as DesignCard }),
+    },
+    referencedImages,
   };
+}
+
+export function validateHtmlOutput(value: unknown): GeneratedArtifact {
+  return inspectGeneratedOutput(value).artifact;
 }
 function validateCandidate(
   candidate: unknown,
   requiredAssets: RequiredManagedAsset[],
 ): GeneratedArtifact {
-  const artifact = validateHtmlOutput(candidate),
-    referenced = referencedImageAssetIds(artifact.html),
+  const { artifact, referencedImages } = inspectGeneratedOutput(candidate),
     missing = [...new Set(requiredAssets.map((asset) => asset.id))].filter(
-      (id) => !referenced.has(id),
+      (id) => !referencedImages.has(id),
     );
   if (missing.length)
     throw new InvalidModelOutputError(
@@ -269,14 +284,14 @@ function insertMissingRequiredAssets(
   artifact: GeneratedArtifact,
   requiredAssets: RequiredManagedAsset[],
 ): GeneratedArtifact {
-  const referenced = referencedImageAssetIds(artifact.html),
+  const document = parseHtml(artifact.html, { sourceCodeLocationInfo: true }),
+    referenced = referencedImageAssetIdsFrom(document),
     missing = requiredAssets.filter(
       (asset, index) =>
         !referenced.has(asset.id) &&
         requiredAssets.findIndex((candidate) => candidate.id === asset.id) === index,
     );
   if (!missing.length) return artifact;
-  const document = parseHtml(artifact.html, { sourceCodeLocationInfo: true });
   let bodyEnd: number | undefined;
   function visit(node: DefaultTreeAdapterTypes.Node) {
     if ("tagName" in node && node.tagName === "body")

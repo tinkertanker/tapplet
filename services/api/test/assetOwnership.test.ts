@@ -39,6 +39,21 @@ function fakeDatabase(statements: string[]): D1Database {
 }
 
 describe('asset reference ownership', () => {
+  it('loads asset metadata without fetching the R2 object body', async () => {
+    const bucketGet = vi.fn();
+    const store = new CloudflareAssetStore(
+      fakeDatabase([]),
+      { get: bucketGet } as unknown as R2Bucket,
+    );
+
+    await expect(store.getRecord(ASSET_ROW.id)).resolves.toMatchObject({
+      id: ASSET_ROW.id,
+      ownerHash: ASSET_ROW.owner_hash,
+      objectKey: ASSET_ROW.object_key,
+    });
+    expect(bucketGet).not.toHaveBeenCalled();
+  });
+
   it('scopes deletion guards to the asset owner', async () => {
     const statements: string[] = [];
     const bucketDelete = vi.fn().mockResolvedValue(undefined);

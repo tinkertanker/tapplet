@@ -188,6 +188,7 @@ export interface StudioRepository {
     id: string,
     owner: string,
   ): Promise<PublicationRecord | null>;
+  listActivePublicationsForOwner(owner: string): Promise<PublicationRecord[]>;
   getPublication(slug: string): Promise<PublicationRecord | null>;
   publicationReferencesAsset(slug: string, assetId: string): Promise<boolean>;
   ownerReferencesAsset(owner: string, assetId: string): Promise<boolean>;

@@ -557,6 +557,14 @@ RETURNING artifact_id,revision_id,descriptor,curated,updated_at`,
     ).first<Row>();
     return r ? pub(r) : null;
   }
+  async listActivePublicationsForOwner(o: string) {
+    return (
+      await this.p(
+        "SELECT * FROM publications WHERE owner_hash=?1 AND revoked_at IS NULL",
+        o,
+      ).all<Row>()
+    ).results.map(pub);
+  }
   async getPublication(s: string) {
     const r = await this.p(
       "SELECT * FROM publications WHERE slug=?1",

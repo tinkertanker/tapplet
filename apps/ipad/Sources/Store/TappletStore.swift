@@ -9,6 +9,12 @@ enum WorkshopAccessState: Equatable { case checking, registrationRequired, ready
 enum TappletOperation { case activation, generation, refinement, undo, directSave, publish, unpublish, extend, restore, delete, image }
 struct TappletErrorPresentation { let title, message: String; let requestsWorkshopAccess: Bool }
 
+private enum RestoreFetch: Sendable {
+    case success(ArtifactProject)
+    case failure
+    case registration(TappletAPIError)
+}
+
 @MainActor @Observable final class TappletStore {
     var selectedSection: TappletSection = .explore
     var selectedProjectID: String?
@@ -235,18 +241,18 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
         isRestoringFromTapplet = true
         defer { isRestoringFromTapplet = false }
         let artifacts = try await api.listArtifacts()
+        let fetched = await fetchRestoreProjects(artifacts)
         var count = 0
         var failures = 0
-        for artifact in artifacts {
-            do {
-                let fetched = try await api.getArtifact(id: artifact.id)
-                let remote = try await cacheAssets(in: fetched)
-                upsert(remote)
+        for item in fetched {
+            switch item {
+            case .success(let project):
+                upsert(try await cacheAssets(in: project))
                 count += 1
-            } catch let error as TappletAPIError where error.requiresRegistration {
+            case .registration(let error):
                 _ = present(error, during: .restore)
                 throw error
-            } catch {
+            case .failure:
                 failures += 1
             }
         }
@@ -256,6 +262,26 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
                 : "Tapplet Studio could not restore your tapplets. Try again later."
         }
         return count
+    }
+
+    private func fetchRestoreProjects(_ artifacts: [Artifact]) async -> [RestoreFetch] {
+        let api = self.api
+        return await withTaskGroup(of: (Int, RestoreFetch).self, returning: [RestoreFetch].self) { group in
+            for (index, artifact) in artifacts.enumerated() {
+                group.addTask {
+                    do {
+                        return (index, .success(try await api.getArtifact(id: artifact.id)))
+                    } catch let error as TappletAPIError where error.requiresRegistration {
+                        return (index, .registration(error))
+                    } catch {
+                        return (index, .failure)
+                    }
+                }
+            }
+            var results = Array(repeating: RestoreFetch.failure, count: artifacts.count)
+            for await (index, item) in group { results[index] = item }
+            return results
+        }
     }
     func uploadSnapshot(_ data: Data, revisionID: String) {
         guard uploadedSnapshotRevisionIDs.insert(revisionID).inserted else { return }
@@ -314,10 +340,19 @@ struct TappletErrorPresentation { let title, message: String; let requestsWorksh
     private func cacheAssets(in project: ArtifactProject) async throws -> ArtifactProject {
         var project = project
         let existingIDs = Set(project.localAssets.map(\.id))
-        let assetIDs = Self.referencedAssetIDs(in: project.source.html)
-        for assetID in assetIDs where !existingIDs.contains(assetID) {
-            let downloaded = try await api.downloadAsset(id: assetID)
-            project.localAssets.append(try LocalAppletAssetStorage.store(downloaded, id: assetID))
+        let missing = Self.referencedAssetIDs(in: project.source.html).subtracting(existingIDs)
+        guard !missing.isEmpty else { return project }
+        let api = self.api
+        try await withThrowingTaskGroup(of: LocalAppletAssetFile.self) { group in
+            for assetID in missing {
+                group.addTask {
+                    let downloaded = try await api.downloadAsset(id: assetID)
+                    return try LocalAppletAssetStorage.store(downloaded, id: assetID)
+                }
+            }
+            for try await local in group {
+                project.localAssets.append(local)
+            }
         }
         return project
     }

@@ -182,6 +182,7 @@ export class MemoryStudioRepository implements StudioRepository {
     if (!(await this.getArtifact(id, o))) return [];
     return [...this.revisions.values()]
       .filter((r) => r.artifactId === id)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((r) => structuredClone(r));
   }
   async createRevision(
@@ -308,6 +309,11 @@ export class MemoryStudioRepository implements StudioRepository {
       (p) => p.artifactId === id && p.ownerHash === o && !p.revokedAt,
     );
     return p ? structuredClone(p) : null;
+  }
+  async listActivePublicationsForOwner(o: string) {
+    return [...this.publications.values()]
+      .filter((p) => p.ownerHash === o && !p.revokedAt)
+      .map((p) => structuredClone(p));
   }
   async getPublication(s: string) {
     const p = this.publications.get(s);

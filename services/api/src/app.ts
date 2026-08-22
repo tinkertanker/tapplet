@@ -151,6 +151,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
   const guided = obj(b.brief);
   const learnerContext = str(guided.learnerContext, "Learner context", 300);
   const format = optionalForm(guided.format);
+  const sourceContent = optionalStr(guided.sourceContent, "Source content", 4000);
   return {
     creationBrief: str(b.creationBrief, "Creation brief", 6000),
     preferredExampleRevisionId:
@@ -167,16 +168,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
         600,
       ),
       studentAction: str(guided.studentAction, "Student action", 600),
-      ...(optionalStr(guided.sourceContent, "Source content", 4000)
-        ? {
-            content: optionalStr(guided.sourceContent, "Source content", 4000),
-            sourceContent: optionalStr(
-              guided.sourceContent,
-              "Source content",
-              4000,
-            ),
-          }
-        : {}),
+      ...(sourceContent ? { content: sourceContent, sourceContent } : {}),
       feedback: str(guided.feedback, "Feedback", 1000),
       classroomFit: str(guided.classroomFit, "Classroom fit", 1000),
       ...(format ? { format } : {}),
@@ -382,34 +374,39 @@ export function createStudioApp(d: Deps) {
         "Network safety limit reached.",
       );
   }
+  async function assetRecord(id: string): Promise<AssetRecord | null> {
+    if (d.assets?.getRecord) return d.assets.getRecord(id);
+    return (await d.assets!.get(id))?.record ?? null;
+  }
   async function validateAssetReferences(
     ids: string[],
     o: string,
     allowReferenced = false,
   ) {
-    const validated: AssetRecord[] = [];
-    if (ids.length && !d.assets)
+    const unique = [...new Set(ids)];
+    if (unique.length && !d.assets)
       throw new HttpError(
         503,
         "ASSET_STORE_UNAVAILABLE",
         "Images unavailable.",
       );
-    for (const x of ids) {
-      const a = await d.assets!.get(x);
-      if (
-        !a ||
-        (a.record.ownerHash !== o &&
-          !allowReferenced &&
-          !(await d.repository.ownerReferencesAsset(o, x)))
-      )
-        throw new HttpError(
-          422,
-          "INVALID_ARTIFACT_ASSET",
-          `Asset ${x} is not owned by this device.`,
-        );
-      validated.push(a.record);
-    }
-    return validated;
+    return Promise.all(
+      unique.map(async (x) => {
+        const record = await assetRecord(x);
+        if (
+          !record ||
+          (record.ownerHash !== o &&
+            !allowReferenced &&
+            !(await d.repository.ownerReferencesAsset(o, x)))
+        )
+          throw new HttpError(
+            422,
+            "INVALID_ARTIFACT_ASSET",
+            `Asset ${x} is not owned by this device.`,
+          );
+        return record;
+      }),
+    );
   }
   async function assets(html: string, o: string, allowReferenced = false) {
     const ids = referencedAssetIds(html);
@@ -420,11 +417,26 @@ export function createStudioApp(d: Deps) {
     a: ArtifactRecord,
     o: string,
     origin: string,
-    rv?: RevisionRecord,
+    extras: {
+      revision?: RevisionRecord;
+      html?: string | null;
+      publication?: PublicationRecord | null;
+      revisions?: RevisionRecord[];
+    } = {},
   ) {
-    const head = rv ?? (await d.repository.getRevision(a.headRevisionId));
-    const html = head ? await d.sources.getSource(head.sourceHash) : null;
-    const p = await d.repository.getActivePublicationForArtifact(a.id, o);
+    const [head, p, revisionRecords] = await Promise.all([
+      extras.revision ?? d.repository.getRevision(a.headRevisionId),
+      extras.publication !== undefined
+        ? extras.publication
+        : d.repository.getActivePublicationForArtifact(a.id, o),
+      extras.revisions ?? d.repository.listRevisions(a.id, o),
+    ]);
+    const html =
+      extras.html !== undefined
+        ? extras.html
+        : head
+          ? await d.sources.getSource(head.sourceHash)
+          : null;
     return {
       artifact: {
         ...artifactResponse(a),
@@ -433,6 +445,9 @@ export function createStudioApp(d: Deps) {
       },
       headRevision: head ? revisionResponse(head, origin) : null,
       html,
+      revisions: revisionRecords.map((revision) =>
+        revisionResponse(revision, origin),
+      ),
     };
   }
   async function persist(html: string) {
@@ -663,32 +678,39 @@ export function createStudioApp(d: Deps) {
       const preferred = request.preferredExampleRevisionId
         ? await d.repository.getRevision(request.preferredExampleRevisionId)
         : null;
-      const preferredAllowed =
-        preferred &&
-        ((await d.repository.getArtifact(preferred.artifactId, o)) ||
-          (await d.repository.isRevisionRetrievable(
-            preferred.id,
-            now().toISOString(),
-          )));
+      const [ownedPreferred, retrievablePreferred] = preferred
+        ? await Promise.all([
+            d.repository.getArtifact(preferred.artifactId, o),
+            d.repository.isRevisionRetrievable(
+              preferred.id,
+              now().toISOString(),
+            ),
+          ])
+        : [null, false];
+      const preferredAllowed = !!(preferred && (ownedPreferred || retrievablePreferred));
       const found = request.preferredExampleRevisionId
-        ? preferredAllowed
+        ? preferredAllowed && preferred
           ? [{ revisionId: preferred.id, descriptor: "Teacher-selected example" }]
           : []
         : query
           ? await d.repository.searchRetrieval(query, 2, now().toISOString())
           : [];
-      const ex = [];
-      for (const e of found) {
-        const rv = await d.repository.getRevision(e.revisionId),
-          html = rv && (await d.sources.getSource(rv.sourceHash));
-        if (rv && html)
-          ex.push({
-            revisionId: rv.id,
-            html,
-            designCard: design(rv),
-            descriptor: e.descriptor,
-          });
-      }
+      const ex = (
+        await Promise.all(
+          found.map(async (e) => {
+            const rv = await d.repository.getRevision(e.revisionId),
+              html = rv && (await d.sources.getSource(rv.sourceHash));
+            return rv && html
+              ? {
+                  revisionId: rv.id,
+                  html,
+                  designCard: design(rv),
+                  descriptor: e.descriptor,
+                }
+              : null;
+          }),
+        )
+      ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
       const out = await generateArtifact(d.provider, b, ex);
       warnings.push(
         ...advisoryWarnings("generated_content", [
@@ -740,7 +762,12 @@ export function createStudioApp(d: Deps) {
       });
       return json(
         {
-          ...(await projectResponse(a, o, u.origin, rv)),
+          ...(await projectResponse(a, o, u.origin, {
+            revision: rv,
+            html: out.html,
+            publication: null,
+            revisions: [rv],
+          })),
           ...(warnings.length ? { warnings } : {}),
         },
         { status: 201 },
@@ -748,24 +775,25 @@ export function createStudioApp(d: Deps) {
     }
     if (r.method === "GET" && u.pathname === "/v1/artifacts") {
       const ownerHash = await owner(r);
-      const artifacts = await d.repository.listArtifacts(ownerHash);
+      const [artifacts, publications] = await Promise.all([
+        d.repository.listArtifacts(ownerHash),
+        d.repository.listActivePublicationsForOwner(ownerHash),
+      ]);
+      const activeByArtifact = new Map(
+        publications.map((entry) => [entry.artifactId, entry]),
+      );
       return json({
-        artifacts: await Promise.all(
-          artifacts.map(async (artifact) => {
-            const active = await d.repository.getActivePublicationForArtifact(
-              artifact.id,
-              ownerHash,
-            );
-            return {
-              ...artifactResponse(artifact),
-              publication: active
-                ? publication(active, d.config.publicPlayerOrigin)
-                : null,
-              publicationStale:
-                !!active && active.revisionId !== artifact.headRevisionId,
-            };
-          }),
-        ),
+        artifacts: artifacts.map((artifact) => {
+          const active = activeByArtifact.get(artifact.id);
+          return {
+            ...artifactResponse(artifact),
+            publication: active
+              ? publication(active, d.config.publicPlayerOrigin)
+              : null,
+            publicationStale:
+              !!active && active.revisionId !== artifact.headRevisionId,
+          };
+        }),
       });
     }
     if (r.method === "GET" && u.pathname === "/v1/examples/search") {
@@ -989,14 +1017,8 @@ export function createStudioApp(d: Deps) {
             ...inspectUnknownText(out.designCard),
           ]),
         );
-        if (
-          !(await d.repository.createRevision(
-            rv,
-            o,
-            expected,
-            await assets(out.html, o),
-          ))
-        )
+        const assetIds = await assets(out.html, o);
+        if (!(await d.repository.createRevision(rv, o, expected, assetIds)))
           throw new HttpError(
             409,
             "HEAD_REVISION_CONFLICT",
@@ -1005,9 +1027,10 @@ export function createStudioApp(d: Deps) {
         return json(
           {
             ...(await projectResponse(
-              (await d.repository.getArtifact(a.id, o))!,
+              { ...a, headRevisionId: rid, updatedAt: timestamp },
               o,
               u.origin,
+              { revision: rv, html: out.html },
             )),
             ...(warnings.length ? { warnings } : {}),
           },
@@ -1035,13 +1058,14 @@ export function createStudioApp(d: Deps) {
             "REVISION_NOT_FOUND",
             "Revision unavailable.",
           );
+        const designCard = design(rv);
         validateHtmlOutput({
           html,
-          ...(design(rv) ? { designCard: design(rv) } : {}),
+          ...(designCard ? { designCard } : {}),
         });
         const warnings = advisoryWarnings(
           "generated_content",
-          [...inspectHtml(html), ...inspectUnknownText(design(rv))],
+          [...inspectHtml(html), ...inspectUnknownText(designCard)],
         );
         await assets(html, o);
         await quota(r, o, "safety");
@@ -1199,7 +1223,12 @@ export function createStudioApp(d: Deps) {
         });
         return json(
           {
-            ...(await projectResponse(artifact, o, u.origin, copy)),
+            ...(await projectResponse(artifact, o, u.origin, {
+              revision: copy,
+              html,
+              publication: null,
+              revisions: [copy],
+            })),
             ...(warnings.length ? { warnings } : {}),
           },
           { status: 201 },
