@@ -131,25 +131,33 @@ struct AppletPreviewWebView: UIViewRepresentable {
             store.lookUpContentRuleList(
                 forIdentifier: PreviewContentSecurity.ruleListIdentifier
             ) { [weak self, weak userContentController] existing, _ in
-                if let existing {
-                    Task { @MainActor in
-                        self?.applyProtection(existing, to: userContentController)
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let existing {
+                        self.applyProtection(existing, to: userContentController)
+                        return
                     }
-                    return
+                    self.compileProtection(in: store, userContentController: userContentController)
                 }
-                store.compileContentRuleList(
-                    forIdentifier: PreviewContentSecurity.ruleListIdentifier,
-                    encodedContentRuleList: PreviewContentSecurity.encodedRules
-                ) { [weak self, weak userContentController] ruleList, error in
-                    Task { @MainActor in
-                        guard let self else { return }
-                        guard let ruleList, error == nil else {
-                            let detail = error?.localizedDescription ?? "WebKit did not return an offline rule list."
-                            self.failProtection("The preview could not be secured and was not opened. \(detail)")
-                            return
-                        }
-                        self.applyProtection(ruleList, to: userContentController)
+            }
+        }
+
+        private func compileProtection(
+            in store: WKContentRuleListStore,
+            userContentController: WKUserContentController?
+        ) {
+            store.compileContentRuleList(
+                forIdentifier: PreviewContentSecurity.ruleListIdentifier,
+                encodedContentRuleList: PreviewContentSecurity.encodedRules
+            ) { [weak self, weak userContentController] ruleList, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    guard let ruleList, error == nil else {
+                        let detail = error?.localizedDescription ?? "WebKit did not return an offline rule list."
+                        self.failProtection("The preview could not be secured and was not opened. \(detail)")
+                        return
                     }
+                    self.applyProtection(ruleList, to: userContentController)
                 }
             }
         }
