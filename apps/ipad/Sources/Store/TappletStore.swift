@@ -247,8 +247,15 @@ private enum RestoreFetch: Sendable {
         for item in fetched {
             switch item {
             case .success(let project):
-                upsert(try await cacheAssets(in: project))
-                count += 1
+                do {
+                    upsert(try await cacheAssets(in: project))
+                    count += 1
+                } catch let error as TappletAPIError where error.requiresRegistration {
+                    _ = present(error, during: .restore)
+                    throw error
+                } catch {
+                    failures += 1
+                }
             case .registration(let error):
                 _ = present(error, during: .restore)
                 throw error

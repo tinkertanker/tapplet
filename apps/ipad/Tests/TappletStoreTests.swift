@@ -395,6 +395,40 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoreContinuesAfterOneAssetDownloadFails() async throws {
+        let failed = makeProject(
+            artifactID: "failed",
+            revisionID: "r1",
+            html: #"<html><img src="assets/missing-image"></html>"#
+        )
+        let restored = makeProject(
+            artifactID: "restored",
+            revisionID: "r2",
+            html: "<html>Restored</html>"
+        )
+        let api = ArtifactAPIStub(
+            generated: restored,
+            revised: restored,
+            listedArtifacts: [failed.artifact, restored.artifact],
+            projectsByID: [failed.id: failed, restored.id: restored],
+            assetErrors: [
+                "missing-image": .server(404, "ASSET_NOT_FOUND", "Missing asset")
+            ]
+        )
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+
+        let count = try await store.restoreFromTapplet()
+
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(store.projects.map(\.id), [restored.id])
+        XCTAssertNotNil(store.recoveryNotice)
+    }
+
+    @MainActor
     func testRestorePropagatesRegistrationFailures() async {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let api = ArtifactAPIStub(
@@ -566,6 +600,8 @@ private actor ArtifactAPIStub: TappletAPI {
     let hasCredential: Bool
     let listedArtifacts: [Artifact]
     let artifactErrors: [String: TappletAPIError]
+    let projectsByID: [String: ArtifactProject]
+    let assetErrors: [String: TappletAPIError]
     let deleteError: TappletAPIError?
     let revisionError: TappletAPIError?
     let warnings: [AdvisoryWarning]
@@ -579,6 +615,8 @@ private actor ArtifactAPIStub: TappletAPI {
         hasCredential: Bool = true,
         listedArtifacts: [Artifact]? = nil,
         artifactErrors: [String: TappletAPIError] = [:],
+        projectsByID: [String: ArtifactProject] = [:],
+        assetErrors: [String: TappletAPIError] = [:],
         deleteError: TappletAPIError? = nil,
         revisionError: TappletAPIError? = nil,
         warnings: [AdvisoryWarning] = []
@@ -588,6 +626,8 @@ private actor ArtifactAPIStub: TappletAPI {
         self.hasCredential = hasCredential
         self.listedArtifacts = listedArtifacts ?? [generated.artifact]
         self.artifactErrors = artifactErrors
+        self.projectsByID = projectsByID
+        self.assetErrors = assetErrors
         self.deleteError = deleteError
         self.revisionError = revisionError
         self.warnings = warnings
@@ -603,7 +643,7 @@ private actor ArtifactAPIStub: TappletAPI {
     func searchExamples(brief: String) async throws -> [ExampleSearchDescriptor] { [] }
     func getArtifact(id: String) async throws -> ArtifactProject {
         if let error = artifactErrors[id] { throw error }
-        return generated
+        return projectsByID[id] ?? generated
     }
     func updateArtifact(_ artifact: Artifact) async throws -> AdvisoryResult<Artifact> {
         AdvisoryResult(value: artifact, warnings: warnings)
@@ -628,7 +668,8 @@ private actor ArtifactAPIStub: TappletAPI {
         return AdvisoryResult(value: revised, warnings: warnings)
     }
     func downloadAsset(id: String) async throws -> DownloadedAppletAsset {
-        DownloadedAppletAsset(data: Data([1, 2, 3]), mediaType: "image/jpeg")
+        if let error = assetErrors[id] { throw error }
+        return DownloadedAppletAsset(data: Data([1, 2, 3]), mediaType: "image/jpeg")
     }
     func uploadScreenshot(revisionId: String, jpeg: Data) async throws {}
     func publish(id: String, revisionId: String) async throws -> AdvisoryResult<ArtifactPublication> {
