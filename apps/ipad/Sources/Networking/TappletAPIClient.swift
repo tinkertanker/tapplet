@@ -273,7 +273,13 @@ struct TappletAPIClient: TappletAPI, Sendable {
     private struct ArtifactEnvelope: Decodable { let artifact: Artifact; let warnings: [AdvisoryWarning]? }
     private struct RevisionsEnvelope: Decodable { let revisions: [ArtifactRevision] }
     private struct PublicationEnvelope: Decodable { let publication: ArtifactPublication; let warnings: [AdvisoryWarning]? }
-    private struct ProjectEnvelope: Decodable { let artifact: Artifact; let headRevision: ArtifactRevision; let html: String?; let warnings: [AdvisoryWarning]? }
+    private struct ProjectEnvelope: Decodable {
+        let artifact: Artifact
+        let headRevision: ArtifactRevision
+        let html: String?
+        let revisions: [ArtifactRevision]?
+        let warnings: [AdvisoryWarning]?
+    }
     private struct ImageEnvelope: Decodable {
         let asset: AppletImageAssetRecord
         let accessibility: UploadedAppletImage.Accessibility
@@ -287,7 +293,12 @@ struct TappletAPIClient: TappletAPI, Sendable {
         } else {
             source = try await self.source(revision: envelope.headRevision)
         }
-        let history = try await revisions(id: envelope.artifact.id)
+        let history: [ArtifactRevision]
+        if let revisions = envelope.revisions {
+            history = revisions
+        } else {
+            history = try await revisions(id: envelope.artifact.id)
+        }
         return ArtifactProject(artifact: envelope.artifact, source: source, revisions: history)
     }
 
@@ -394,7 +405,7 @@ struct DeviceRegistration: Codable, Equatable, Sendable { let token, expiresAt: 
 private struct APIErrorEnvelope: Decodable { let error: APIErrorPayload }
 private struct APIErrorPayload: Decodable { let code, message: String }
 
-enum TappletAPIError: LocalizedError, Equatable {
+enum TappletAPIError: LocalizedError, Equatable, Sendable {
     case invalidURL, invalidResponse, registrationRequired
     case transport(String), decoding(String), server(Int, String?, String)
 

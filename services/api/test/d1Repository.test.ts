@@ -113,6 +113,56 @@ function sqliteD1Database(
   return { database, sqlite };
 }
 
+describe("D1StudioRepository publication listing", () => {
+  it("loads every active publication for an owner in one query", async () => {
+    const sql: string[] = [];
+    const database = {
+      prepare(text: string) {
+        sql.push(text);
+        const statement = {
+          bind() {
+            return statement;
+          },
+          all() {
+            return Promise.resolve({
+              results: [
+                {
+                  slug: "live-slug",
+                  artifact_id: "a1",
+                  revision_id: "r1",
+                  owner_hash: "owner-a",
+                  title: "Fractions",
+                  source_hash: "hash",
+                  created_at: revision.createdAt,
+                  expires_at: "2026-09-01T00:00:00Z",
+                  revoked_at: null,
+                },
+              ],
+            });
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    await expect(
+      new D1StudioRepository(database).listActivePublicationsForOwner("owner-a"),
+    ).resolves.toEqual([
+      {
+        slug: "live-slug",
+        artifactId: "a1",
+        revisionId: "r1",
+        ownerHash: "owner-a",
+        title: "Fractions",
+        sourceHash: "hash",
+        createdAt: revision.createdAt,
+        expiresAt: "2026-09-01T00:00:00Z",
+        revokedAt: null,
+      },
+    ]);
+    expect(sql[0]).toContain("owner_hash=?1 AND revoked_at IS NULL");
+  });
+});
+
 describe("D1StudioRepository conditional revision writes", () => {
   it("uses one batch whose insert checks owner, expected head, and same-artifact parent", async () => {
     const sql: string[] = [];

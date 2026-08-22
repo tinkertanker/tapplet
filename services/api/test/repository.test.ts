@@ -172,6 +172,12 @@ describe("MemoryStudioRepository artifact model", () => {
       "<html/>",
     );
     expect(first?.revisionId).toBe(revision.id);
+    expect(await repository.listActivePublicationsForOwner("owner-a")).toEqual([
+      first,
+    ]);
+    expect(await repository.listActivePublicationsForOwner("owner-b")).toEqual(
+      [],
+    );
     expect(await repository.isRevisionRetrievable(revision.id, now)).toBe(true);
     expect(
       await repository.publicationReferencesAsset("first-slug", "asset-1"),

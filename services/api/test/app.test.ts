@@ -632,12 +632,14 @@ describe("Tapplet API registration and public HTML", () => {
       },
       object: {},
     } as unknown as StoredAsset;
+    const get = vi.fn();
+    const getRecord = vi.fn().mockResolvedValue(stored.record);
     app = createStudioApp({
       repository,
       provider: new FixtureModelProvider(),
       config,
       sources,
-      assets: { get: vi.fn().mockResolvedValue(stored) } as unknown as AssetStore,
+      assets: { get, getRecord } as unknown as AssetStore,
       now: () => new Date("2026-08-02T00:00:00Z"),
     });
 
@@ -648,11 +650,17 @@ describe("Tapplet API registration and public HTML", () => {
         expectedHeadRevisionId: first.headRevision.id,
       }),
     );
-    const revised = (await response.json()) as { html: string };
+    const revised = (await response.json()) as {
+      html: string;
+      revisions: Array<{ id: string }>;
+    };
 
     expect(response.status).toBe(201);
     expect(revised.html).toContain('src="assets/required-image"');
     expect(revised.html).toContain('alt="A force diagram"');
+    expect(revised.revisions).toHaveLength(2);
+    expect(get).not.toHaveBeenCalled();
+    expect(getRecord).toHaveBeenCalledWith("required-image");
     expect(await repository.ownerReferencesAsset(ownerHash, "required-image")).toBe(
       true,
     );
@@ -998,14 +1006,18 @@ describe("Tapplet API registration and public HTML", () => {
     }
   });
 
-  it("derives list publication state from a single query per artifact", async () => {
+  it("derives list publication state from one owner publication query", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
     );
     const first = (await generated.json()) as {
       artifact: { id: string };
       headRevision: { id: string };
+      revisions: Array<{ id: string }>;
     };
+    expect(first.revisions.map((revision) => revision.id)).toEqual([
+      first.headRevision.id,
+    ]);
     expect(
       (
         await app.fetch(
@@ -1015,13 +1027,14 @@ describe("Tapplet API registration and public HTML", () => {
         )
       ).status,
     ).toBe(201);
-    const original = repository.getActivePublicationForArtifact.bind(
-      repository,
-    );
+    const original = repository.listActivePublicationsForOwner.bind(repository);
     let queries = 0;
-    repository.getActivePublicationForArtifact = async (id: string, o: string) => {
+    repository.listActivePublicationsForOwner = async (owner: string) => {
       queries += 1;
-      return original(id, o);
+      return original(owner);
+    };
+    repository.getActivePublicationForArtifact = async () => {
+      throw new Error("artifact list should not query publications one by one");
     };
     const listed = await app.fetch(authenticated("/v1/artifacts"));
     await expect(listed.json()).resolves.toMatchObject({

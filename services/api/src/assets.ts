@@ -47,6 +47,7 @@ export interface AssetStore {
     },
   ): Promise<AssetRecord>;
   get(id: string): Promise<StoredAsset | null>;
+  getRecord?(id: string): Promise<AssetRecord | null>;
   deleteOwned(id: string, ownerHash: string): Promise<'deleted' | 'in-use' | 'missing'>;
   cleanupOrphans(before: string, now: string, limit?: number): Promise<number>;
 }
@@ -101,8 +102,15 @@ function imageAlternativeText(request: Request): string | null {
   }
 }
 
+const HEX = Array.from({ length: 256 }, (_, byte) =>
+  byte.toString(16).padStart(2, '0'),
+);
+
 function hex(bytes: ArrayBuffer): string {
-  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  const view = new Uint8Array(bytes);
+  let digest = '';
+  for (let index = 0; index < view.length; index += 1) digest += HEX[view[index]!];
+  return digest;
 }
 
 function randomAssetId(): string {
@@ -240,13 +248,21 @@ export class CloudflareAssetStore implements AssetStore {
         'The declared image dimensions do not match the processed image.',
       );
     }
-    const stored = await this.database
-      .prepare(
-        `SELECT COUNT(*) AS asset_count, COALESCE(SUM(byte_length), 0) AS total_bytes
-           FROM assets WHERE owner_hash = ?1`,
-      )
-      .bind(ownerHash)
-      .first<{ asset_count: number; total_bytes: number }>();
+    const digestInput = canonicalBytes.buffer.slice(
+      canonicalBytes.byteOffset,
+      canonicalBytes.byteOffset + canonicalBytes.byteLength,
+    ) as ArrayBuffer;
+    const [stored, sha256, review] = await Promise.all([
+      this.database
+        .prepare(
+          `SELECT COUNT(*) AS asset_count, COALESCE(SUM(byte_length), 0) AS total_bytes
+             FROM assets WHERE owner_hash = ?1`,
+        )
+        .bind(ownerHash)
+        .first<{ asset_count: number; total_bytes: number }>(),
+      crypto.subtle.digest('SHA-256', digestInput).then(hex),
+      this.reviewCanonicalImage(canonicalBytes),
+    ]);
     if (
       (stored?.asset_count ?? 0) >= MAXIMUM_STORED_ASSETS ||
       (stored?.total_bytes ?? 0) + canonicalBytes.byteLength > MAXIMUM_STORED_ASSET_BYTES
@@ -257,33 +273,7 @@ export class CloudflareAssetStore implements AssetStore {
         'This device has reached its image storage limit. Remove unused images before uploading more.',
       );
     }
-
-    const digestInput = canonicalBytes.buffer.slice(
-      canonicalBytes.byteOffset,
-      canonicalBytes.byteOffset + canonicalBytes.byteLength,
-    ) as ArrayBuffer;
-    const sha256 = hex(await crypto.subtle.digest('SHA-256', digestInput));
-
-    // Safety inference is also after quota reservation because paid processing
-    // has already been requested. Its findings are advisory for teacher review.
-    if (!this.imageSafety) {
-      warnings.push(imageReviewUnavailableWarning());
-    } else {
-      try {
-        const review = await this.imageSafety.inspect(canonicalBytes, 'image/jpeg');
-        if (review.status === 'flagged') {
-          warnings.push(imageReviewFlaggedWarning(review.reason));
-        } else if (review.status === 'unavailable') {
-          warnings.push(imageReviewUnavailableWarning());
-        }
-      } catch (error) {
-        const diagnostic = error instanceof Error
-          ? `${error.name}: ${error.message}`
-          : String(error);
-        console.error(`Image safety review failed: ${diagnostic}`);
-        warnings.push(imageReviewUnavailableWarning());
-      }
-    }
+    warnings.push(...review);
 
     const id = randomAssetId();
     const canonicalContentType = 'image/jpeg';
@@ -336,6 +326,14 @@ export class CloudflareAssetStore implements AssetStore {
     };
   }
 
+  async getRecord(id: string): Promise<AssetRecord | null> {
+    const row = await this.database
+      .prepare('SELECT * FROM assets WHERE id = ?1 LIMIT 1')
+      .bind(id)
+      .first<AssetRow>();
+    return row ? assetFrom(row) : null;
+  }
+
   async get(id: string): Promise<StoredAsset | null> {
     const row = await this.database
       .prepare('SELECT * FROM assets WHERE id = ?1 LIMIT 1')
@@ -344,6 +342,24 @@ export class CloudflareAssetStore implements AssetStore {
     if (!row) return null;
     const object = await this.bucket.get(row.object_key);
     return object ? { record: assetFrom(row), object } : null;
+  }
+
+  private async reviewCanonicalImage(
+    canonicalBytes: Uint8Array,
+  ): Promise<AdvisoryWarning[]> {
+    if (!this.imageSafety) return [imageReviewUnavailableWarning()];
+    try {
+      const review = await this.imageSafety.inspect(canonicalBytes, 'image/jpeg');
+      if (review.status === 'flagged') return [imageReviewFlaggedWarning(review.reason)];
+      if (review.status === 'unavailable') return [imageReviewUnavailableWarning()];
+      return [];
+    } catch (error) {
+      const diagnostic = error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : String(error);
+      console.error(`Image safety review failed: ${diagnostic}`);
+      return [imageReviewUnavailableWarning()];
+    }
   }
 
   async deleteOwned(

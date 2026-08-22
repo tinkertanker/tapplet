@@ -53,6 +53,22 @@ final class TappletAPIClientTests: XCTestCase {
         XCTAssertEqual(result.warnings.first?.categories, ["personal information"])
     }
 
+    func testProjectEnvelopeUsesInlineRevisionsWithoutAFollowUpRequest() async throws {
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: projectEnvelopeData) as? [String: Any])
+        envelope["revisions"] = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: revisionsData) as? [String: Any]
+        )["revisions"]
+        let transport = RecordingTransport(responses: [
+            try JSONSerialization.data(withJSONObject: envelope)
+        ])
+
+        let project = try await client(transport).getArtifact(id: "a1")
+
+        XCTAssertEqual(project.revisions.map(\.id), ["r1"])
+        let requests = await transport.requests
+        XCTAssertEqual(requests.map { $0.url!.path }, ["/v1/artifacts/a1"])
+    }
+
     func testArtifactGETDecodesDirectArtifactThenFetchesRevisionList() async throws {
         let transport = RecordingTransport(responses: [projectEnvelopeData, revisionsData])
         let project = try await client(transport).getArtifact(id: "a1")
