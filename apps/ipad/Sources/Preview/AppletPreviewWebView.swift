@@ -124,7 +124,10 @@ struct AppletPreviewWebView: UIViewRepresentable {
         }
 
         func installProtection(in userContentController: WKUserContentController) {
-            let store = WKContentRuleListStore.default()
+            guard let store = WKContentRuleListStore.default() else {
+                failProtection("The preview could not be secured and was not opened. WebKit did not return an offline rule list.")
+                return
+            }
             store.lookUpContentRuleList(
                 forIdentifier: PreviewContentSecurity.ruleListIdentifier
             ) { [weak self, weak userContentController] existing, _ in
@@ -142,11 +145,7 @@ struct AppletPreviewWebView: UIViewRepresentable {
                         guard let self else { return }
                         guard let ruleList, error == nil else {
                             let detail = error?.localizedDescription ?? "WebKit did not return an offline rule list."
-                            let message = "The preview could not be secured and was not opened. \(detail)"
-                            self.protection = .failed(message)
-                            self.state.wrappedValue = .failed(message)
-                            self.presentableError.wrappedValue = message
-                            self.requested = nil
+                            self.failProtection("The preview could not be secured and was not opened. \(detail)")
                             return
                         }
                         self.applyProtection(ruleList, to: userContentController)
@@ -157,16 +156,19 @@ struct AppletPreviewWebView: UIViewRepresentable {
 
         private func applyProtection(_ ruleList: WKContentRuleList, to userContentController: WKUserContentController?) {
             guard let userContentController else {
-                let message = "The preview could not be secured and was not opened. WebKit did not return an offline rule list."
-                protection = .failed(message)
-                state.wrappedValue = .failed(message)
-                presentableError.wrappedValue = message
-                requested = nil
+                failProtection("The preview could not be secured and was not opened. WebKit did not return an offline rule list.")
                 return
             }
             userContentController.add(ruleList)
             protection = .installed
             loadRequestedSource()
+        }
+
+        private func failProtection(_ message: String) {
+            protection = .failed(message)
+            state.wrappedValue = .failed(message)
+            presentableError.wrappedValue = message
+            requested = nil
         }
 
         private func loadRequestedSource() {
