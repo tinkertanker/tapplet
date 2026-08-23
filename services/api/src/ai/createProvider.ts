@@ -4,6 +4,13 @@ import { OpenAiCompatibleProvider } from "./openAiCompatibleProvider";
 import type { ModelProvider } from "./provider";
 import { ModelProviderError } from "./provider";
 
+export interface ModelProviderConfig {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
+}
+
 class UnavailableModelProvider implements ModelProvider {
   readonly name = "unavailable";
 
@@ -26,56 +33,61 @@ class UnavailableModelProvider implements ModelProvider {
   }
 }
 
-export function createModelProvider(env: StudioEnv): ModelProvider {
-  if (env.AI_PROVIDER === "fixture") return new FixtureModelProvider();
+export function createModelProvider(
+  env: StudioEnv,
+  override?: ModelProviderConfig,
+): ModelProvider {
+  const provider = override?.provider ?? env.AI_PROVIDER,
+    model = override?.model ?? env.AI_MODEL;
+  if (provider === "fixture") return new FixtureModelProvider();
 
-  if (env.AI_PROVIDER === "openai-compatible") {
+  if (provider === "openai-compatible") {
     return openAiCompatibleProvider(
-      env,
-      env.AI_BASE_URL,
-      env.AI_API_KEY,
+      model,
+      override?.baseUrl ?? env.AI_BASE_URL,
+      override ? override.apiKey : env.AI_API_KEY,
       "openai-compatible",
       "AI_API_KEY",
     );
   }
 
-  if (env.AI_PROVIDER === "opencode") {
+  if (provider === "opencode") {
     return openAiCompatibleProvider(
-      env,
-      "https://opencode.ai/zen/v1",
-      env.OPENCODE_API_KEY,
+      model,
+      override?.baseUrl ?? "https://opencode.ai/zen/v1",
+      override ? override.apiKey : env.OPENCODE_API_KEY,
       "opencode",
       "OPENCODE_API_KEY",
       undefined,
-      openCodeChatReasoningOptions(env.AI_MODEL),
+      openCodeChatReasoningOptions(model),
     );
   }
 
-  if (env.AI_PROVIDER === "opencode-go") {
+  if (provider === "opencode-go") {
     return openAiCompatibleProvider(
-      env,
-      "https://opencode.ai/zen/go/v1",
-      env.OPENCODE_API_KEY,
+      model,
+      override?.baseUrl ?? "https://opencode.ai/zen/go/v1",
+      override ? override.apiKey : env.OPENCODE_API_KEY,
       "opencode-go",
       "OPENCODE_API_KEY",
       undefined,
-      env.AI_MODEL === "muse-spark-1.2-contributor"
+      model === "muse-spark-1.2-contributor"
         ? { reasoning: { effort: "xhigh" } }
-        : openCodeChatReasoningOptions(env.AI_MODEL),
-      env.AI_MODEL === "muse-spark-1.2-contributor"
+        : openCodeChatReasoningOptions(model),
+      model === "muse-spark-1.2-contributor"
         ? "responses"
         : "chat-completions",
-      env.AI_MODEL === "muse-spark-1.2-contributor"
+      model === "muse-spark-1.2-contributor"
         ? { reasoning: { effort: "minimal" } }
         : undefined,
     );
   }
 
-  if (env.AI_PROVIDER === "openrouter") {
+  if (provider === "openrouter") {
     return openAiCompatibleProvider(
-      env,
-      "https://openrouter.ai/api/v1",
-      env.OPENROUTER_API_KEY,
+      model,
+      override?.baseUrl ?? "https://openrouter.ai/api/v1",
+      override ? override.apiKey : env.OPENROUTER_API_KEY,
       "openrouter",
       "OPENROUTER_API_KEY",
       {
@@ -89,7 +101,7 @@ export function createModelProvider(env: StudioEnv): ModelProvider {
   }
 
   return new UnavailableModelProvider(
-    `Unsupported AI provider: ${env.AI_PROVIDER}`,
+    `Unsupported AI provider: ${provider}`,
   );
 }
 
@@ -104,7 +116,7 @@ function openCodeChatReasoningOptions(
 }
 
 function openAiCompatibleProvider(
-  env: StudioEnv,
+  model: string,
   baseUrl: string,
   apiKey: string | undefined,
   providerName: string,
@@ -122,7 +134,7 @@ function openAiCompatibleProvider(
   return new OpenAiCompatibleProvider({
     baseUrl,
     apiKey,
-    model: env.AI_MODEL,
+    model,
     ...(api ? { api } : {}),
     providerName,
     ...(headers ? { headers } : {}),

@@ -1,4 +1,4 @@
-import { createModelProvider } from "./ai/createProvider";
+import { createConfiguredModelProvider, handleAdminRequest } from "./admin";
 import { createStudioApp } from "./app";
 import { FAVICON_SVG, publicationErrorResponse } from "./brand";
 import { CloudflareAssetStore } from "./assets";
@@ -10,9 +10,11 @@ import { cleanupArtifactStorage, R2SourceStore } from "./sourceStore";
 import { PUBLIC_REPORT_MARKER } from "./generation";
 
 export default {
-  fetch(request: Request, env: StudioEnv): Promise<Response> {
+  async fetch(request: Request, env: StudioEnv): Promise<Response> {
     const url = new URL(request.url);
     const pathname = url.pathname;
+    const adminResponse = await handleAdminRequest(request, env);
+    if (adminResponse) return adminResponse;
     if (!pathname.startsWith("/v1/") && pathname !== "/health") {
       if (
         pathname.length > 1 &&
@@ -20,14 +22,14 @@ export default {
         pathname.split("/").filter(Boolean).length === 1
       ) {
         url.pathname = pathname.slice(0, -1);
-        return Promise.resolve(Response.redirect(url.toString(), 308));
+        return Response.redirect(url.toString(), 308);
       }
       return servePublic(request, env);
     }
 
     return createStudioApp({
       repository: new D1StudioRepository(env.DB),
-      provider: createModelProvider(env),
+      provider: createConfiguredModelProvider(env),
       config: readConfig(env),
       sources: new R2SourceStore(env.MEDIA),
       assets: new CloudflareAssetStore(
