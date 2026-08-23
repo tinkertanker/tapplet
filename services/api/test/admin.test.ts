@@ -92,19 +92,46 @@ describe("web operations panel", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("encrypts provider keys with authenticated encryption", async () => {
-    const first = await encryptAdminApiKey("provider-secret", encryptionSecret);
-    const second = await encryptAdminApiKey("provider-secret", encryptionSecret);
+    const first = await encryptAdminApiKey(
+      "provider-secret",
+      encryptionSecret,
+      "openai-compatible",
+      "https://models.example.test/v1",
+    );
+    const second = await encryptAdminApiKey(
+      "provider-secret",
+      encryptionSecret,
+      "openai-compatible",
+      "https://models.example.test/v1",
+    );
 
     expect(first.ciphertext).not.toBe("provider-secret");
     expect(first).not.toEqual(second);
     await expect(
-      decryptAdminApiKey(first.ciphertext, first.iv, encryptionSecret),
+      decryptAdminApiKey(
+        first.ciphertext,
+        first.iv,
+        encryptionSecret,
+        "openai-compatible",
+        "https://models.example.test/v1",
+      ),
     ).resolves.toBe("provider-secret");
     await expect(
       decryptAdminApiKey(
         first.ciphertext,
         first.iv,
         "a-different-encryption-key-with-thirty-two-characters",
+        "openai-compatible",
+        "https://models.example.test/v1",
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      decryptAdminApiKey(
+        first.ciphertext,
+        first.iv,
+        encryptionSecret,
+        "openrouter",
+        "https://attacker.example.test/v1",
       ),
     ).rejects.toBeDefined();
   });
@@ -165,7 +192,7 @@ describe("web operations panel", () => {
     });
   });
 
-  it("does not reuse a key when its provider or endpoint changes", async () => {
+  it("requires a new key when its provider or endpoint changes", async () => {
     const { database, row } = settingsDatabase();
     const env = environment(database);
     const update = (provider: string, baseUrl: string, apiKey?: string) =>
@@ -181,16 +208,19 @@ describe("web operations panel", () => {
         env,
       );
 
+    expect((await update("openai-compatible", "https://first.example.test/v1"))?.status)
+      .toBe(422);
+    expect(row()).toBeNull();
     expect((await update("openai-compatible", "https://first.example.test/v1", "secret"))?.status)
       .toBe(200);
     expect(row()?.api_key_ciphertext).not.toBeNull();
-    expect((await update("openrouter", "https://openrouter.ai/api/v1"))?.status).toBe(200);
-    expect(row()?.api_key_ciphertext).toBeNull();
+    expect((await update("openrouter", "https://openrouter.ai/api/v1"))?.status).toBe(422);
+    expect(row()?.api_key_ciphertext).not.toBeNull();
     expect((await update("openai-compatible", "https://first.example.test/v1", "secret"))?.status)
       .toBe(200);
     expect((await update("openai-compatible", "https://second.example.test/v1"))?.status)
-      .toBe(200);
-    expect(row()?.api_key_ciphertext).toBeNull();
+      .toBe(422);
+    expect(row()?.base_url).toBe("https://first.example.test/v1");
   });
 
   it("loads admin model settings only when the provider is used", async () => {

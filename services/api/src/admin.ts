@@ -92,13 +92,23 @@ async function encryptionKey(secret: string): Promise<CryptoKey> {
   ]);
 }
 
+function modelKeyScope(provider: string, baseUrl: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(
+    new TextEncoder().encode(
+      `tapplet-admin-model-key:v1:${JSON.stringify([1, provider, baseUrl])}`,
+    ),
+  );
+}
+
 export async function encryptAdminApiKey(
   value: string,
   secret: string,
+  provider: string,
+  baseUrl: string,
 ): Promise<{ ciphertext: string; iv: string }> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv, additionalData: modelKeyScope(provider, baseUrl) },
     await encryptionKey(secret),
     new TextEncoder().encode(value),
   );
@@ -112,9 +122,15 @@ export async function decryptAdminApiKey(
   ciphertext: string,
   iv: string,
   secret: string,
+  provider: string,
+  baseUrl: string,
 ): Promise<string> {
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToBytes(iv) },
+    {
+      name: "AES-GCM",
+      iv: base64ToBytes(iv),
+      additionalData: modelKeyScope(provider, baseUrl),
+    },
     await encryptionKey(secret),
     base64ToBytes(ciphertext),
   );
@@ -179,6 +195,8 @@ export async function loadConfiguredModelProvider(
         row.api_key_ciphertext,
         row.api_key_iv,
         env.ADMIN_ENCRYPTION_KEY!,
+        row.provider,
+        row.base_url,
       );
     } catch (error) {
       console.error(
@@ -290,21 +308,36 @@ async function updateModel(request: Request, env: StudioEnv): Promise<Response> 
   if (parsedUrl.protocol !== "https:")
     return apiError(422, "INVALID_BASE_URL", "Provider URLs must use HTTPS.");
 
+  const normalisedBaseUrl = parsedUrl.toString().replace(/\/$/, "");
+  const current = await settings(env);
   let ciphertext: string | null = null;
   let iv: string | null = null;
   const preserveApiKey = body.clearApiKey !== true &&
     (body.apiKey === undefined || body.apiKey === "");
+  const canPreserveApiKey = !!(
+    current?.api_key_ciphertext &&
+    current.api_key_iv &&
+    current.provider === provider &&
+    current.base_url === normalisedBaseUrl
+  );
+  if (preserveApiKey && provider !== "fixture" && !canPreserveApiKey)
+    return apiError(
+      422,
+      "API_KEY_REQUIRED",
+      "Enter an API key when creating an override or changing its provider URL.",
+    );
   if (!preserveApiKey && body.clearApiKey !== true) {
     if (typeof body.apiKey !== "string" || body.apiKey.length > 2_000)
       return apiError(422, "INVALID_API_KEY", "The API key is too long.");
     const encrypted = await encryptAdminApiKey(
       body.apiKey,
       env.ADMIN_ENCRYPTION_KEY!,
+      provider,
+      normalisedBaseUrl,
     );
     ciphertext = encrypted.ciphertext;
     iv = encrypted.iv;
   }
-  const normalisedBaseUrl = parsedUrl.toString().replace(/\/$/, "");
   const updatedAt = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO admin_model_settings(id,provider,model,base_url,api_key_ciphertext,api_key_iv,updated_at)
@@ -441,20 +474,20 @@ const ADMIN_HTML = String.raw`<!doctype html>
 <div id="stats" class="stats"></div><div class="grid"><section class="card"><h2>Model configuration</h2><form id="model-form"><div class="fields"><label>Provider<select id="provider"><option value="opencode-go">OpenCode Go</option><option value="opencode">OpenCode Zen</option><option value="openrouter">OpenRouter</option><option value="openai-compatible">OpenAI-compatible</option><option value="fixture">Fixture (testing only)</option></select></label><label>Model<input id="model" required maxlength="200"></label><label class="wide">Base URL<input id="base-url" type="url" required maxlength="500"></label><label class="wide">Replace API key<input id="api-key" type="password" maxlength="2000" autocomplete="new-password" placeholder="Leave blank to keep the existing key"></label></div><p id="key-state" class="note"></p><div class="actions"><button id="save-model">Save configuration</button><button id="clear-key" type="button" class="danger">Remove key</button><button id="reset-model" type="button" class="secondary">Use environment defaults</button><span id="source" class="pill"></span></div><div id="model-status" class="status" role="status"></div></form></section>
 <section class="card"><h2>Mint class access code</h2><form id="code-form"><div class="fields"><label>Class number<input id="class-number" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" placeholder="1234" required></label><label>Maximum activations<input id="maximum-uses" type="number" min="1" max="100" value="30" required></label><label class="wide">Expires at<input id="expires-at" type="datetime-local" required></label></div><div class="actions"><button id="mint-code">Mint code</button></div><div id="code-result" class="status" role="status"></div><p class="note">The code is shown once. Copy it to a protected location before leaving this page; only its hash is stored.</p></form></section>
 <section class="card"><h2>Models used</h2><div id="models" class="models"></div><p class="note">Based on persisted revisions. Token and spend telemetry is not available from the current provider contract.</p></section>
-<section class="card"><h2>Activity · last 14 days</h2><div id="chart" class="chart"></div><div class="legend"><span><i class="dot"></i>Generations</span><span><i class="dot dark"></i>Revisions</span></div></section>
+<section class="card"><h2>Activity · last 14 days</h2><div id="chart" class="chart" aria-hidden="true"></div><div class="legend" aria-hidden="true"><span><i class="dot"></i>Generations</span><span><i class="dot dark"></i>Revisions</span></div><div id="activity-summary" class="models"></div></section>
 <section class="card"><h2>Uploads · last 14 days</h2><div id="upload-summary"></div><p class="note">Counts successful owner upload reservations; network safety counters are excluded.</p></section></div></section>
 </main><script>
 const $=id=>document.getElementById(id);let token=sessionStorage.getItem('tapplet-admin-token')||'';let data;
 async function api(path,options={}){const response=await fetch(path,{...options,headers:{authorization:'Bearer '+token,...(options.body?{'content-type':'application/json'}:{}),...options.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error?.message||'Request failed');return body}
 function number(value){return new Intl.NumberFormat().format(value||0)}
-function render(){const counts=data.counts;const cards=[['Artifacts',counts.artifacts],['Revisions',counts.revisions],['Live shares',counts.activePublications],['Active class codes',counts.activeClassCodes],['Reports to review',counts.unreviewedReports]];$('stats').innerHTML=cards.map(([label,value])=>'<div class="card stat"><b>'+number(value)+'</b><span>'+label+'</span></div>').join('');const m=data.model;$('provider').value=m.provider;$('model').value=m.model;$('base-url').value=m.baseUrl;$('api-key').value='';$('key-state').textContent=m.keyConfigured?'A key is configured. Enter a new one only to replace it.':'No API key is configured.';$('source').textContent=m.source==='admin'?'Admin override':'Environment default';$('source').className='pill '+(m.keyConfigured?'good':'');$('clear-key').disabled=!m.keyConfigured||m.source!=='admin';$('reset-model').disabled=m.source!=='admin';const max=Math.max(1,...data.usage.map(x=>x.generations+x.revisions));$('chart').innerHTML=data.usage.map((x,i)=>'<div class="bar-group" title="'+x.date+': '+x.generations+' generations, '+x.revisions+' revisions"><i class="bar" style="height:'+Math.max(1,x.generations/max*100)+'%"></i><i class="bar revision" style="height:'+Math.max(1,x.revisions/max*100)+'%"></i>'+(i%3===0||i===data.usage.length-1?'<span>'+x.date.slice(5)+'</span>':'')+'</div>').join('');const modelMax=Math.max(1,...data.models.map(x=>x.count));$('models').innerHTML=data.models.length?data.models.map(x=>'<div class="model-row"><div><strong>'+escapeHtml(x.model)+'</strong><div class="meter"><i style="width:'+(x.count/modelMax*100)+'%"></i></div></div><b>'+number(x.count)+'</b></div>').join(''):'<p>No revisions yet.</p>';const uploads=data.usage.reduce((a,x)=>({count:a.count+x.uploads,bytes:a.bytes+x.upload_bytes}),{count:0,bytes:0});$('upload-summary').innerHTML='<p><strong style="font-size:28px">'+number(uploads.count)+'</strong> uploads</p><p style="margin-top:12px"><strong>'+new Intl.NumberFormat(undefined,{style:'unit',unit:'megabyte',maximumFractionDigits:1}).format(uploads.bytes/1000000)+'</strong> processed</p>'}
+function render(){const counts=data.counts;const cards=[['Artifacts',counts.artifacts],['Revisions',counts.revisions],['Live shares',counts.activePublications],['Active class codes',counts.activeClassCodes],['Reports to review',counts.unreviewedReports]];$('stats').innerHTML=cards.map(([label,value])=>'<div class="card stat"><b>'+number(value)+'</b><span>'+label+'</span></div>').join('');const m=data.model;$('provider').value=m.provider;$('model').value=m.model;$('base-url').value=m.baseUrl;$('api-key').value='';$('key-state').textContent=m.source==='environment'?'Enter a key to create an admin override.':m.keyConfigured?'A key is configured. Enter a new one only to replace it.':'No API key is configured.';$('source').textContent=m.source==='admin'?'Admin override':'Environment default';$('source').className='pill '+(m.keyConfigured?'good':'');$('clear-key').disabled=!m.keyConfigured||m.source!=='admin';$('reset-model').disabled=m.source!=='admin';const max=Math.max(1,...data.usage.map(x=>x.generations+x.revisions));$('chart').innerHTML=data.usage.map((x,i)=>'<div class="bar-group"><i class="bar" style="height:'+Math.max(1,x.generations/max*100)+'%"></i><i class="bar revision" style="height:'+Math.max(1,x.revisions/max*100)+'%"></i>'+(i%3===0||i===data.usage.length-1?'<span>'+x.date.slice(5)+'</span>':'')+'</div>').join('');$('activity-summary').innerHTML=data.usage.map(x=>'<div class="model-row"><span>'+escapeHtml(x.date)+'</span><span>'+number(x.generations)+' generations · '+number(x.revisions)+' revisions</span></div>').join('');const modelMax=Math.max(1,...data.models.map(x=>x.count));$('models').innerHTML=data.models.length?data.models.map(x=>'<div class="model-row"><div><strong>'+escapeHtml(x.model)+'</strong><div class="meter"><i style="width:'+(x.count/modelMax*100)+'%"></i></div></div><b>'+number(x.count)+'</b></div>').join(''):'<p>No revisions yet.</p>';const uploads=data.usage.reduce((a,x)=>({count:a.count+x.uploads,bytes:a.bytes+x.upload_bytes}),{count:0,bytes:0});$('upload-summary').innerHTML='<p><strong style="font-size:28px">'+number(uploads.count)+'</strong> uploads</p><p style="margin-top:12px"><strong>'+new Intl.NumberFormat(undefined,{style:'unit',unit:'megabyte',maximumFractionDigits:1}).format(uploads.bytes/1000000)+'</strong> processed</p>'}
 function escapeHtml(value){const node=document.createElement('span');node.textContent=value;return node.innerHTML}
 async function load(){data=await api('/v1/admin/overview');$('login').classList.add('hidden');$('dashboard').classList.remove('hidden');render()}
 $('provider').onchange=()=>{const defaults={'opencode':'https://opencode.ai/zen/v1','opencode-go':'https://opencode.ai/zen/go/v1','openrouter':'https://openrouter.ai/api/v1','openai-compatible':'https://api.openai.com/v1','fixture':'https://models.example.test/v1'};$('base-url').value=defaults[$('provider').value]};
 $('login-form').onsubmit=async event=>{event.preventDefault();token=$('token').value;$('login-error').textContent='';try{await load();sessionStorage.setItem('tapplet-admin-token',token)}catch(error){token='';$('login-error').textContent=error.message}};
-$('model-form').onsubmit=async event=>{event.preventDefault();const button=$('save-model');button.disabled=true;$('model-status').textContent='Saving…';try{await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:$('provider').value,model:$('model').value,baseUrl:$('base-url').value,apiKey:$('api-key').value})});await load();$('model-status').textContent='Configuration saved.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{button.disabled=false}};
+$('model-form').onsubmit=async event=>{event.preventDefault();const button=$('save-model');button.disabled=true;$('model-status').className='status';$('model-status').textContent='Saving…';try{await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:$('provider').value,model:$('model').value,baseUrl:$('base-url').value,apiKey:$('api-key').value})});await load();$('model-status').textContent='Configuration saved.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{button.disabled=false}};
 $('code-form').onsubmit=async event=>{event.preventDefault();const button=$('mint-code');button.disabled=true;$('code-result').className='status';$('code-result').textContent='Minting…';try{const expiry=new Date($('expires-at').value);const result=await api('/v1/admin/class-codes',{method:'POST',body:JSON.stringify({classNumber:$('class-number').value,maximumUses:Number($('maximum-uses').value),expiresAt:expiry.toISOString()})});$('code-result').innerHTML='Class access code: <strong style="font-size:20px">'+escapeHtml(result.code)+'</strong><br>Copy it now — it cannot be retrieved later.';try{data=await api('/v1/admin/overview');render()}catch{}}catch(error){$('code-result').className='status error';$('code-result').textContent=error.message}finally{button.disabled=false}};
-$('clear-key').onclick=async()=>{if(!confirm('Remove the stored API key? Model requests will stop until another key is configured.'))return;await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:$('provider').value,model:$('model').value,baseUrl:$('base-url').value,clearApiKey:true})});await load();$('model-status').textContent='API key removed.'};
-$('reset-model').onclick=async()=>{if(!confirm('Discard the admin override and use Worker environment defaults?'))return;await api('/v1/admin/model',{method:'DELETE'});await load();$('model-status').textContent='Using environment defaults.'};
+$('clear-key').onclick=async()=>{if(!confirm('Remove the stored API key? Model requests will stop until another key is configured.'))return;const button=$('clear-key'),m=data.model;button.disabled=true;$('model-status').className='status';$('model-status').textContent='Removing…';try{await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:m.provider,model:m.model,baseUrl:m.baseUrl,clearApiKey:true})});await load();$('model-status').textContent='API key removed.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{button.disabled=false}};
+$('reset-model').onclick=async()=>{if(!confirm('Discard the admin override and use Worker environment defaults?'))return;const button=$('reset-model');button.disabled=true;$('model-status').className='status';$('model-status').textContent='Resetting…';try{await api('/v1/admin/model',{method:'DELETE'});await load();$('model-status').textContent='Using environment defaults.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{button.disabled=false}};
 $('sign-out').onclick=()=>{sessionStorage.removeItem('tapplet-admin-token');location.reload()};if(token)load().catch(()=>{sessionStorage.removeItem('tapplet-admin-token');token=''})
 </script></body></html>`;

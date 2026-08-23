@@ -275,10 +275,13 @@ one is current.
 ## Incident and rollback
 
 - To stop new AI generation while keeping student links available, remove or
-  rotate the active provider credential (`AI_API_KEY`, `OPENCODE_API_KEY`, or
-  `OPENROUTER_API_KEY`); generation will fail closed while stored HTML
-  publications remain readable. Publication review outages are warning-only,
-  so revoke affected links separately if new publishing must also stop.
+  rotate the credential shown as active in the operations panel. If its source
+  is **Admin override**, remove the stored key in `/admin` first; if its source
+  is **Environment default**, remove or rotate `AI_API_KEY`,
+  `OPENCODE_API_KEY`, or `OPENROUTER_API_KEY` as appropriate. Confirm a model
+  request then fails closed. Stored HTML publications remain readable.
+  Publication review outages are warning-only, so revoke affected links
+  separately if new publishing must also stop.
 - To remove one unsafe tapplet, revoke only its validated slug as above.
 - To roll back a bad Worker deployment, inspect the recent deployment list with
   `npx wrangler deployments list --profile tinkertanker`, then run
