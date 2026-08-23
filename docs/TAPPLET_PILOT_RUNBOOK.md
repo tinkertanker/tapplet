@@ -7,6 +7,33 @@ Studio on iPad. Run Cloudflare commands from `services/api`.
 The production resources are in Wrangler's `tinkertanker` profile; keep
 `--profile tinkertanker` on every production command below.
 
+## Web operations panel
+
+After migration `0011_admin_settings.sql` and the matching Worker release are
+deployed, the operator panel is available at `/admin` on the API origin. It
+shows stored content and 14-day activity, and can replace the active
+OpenAI-compatible model, endpoint and API key. It can also mint workshop class
+access codes with an activation limit and explicit expiry. A minted code is
+shown once and only its SHA-256 hash is stored in D1, so copy it immediately to
+a protected location. Provider keys are encrypted in D1 with AES-GCM and are
+never returned to the browser. The panel reports persisted requests and
+uploads; the provider contract does not currently expose token counts or spend.
+
+Configure two independent Worker secrets before using it:
+
+```bash
+cd services/api
+npx wrangler secret put ADMIN_TOKEN --profile tinkertanker
+npx wrangler secret put ADMIN_ENCRYPTION_KEY --profile tinkertanker
+```
+
+Both values must be at least 32 characters. Keep `ADMIN_ENCRYPTION_KEY` stable:
+rotating it makes any API key already encrypted in D1 unreadable. To rotate the
+encryption key, first switch the panel back to environment defaults, rotate the
+secret, then save the provider key again. The browser keeps `ADMIN_TOKEN` in
+tab-scoped session storage and clears it on sign-out; never put either secret in
+a URL, command argument, source file or support message.
+
 ## Production preflight and canonical examples
 
 Before changing production, run these read-only checks and save their
@@ -196,10 +223,11 @@ The unsigned CI build is not a distribution check. Before uploading:
    as the class-day fallback; TestFlight review timing is not a workshop
    dependency.
 
-If a class code must be replaced, preserve its protected file as the audit and
+If a class code must be replaced, preserve its protected provisioning file, or
+the protected record made when it was minted in the panel, as the audit and
 recovery record. Derive its hash locally without printing either value, verify
 the exact row's label, limit, expiry and use count, and disable only that hash
-before securely archiving the file and provisioning a replacement. Never
+before securely archiving the record and provisioning a replacement. Never
 identify a row only by the non-unique label, and never paste class codes or
 hashes into issues, commits, chat logs or screenshots.
 

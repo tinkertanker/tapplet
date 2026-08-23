@@ -9,6 +9,8 @@ export interface StudioEnv {
   OPENCODE_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
   IMAGE_SAFETY_MODEL: string;
+  ADMIN_TOKEN?: string;
+  ADMIN_ENCRYPTION_KEY?: string;
   DEVICE_TOKEN_SIGNING_SECRET?: string;
   STUDIO_SEED_IMPORT_TOKEN?: string;
   PUBLIC_PLAYER_ORIGIN: string;
