@@ -422,7 +422,7 @@ describe("HTML generation contract", () => {
     await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
     expect(requests).toHaveLength(2);
     expect(requests[0]).toMatchObject({ thinking: { type: "disabled" } });
-    expect(String(requests[1]?.messages)).toContain("Creation brief");
+    expect(JSON.stringify(requests[1]?.messages)).toContain("Creation brief");
   });
 
   it("throws a retryable provider error on truncated output and does not repair", async () => {
