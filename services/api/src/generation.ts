@@ -193,13 +193,14 @@ function inspect(
       { kind: "shape", message: "Output must be exactly a JSON object." },
     ]);
   const keys = Object.keys(candidate);
+  const issues: Issue[] = [];
   if (keys.some((k) => k !== "html" && k !== "designCard"))
-    return rejected(candidate, [
-      { kind: "shape", message: "Only html and designCard are allowed." },
-    ]);
+    issues.push({
+      kind: "shape",
+      message: "Only html and designCard are allowed.",
+    });
   const html = Reflect.get(candidate, "html");
   const card = Reflect.get(candidate, "designCard");
-  const issues: Issue[] = [];
   let parsed: ParsedHtml | undefined;
   if (typeof html !== "string" || !html.trim())
     issues.push({ kind: "shape", message: "html must be nonempty." });
@@ -384,6 +385,34 @@ function escapeHtmlAttribute(value: string): string {
   );
 }
 
+function missingRequiredAssets(
+  issues: readonly Issue[],
+  requiredAssets: readonly RequiredManagedAsset[],
+): RequiredManagedAsset[] {
+  const byId = new Map(requiredAssets.map((asset) => [asset.id, asset]));
+  const seen = new Set<string>();
+  const missing: RequiredManagedAsset[] = [];
+  for (const issue of issues) {
+    if (issue.kind !== "asset" || seen.has(issue.assetId)) continue;
+    seen.add(issue.assetId);
+    const asset = byId.get(issue.assetId);
+    if (asset) missing.push(asset);
+  }
+  return missing;
+}
+
+function envelopeAfterInsert(html: string, candidate: unknown) {
+  const next: Record<string, unknown> = { html };
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    !Array.isArray(candidate) &&
+    "designCard" in candidate
+  )
+    next.designCard = Reflect.get(candidate, "designCard");
+  return next;
+}
+
 function applyHostInsert(
   inspection: Inspection,
   requiredAssets: readonly RequiredManagedAsset[],
@@ -391,16 +420,8 @@ function applyHostInsert(
   if (inspection.status === "accepted") return inspection;
   const parsed = inspection.parsed;
   if (parsed?.bodyEnd === undefined) return inspection;
-  const missing = requiredAssets.filter(
-    (asset, index) =>
-      !parsed.referencedImages.has(asset.id) &&
-      requiredAssets.findIndex((candidate) => candidate.id === asset.id) ===
-        index,
-  );
+  const missing = missingRequiredAssets(inspection.issues, requiredAssets);
   if (!missing.length) return inspection;
-  const current = inspection.candidate;
-  if (!current || typeof current !== "object" || Array.isArray(current))
-    return inspection;
   const markup = missing
     .map((asset) => {
       const alt = asset.decorative
@@ -410,22 +431,12 @@ function applyHostInsert(
     })
     .join("\n");
   return inspect(
-    {
-      ...current,
-      html: `${parsed.html.slice(0, parsed.bodyEnd)}\n${markup}\n${parsed.html.slice(parsed.bodyEnd)}`,
-    },
+    envelopeAfterInsert(
+      `${parsed.html.slice(0, parsed.bodyEnd)}\n${markup}\n${parsed.html.slice(parsed.bodyEnd)}`,
+      inspection.candidate,
+    ),
     requiredAssets,
   );
-}
-
-function issueSignature(issue: Issue): string {
-  return issue.kind === "asset"
-    ? `asset:${issue.assetId}`
-    : `${issue.kind}:${issue.message}`;
-}
-
-function issueSetKey(issues: readonly Issue[]): string {
-  return [...issues.map(issueSignature)].sort().join("\n");
 }
 
 function repairContext(intent: RepairIntent, final: boolean): RepairContext {
@@ -443,7 +454,6 @@ async function accept(
   requiredAssets: readonly RequiredManagedAsset[] = [],
 ): Promise<GeneratedArtifact> {
   let current = candidate;
-  let previous: string | undefined;
   for (let repairs = 0; ; repairs += 1) {
     const inspection = applyHostInsert(
       inspect(current, requiredAssets),
@@ -452,14 +462,11 @@ async function accept(
     if (inspection.status === "accepted") return inspection.artifact;
     if (repairs === MAX_MODEL_REPAIRS)
       throw new InvalidModelOutputError(inspection.issues);
-    if (previous !== undefined && previous === issueSetKey(inspection.issues))
-      throw new InvalidModelOutputError(inspection.issues);
     current = await provider.repair(
       inspection.candidate,
       [...new Set(inspection.issues.map((issue) => issue.message))],
       repairContext(intent, repairs === MAX_MODEL_REPAIRS - 1),
     );
-    previous = issueSetKey(inspection.issues);
   }
 }
 

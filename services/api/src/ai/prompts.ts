@@ -28,7 +28,9 @@ export function repairPrompt(
   return [
     "Return corrected exact JSON {html, designCard?}.",
     context?.final
-      ? "Final attempt. Prefer the simplest complete applet that satisfies the brief over preserving the previous structure."
+      ? context.instruction
+        ? "Final attempt. Keep the existing applet. Make the smallest change that fixes the issues; do not rebuild from the creation brief."
+        : "Final attempt. Prefer the simplest complete applet that satisfies the brief over preserving the previous structure."
       : "",
     context ? `Creation brief: ${JSON.stringify(context.brief)}` : "",
     context?.instruction ? `Instruction: ${context.instruction}` : "",

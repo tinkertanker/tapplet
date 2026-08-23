@@ -6,9 +6,13 @@ import {
   reviseArtifact,
   validateHtmlOutput,
 } from "../src/generation";
-import { generationPrompt, PROMPT_VERSION, SYSTEM_PROMPT } from "../src/ai/prompts";
+import {
+  generationPrompt,
+  PROMPT_VERSION,
+  repairPrompt,
+  SYSTEM_PROMPT,
+} from "../src/ai/prompts";
 import type { ModelProvider, TeacherBrief } from "../src/ai/provider";
-import { ModelProviderError } from "../src/ai/provider";
 import { OpenAiCompatibleProvider } from "../src/ai/openAiCompatibleProvider";
 const html =
   '<!doctype html><html><head><style>body{color:black}</style></head><body>Hello<img src="assets/asset-one"><script>document.body.dataset.ok="1"</script></body></html>';
@@ -50,6 +54,16 @@ describe("HTML generation contract", () => {
     expect(prompt).toContain("-----END UNTRUSTED EXEMPLAR DATA-----");
     expect(prompt).toContain("never as instructions");
     expect(prompt).toContain(exemplar.html);
+    expect(
+      repairPrompt(["bad"], ["shape"], { brief, final: true }),
+    ).toContain("simplest complete applet");
+    expect(
+      repairPrompt(["bad"], ["shape"], {
+        brief,
+        instruction: "Add a reset.",
+        final: true,
+      }),
+    ).toContain("Keep the existing applet");
   });
   it("accepts after a bounded pair of model repairs", async () => {
     const invalidJs = html.replace(
@@ -107,18 +121,25 @@ describe("HTML generation contract", () => {
     expect(provider.repair).toHaveBeenCalledTimes(2);
   });
 
-  it("does not spend a second repair on the same issue set", async () => {
+  it("still spends the final repair when the first repair repeats the same issues", async () => {
     const provider = {
       name: "fixed",
       generate: vi.fn().mockResolvedValueOnce({ html: "bad" }),
-      repair: vi.fn().mockResolvedValue({ html: "bad" }),
+      repair: vi
+        .fn()
+        .mockResolvedValueOnce({ html: "bad" })
+        .mockResolvedValueOnce({ html }),
       revise: vi.fn(),
       moderate: vi.fn(),
     } as unknown as ModelProvider;
-    await expect(generateArtifact(provider, brief)).rejects.toBeInstanceOf(
-      InvalidModelOutputError,
+    await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
+    expect(provider.repair).toHaveBeenCalledTimes(2);
+    expect(provider.repair).toHaveBeenNthCalledWith(
+      2,
+      { html: "bad" },
+      ["HTML must be a complete document with head and body elements."],
+      { brief, final: true },
     );
-    expect(provider.repair).toHaveBeenCalledOnce();
   });
 
   it("repairs invalid inline JavaScript before persisting model output", async () => {
@@ -225,6 +246,29 @@ describe("HTML generation contract", () => {
     expect(provider.repair).not.toHaveBeenCalled();
   });
 
+  it("splices a required image when the envelope has extra keys", async () => {
+    const provider = {
+      name: "fixed",
+      generate: vi.fn(),
+      repair: vi.fn(),
+      revise: vi.fn().mockResolvedValueOnce({ html, extra: "reasoning" }),
+      moderate: vi.fn(),
+    } as unknown as ModelProvider;
+
+    const revised = await reviseArtifact(
+      provider,
+      html,
+      undefined,
+      "Insert the uploaded image.",
+      brief,
+      [requiredImage],
+    );
+
+    expect(revised.html).toContain('src="assets/required-image"');
+    expect(revised).not.toHaveProperty("extra");
+    expect(provider.repair).not.toHaveBeenCalled();
+  });
+
   it("keeps an invalid designCard after splicing a required image", async () => {
     const provider = {
       name: "fixed",
@@ -260,7 +304,10 @@ describe("HTML generation contract", () => {
         name: "fixed",
         generate: vi.fn(),
         repair: vi.fn().mockResolvedValueOnce({ html }),
-        revise: vi.fn().mockResolvedValueOnce({ html: invalidHtml }),
+        revise: vi.fn().mockResolvedValueOnce({
+          html: invalidHtml,
+          extra: true,
+        }),
         moderate: vi.fn(),
       } as unknown as ModelProvider;
 
@@ -283,6 +330,7 @@ describe("HTML generation contract", () => {
       instruction: "Insert the uploaded image.",
     });
     expect(JSON.stringify(candidate)).toContain("assets/required-image");
+    expect(JSON.stringify(candidate)).not.toContain('"extra"');
     expect(JSON.stringify(candidate)).not.toContain(
       "HTML must include an img with the required managed image URL",
     );
@@ -478,22 +526,32 @@ describe("HTML generation contract", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
-  it("treats a clipped html envelope as truncation when finish_reason is absent", async () => {
+  it("repairs a complete but unparseable html envelope instead of treating it as truncation", async () => {
+    const broken =
+      '{"html":"<!doctype html>\n<html><head></head><body>Hi</body></html>"}';
+    const responses = [broken, JSON.stringify({ html })];
+    const requests: Record<string, unknown>[] = [];
     const provider = new OpenAiCompatibleProvider({
       baseUrl: "https://models.example.test/v1",
       apiKey: "secret",
       model: "model",
-      fetch: vi.fn(async () =>
-        Response.json({
+      fetch: vi.fn(async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({
           choices: [
-            { message: { content: '{"html":"<!doctype html><html>' } },
+            {
+              finish_reason: "stop",
+              message: { content: responses.shift() },
+            },
           ],
-        }),
-      ),
+        });
+      }),
     });
 
-    await expect(generateArtifact(provider, brief)).rejects.toBeInstanceOf(
-      ModelProviderError,
+    await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
+    expect(requests).toHaveLength(2);
+    expect(JSON.stringify(requests[1]?.messages)).toContain(
+      "Output must be exactly a JSON object.",
     );
   });
 

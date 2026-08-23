@@ -155,8 +155,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     const truncated = responsesApi
       ? body?.incomplete_details?.reason === "max_output_tokens"
       : body?.choices?.[0]?.finish_reason === "length";
-    if (truncated || (!requireJson && isClippedHtmlEnvelope(text)))
-      throw new ModelProviderError("Model output truncated", true);
+    if (truncated) throw new ModelProviderError("Model output truncated", true);
     try {
       return JSON.parse(text);
     } catch {
@@ -164,15 +163,5 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         throw new ModelProviderError("Malformed model JSON", false);
       return text;
     }
-  }
-}
-
-function isClippedHtmlEnvelope(text: string): boolean {
-  if (!text.trimStart().startsWith('{"html')) return false;
-  try {
-    JSON.parse(text);
-    return false;
-  } catch {
-    return true;
   }
 }
