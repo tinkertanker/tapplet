@@ -153,8 +153,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       : body?.choices?.[0]?.message?.content;
     if (!text) throw new ModelProviderError("No model output", true);
     const truncated = responsesApi
-      ? body?.status === "incomplete" ||
-        body?.incomplete_details?.reason === "max_output_tokens"
+      ? body?.incomplete_details?.reason === "max_output_tokens"
       : body?.choices?.[0]?.finish_reason === "length";
     if (truncated || (!requireJson && isClippedHtmlEnvelope(text)))
       throw new ModelProviderError("Model output truncated", true);

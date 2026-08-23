@@ -225,6 +225,32 @@ describe("HTML generation contract", () => {
     expect(provider.repair).not.toHaveBeenCalled();
   });
 
+  it("keeps an invalid designCard after splicing a required image", async () => {
+    const provider = {
+      name: "fixed",
+      generate: vi.fn(),
+      repair: vi.fn().mockResolvedValueOnce({ html }),
+      revise: vi.fn().mockResolvedValueOnce({ html, designCard: null }),
+      moderate: vi.fn(),
+    } as unknown as ModelProvider;
+
+    const revised = await reviseArtifact(
+      provider,
+      html,
+      undefined,
+      "Insert the uploaded image.",
+      brief,
+      [requiredImage],
+    );
+
+    expect(revised.html).toContain('src="assets/required-image"');
+    expect(provider.repair).toHaveBeenCalledOnce();
+    const [candidate, issues] = (provider.repair as ReturnType<typeof vi.fn>)
+      .mock.calls[0] as [unknown, string[]];
+    expect(issues).toContain("designCard must be an object.");
+    expect(JSON.stringify(candidate)).toContain("assets/required-image");
+  });
+
   it("repairs leftover defects on the spliced candidate", async () => {
     const invalidHtml = html.replace(
         "<script>",
@@ -469,6 +495,57 @@ describe("HTML generation contract", () => {
     await expect(generateArtifact(provider, brief)).rejects.toBeInstanceOf(
       ModelProviderError,
     );
+  });
+
+  it("treats Responses max_output_tokens as truncation even when JSON parses", async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "secret",
+      model: "model",
+      api: "responses",
+      fetch: vi.fn(async () =>
+        Response.json({
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+          output: [
+            {
+              content: [
+                { type: "output_text", text: JSON.stringify({ html }) },
+              ],
+            },
+          ],
+        }),
+      ),
+    });
+
+    await expect(generateArtifact(provider, brief)).rejects.toMatchObject({
+      message: "Model output truncated",
+      retryable: true,
+    });
+  });
+
+  it("does not treat a filtered Responses completion as truncation", async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "secret",
+      model: "model",
+      api: "responses",
+      fetch: vi.fn(async () =>
+        Response.json({
+          status: "incomplete",
+          incomplete_details: { reason: "content_filter" },
+          output: [
+            {
+              content: [
+                { type: "output_text", text: JSON.stringify({ html }) },
+              ],
+            },
+          ],
+        }),
+      ),
+    });
+
+    await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
   });
 
   it("does not send provider-specific thinking options to generic endpoints", async () => {

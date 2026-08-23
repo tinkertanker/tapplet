@@ -398,6 +398,9 @@ function applyHostInsert(
         index,
   );
   if (!missing.length) return inspection;
+  const current = inspection.candidate;
+  if (!current || typeof current !== "object" || Array.isArray(current))
+    return inspection;
   const markup = missing
     .map((asset) => {
       const alt = asset.decorative
@@ -408,8 +411,8 @@ function applyHostInsert(
     .join("\n");
   return inspect(
     {
+      ...current,
       html: `${parsed.html.slice(0, parsed.bodyEnd)}\n${markup}\n${parsed.html.slice(parsed.bodyEnd)}`,
-      ...(parsed.designCard === undefined ? {} : { designCard: parsed.designCard }),
     },
     requiredAssets,
   );
