@@ -1,5 +1,4 @@
-import { createModelProvider } from "./ai/createProvider";
-import { handleAdminRequest, loadConfiguredModelProvider } from "./admin";
+import { createConfiguredModelProvider, handleAdminRequest } from "./admin";
 import { createStudioApp } from "./app";
 import { FAVICON_SVG, publicationErrorResponse } from "./brand";
 import { CloudflareAssetStore } from "./assets";
@@ -28,16 +27,9 @@ export default {
       return servePublic(request, env);
     }
 
-    const usesModel =
-      request.method === "POST" &&
-      (pathname === "/v1/artifacts/generate" ||
-        /^\/v1\/artifacts\/[A-Za-z0-9_-]+\/(revisions|publish)$/.test(pathname));
-
     return createStudioApp({
       repository: new D1StudioRepository(env.DB),
-      provider: usesModel
-        ? await loadConfiguredModelProvider(env)
-        : createModelProvider(env),
+      provider: createConfiguredModelProvider(env),
       config: readConfig(env),
       sources: new R2SourceStore(env.MEDIA),
       assets: new CloudflareAssetStore(

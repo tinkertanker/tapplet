@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createModelProvider } from "../src/ai/createProvider";
 import {
+  createConfiguredModelProvider,
   decryptAdminApiKey,
   encryptAdminApiKey,
   handleAdminRequest,
@@ -39,6 +40,7 @@ function environment(database: D1Database, configured = true): StudioEnv {
 function settingsDatabase() {
   let row: SettingsRow | null = null;
   let classCodeValues: unknown[] | null = null;
+  let settingsReads = 0;
   const database = {
     prepare(query: string) {
       let values: unknown[] = [];
@@ -48,16 +50,23 @@ function settingsDatabase() {
           return statement;
         },
         async first() {
+          settingsReads += 1;
           return row;
         },
         async run() {
           if (query.startsWith("INSERT INTO admin_model_settings")) {
+            const preserveApiKey = values[6] === 1 &&
+              row?.provider === values[0] && row?.base_url === values[2];
             row = {
               provider: values[0] as string,
               model: values[1] as string,
               base_url: values[2] as string,
-              api_key_ciphertext: values[3] as string | null,
-              api_key_iv: values[4] as string | null,
+              api_key_ciphertext: preserveApiKey
+                ? row?.api_key_ciphertext ?? null
+                : values[3] as string | null,
+              api_key_iv: preserveApiKey
+                ? row?.api_key_iv ?? null
+                : values[4] as string | null,
               updated_at: values[5] as string,
             };
           } else if (query.startsWith("DELETE FROM admin_model_settings")) {
@@ -71,7 +80,12 @@ function settingsDatabase() {
       return statement;
     },
   } as unknown as D1Database;
-  return { database, row: () => row, classCodeValues: () => classCodeValues };
+  return {
+    database,
+    row: () => row,
+    classCodeValues: () => classCodeValues,
+    settingsReads: () => settingsReads,
+  };
 }
 
 describe("web operations panel", () => {
@@ -149,6 +163,52 @@ describe("web operations panel", () => {
     await expect(loadConfiguredModelProvider(env)).resolves.toMatchObject({
       name: "openai-compatible:test-model",
     });
+  });
+
+  it("does not reuse a key when its provider or endpoint changes", async () => {
+    const { database, row } = settingsDatabase();
+    const env = environment(database);
+    const update = (provider: string, baseUrl: string, apiKey?: string) =>
+      handleAdminRequest(
+        new Request("https://api.test/v1/admin/model", {
+          method: "PATCH",
+          headers: {
+            authorization: `Bearer ${adminToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ provider, model: "test-model", baseUrl, apiKey }),
+        }),
+        env,
+      );
+
+    expect((await update("openai-compatible", "https://first.example.test/v1", "secret"))?.status)
+      .toBe(200);
+    expect(row()?.api_key_ciphertext).not.toBeNull();
+    expect((await update("openrouter", "https://openrouter.ai/api/v1"))?.status).toBe(200);
+    expect(row()?.api_key_ciphertext).toBeNull();
+    expect((await update("openai-compatible", "https://first.example.test/v1", "secret"))?.status)
+      .toBe(200);
+    expect((await update("openai-compatible", "https://second.example.test/v1"))?.status)
+      .toBe(200);
+    expect(row()?.api_key_ciphertext).toBeNull();
+  });
+
+  it("loads admin model settings only when the provider is used", async () => {
+    const { database, settingsReads } = settingsDatabase();
+    const provider = createConfiguredModelProvider(environment(database));
+
+    expect(settingsReads()).toBe(0);
+    await provider.generate(
+      {
+        level: "P5",
+        subject: "Mathematics",
+        learningObjective: "Compare fractions",
+        studentAction: "Choose",
+      },
+      [],
+    );
+    expect(settingsReads()).toBe(1);
+    expect(provider.name).toBe("fixture");
   });
 
   it("mints a class code while persisting only its hash", async () => {

@@ -195,6 +195,25 @@ export async function loadConfiguredModelProvider(
   return createModelProvider(env, override);
 }
 
+export function createConfiguredModelProvider(env: StudioEnv): ModelProvider {
+  let loaded: ModelProvider | undefined;
+  let loading: Promise<ModelProvider> | undefined;
+  const load = async () => {
+    loading ??= loadConfiguredModelProvider(env);
+    loaded ??= await loading;
+    return loaded;
+  };
+  return {
+    get name() {
+      return loaded?.name ?? "configured";
+    },
+    generate: (...args) => load().then((provider) => provider.generate(...args)),
+    revise: (...args) => load().then((provider) => provider.revise(...args)),
+    repair: (...args) => load().then((provider) => provider.repair(...args)),
+    moderate: (...args) => load().then((provider) => provider.moderate(...args)),
+  };
+}
+
 function secured(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("cache-control", "private, no-store");
@@ -253,7 +272,6 @@ async function overview(env: StudioEnv): Promise<Response> {
 
 async function updateModel(request: Request, env: StudioEnv): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(request, 8_000);
-  const current = await settings(env);
   const provider = body.provider;
   const model = body.model;
   const baseUrl = body.baseUrl;
@@ -272,12 +290,11 @@ async function updateModel(request: Request, env: StudioEnv): Promise<Response> 
   if (parsedUrl.protocol !== "https:")
     return apiError(422, "INVALID_BASE_URL", "Provider URLs must use HTTPS.");
 
-  let ciphertext = current?.api_key_ciphertext ?? null;
-  let iv = current?.api_key_iv ?? null;
-  if (body.clearApiKey === true) {
-    ciphertext = null;
-    iv = null;
-  } else if (body.apiKey !== undefined && body.apiKey !== "") {
+  let ciphertext: string | null = null;
+  let iv: string | null = null;
+  const preserveApiKey = body.clearApiKey !== true &&
+    (body.apiKey === undefined || body.apiKey === "");
+  if (!preserveApiKey && body.clearApiKey !== true) {
     if (typeof body.apiKey !== "string" || body.apiKey.length > 2_000)
       return apiError(422, "INVALID_API_KEY", "The API key is too long.");
     const encrypted = await encryptAdminApiKey(
@@ -286,33 +303,28 @@ async function updateModel(request: Request, env: StudioEnv): Promise<Response> 
     );
     ciphertext = encrypted.ciphertext;
     iv = encrypted.iv;
-  } else if (!current && environmentApiKey(env, provider)) {
-    const encrypted = await encryptAdminApiKey(
-      environmentApiKey(env, provider)!,
-      env.ADMIN_ENCRYPTION_KEY!,
-    );
-    ciphertext = encrypted.ciphertext;
-    iv = encrypted.iv;
   }
+  const normalisedBaseUrl = parsedUrl.toString().replace(/\/$/, "");
   const updatedAt = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO admin_model_settings(id,provider,model,base_url,api_key_ciphertext,api_key_iv,updated_at)
      VALUES(1,?1,?2,?3,?4,?5,?6)
      ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,
-       api_key_ciphertext=excluded.api_key_ciphertext,api_key_iv=excluded.api_key_iv,updated_at=excluded.updated_at`,
+       api_key_ciphertext=CASE WHEN ?7=1 AND admin_model_settings.provider=excluded.provider AND admin_model_settings.base_url=excluded.base_url THEN admin_model_settings.api_key_ciphertext ELSE excluded.api_key_ciphertext END,
+       api_key_iv=CASE WHEN ?7=1 AND admin_model_settings.provider=excluded.provider AND admin_model_settings.base_url=excluded.base_url THEN admin_model_settings.api_key_iv ELSE excluded.api_key_iv END,
+       updated_at=excluded.updated_at`,
   )
-    .bind(provider, model.trim(), parsedUrl.toString().replace(/\/$/, ""), ciphertext, iv, updatedAt)
-    .run();
-  return json({
-    model: modelSummary(env, {
+    .bind(
       provider,
-      model: model.trim(),
-      base_url: parsedUrl.toString().replace(/\/$/, ""),
-      api_key_ciphertext: ciphertext,
-      api_key_iv: iv,
-      updated_at: updatedAt,
-    }),
-  });
+      model.trim(),
+      normalisedBaseUrl,
+      ciphertext,
+      iv,
+      updatedAt,
+      preserveApiKey ? 1 : 0,
+    )
+    .run();
+  return json({ model: modelSummary(env, await settings(env)) });
 }
 
 async function resetModel(env: StudioEnv): Promise<Response> {
@@ -441,7 +453,7 @@ async function load(){data=await api('/v1/admin/overview');$('login').classList.
 $('provider').onchange=()=>{const defaults={'opencode':'https://opencode.ai/zen/v1','opencode-go':'https://opencode.ai/zen/go/v1','openrouter':'https://openrouter.ai/api/v1','openai-compatible':'https://api.openai.com/v1','fixture':'https://models.example.test/v1'};$('base-url').value=defaults[$('provider').value]};
 $('login-form').onsubmit=async event=>{event.preventDefault();token=$('token').value;$('login-error').textContent='';try{await load();sessionStorage.setItem('tapplet-admin-token',token)}catch(error){token='';$('login-error').textContent=error.message}};
 $('model-form').onsubmit=async event=>{event.preventDefault();const button=$('save-model');button.disabled=true;$('model-status').textContent='Saving…';try{await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:$('provider').value,model:$('model').value,baseUrl:$('base-url').value,apiKey:$('api-key').value})});await load();$('model-status').textContent='Configuration saved.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{button.disabled=false}};
-$('code-form').onsubmit=async event=>{event.preventDefault();const button=$('mint-code');button.disabled=true;$('code-result').className='status';$('code-result').textContent='Minting…';try{const expiry=new Date($('expires-at').value);const result=await api('/v1/admin/class-codes',{method:'POST',body:JSON.stringify({classNumber:$('class-number').value,maximumUses:Number($('maximum-uses').value),expiresAt:expiry.toISOString()})});$('code-result').innerHTML='Class access code: <strong style="font-size:20px">'+escapeHtml(result.code)+'</strong><br>Copy it now — it cannot be retrieved later.';data=await api('/v1/admin/overview');render()}catch(error){$('code-result').className='status error';$('code-result').textContent=error.message}finally{button.disabled=false}};
+$('code-form').onsubmit=async event=>{event.preventDefault();const button=$('mint-code');button.disabled=true;$('code-result').className='status';$('code-result').textContent='Minting…';try{const expiry=new Date($('expires-at').value);const result=await api('/v1/admin/class-codes',{method:'POST',body:JSON.stringify({classNumber:$('class-number').value,maximumUses:Number($('maximum-uses').value),expiresAt:expiry.toISOString()})});$('code-result').innerHTML='Class access code: <strong style="font-size:20px">'+escapeHtml(result.code)+'</strong><br>Copy it now — it cannot be retrieved later.';try{data=await api('/v1/admin/overview');render()}catch{}}catch(error){$('code-result').className='status error';$('code-result').textContent=error.message}finally{button.disabled=false}};
 $('clear-key').onclick=async()=>{if(!confirm('Remove the stored API key? Model requests will stop until another key is configured.'))return;await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:$('provider').value,model:$('model').value,baseUrl:$('base-url').value,clearApiKey:true})});await load();$('model-status').textContent='API key removed.'};
 $('reset-model').onclick=async()=>{if(!confirm('Discard the admin override and use Worker environment defaults?'))return;await api('/v1/admin/model',{method:'DELETE'});await load();$('model-status').textContent='Using environment defaults.'};
 $('sign-out').onclick=()=>{sessionStorage.removeItem('tapplet-admin-token');location.reload()};if(token)load().catch(()=>{sessionStorage.removeItem('tapplet-admin-token');token=''})
