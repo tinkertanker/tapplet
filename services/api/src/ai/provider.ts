@@ -33,6 +33,11 @@ export interface ModerationDecision {
   categories: string[];
   reason?: string;
 }
+export interface RepairContext {
+  brief: TeacherBrief;
+  instruction?: string;
+  final?: boolean;
+}
 export interface ModelProvider {
   readonly name: string;
   generate(brief: TeacherBrief, exemplars: Exemplar[]): Promise<unknown>;
@@ -42,7 +47,11 @@ export interface ModelProvider {
     instruction: string,
     brief: TeacherBrief,
   ): Promise<unknown>;
-  repair(candidate: unknown, issues: string[]): Promise<unknown>;
+  repair(
+    candidate: unknown,
+    issues: string[],
+    context?: RepairContext,
+  ): Promise<unknown>;
   moderate(html: string): Promise<ModerationDecision>;
 }
 export class ModelProviderError extends Error {
