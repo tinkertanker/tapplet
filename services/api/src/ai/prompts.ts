@@ -1,5 +1,5 @@
-import type { DesignCard, Exemplar, TeacherBrief } from "./provider";
-export const PROMPT_VERSION = "html-v4";
+import type { DesignCard, Exemplar, RepairContext, TeacherBrief } from "./provider";
+export const PROMPT_VERSION = "html-v5";
 const EXEMPLAR_BEGIN = "-----BEGIN UNTRUSTED EXEMPLAR DATA-----";
 const EXEMPLAR_END = "-----END UNTRUSTED EXEMPLAR DATA-----";
 export const SYSTEM_PROMPT = `Create one compact, touch-first, front-end-only classroom applet for one focused learning purpose. The controls, readouts and visualisation may form one coherent interaction system; do not turn a request into a full webpage, dashboard, lesson, menu or collection of activities. Normally fit the complete activity in one responsive viewport. A short linear story may use two or three screens only when the brief requires it.
@@ -20,8 +20,23 @@ export function revisionPrompt(
 ) {
   return `Revise the complete applet. Return the complete HTML, not a patch.\nCreation brief: ${JSON.stringify(brief)}\nInstruction: ${instruction}\nDesign card: ${JSON.stringify(card ?? {})}\nCurrent HTML:\n${html}`;
 }
-export function repairPrompt(candidate: unknown, issues: string[]) {
-  return `Return corrected exact JSON {html, designCard?}. Issues: ${JSON.stringify(issues)}\nCandidate: ${JSON.stringify(candidate)}`;
+export function repairPrompt(
+  candidate: unknown,
+  issues: readonly string[],
+  context?: RepairContext,
+) {
+  return [
+    "Return corrected exact JSON {html, designCard?}.",
+    context?.final
+      ? "Final attempt. Prefer the simplest complete applet that satisfies the brief over preserving the previous structure."
+      : "",
+    context ? `Creation brief: ${JSON.stringify(context.brief)}` : "",
+    context?.instruction ? `Instruction: ${context.instruction}` : "",
+    `Issues: ${JSON.stringify(issues)}`,
+    `Candidate: ${JSON.stringify(candidate)}`,
+  ]
+    .filter((line) => line.length > 0)
+    .join("\n");
 }
 export const MODERATION_SYSTEM_PROMPT =
   'Review student-facing HTML. Return exactly JSON {"safe":boolean,"categories":string[],"reason":"short reason"}.';

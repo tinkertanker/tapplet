@@ -10,6 +10,7 @@ import type {
   Exemplar,
   ModelProvider,
   ModerationDecision,
+  RepairContext,
   TeacherBrief,
 } from "./provider";
 import { ModelProviderError } from "./provider";
@@ -49,10 +50,10 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.reasoningOptions,
     );
   }
-  repair(c: unknown, i: string[]) {
+  repair(c: unknown, i: string[], context?: RepairContext) {
     return this.complete(
       SYSTEM_PROMPT,
-      repairPrompt(c, i),
+      repairPrompt(c, i, context),
       32000,
       false,
       this.o.reasoningOptions,
@@ -132,8 +133,10 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       );
     }
     const body = (await response.json().catch(() => null)) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { finish_reason?: string; message?: { content?: string } }[];
       output?: { content?: { type?: string; text?: string }[] }[];
+      status?: string;
+      incomplete_details?: { reason?: string };
       error?: { message?: string };
     } | null;
     if (!response.ok)
@@ -149,6 +152,12 @@ export class OpenAiCompatibleProvider implements ModelProvider {
           .join("")
       : body?.choices?.[0]?.message?.content;
     if (!text) throw new ModelProviderError("No model output", true);
+    const truncated = responsesApi
+      ? body?.status === "incomplete" ||
+        body?.incomplete_details?.reason === "max_output_tokens"
+      : body?.choices?.[0]?.finish_reason === "length";
+    if (truncated || (!requireJson && isClippedHtmlEnvelope(text)))
+      throw new ModelProviderError("Model output truncated", true);
     try {
       return JSON.parse(text);
     } catch {
@@ -156,5 +165,15 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         throw new ModelProviderError("Malformed model JSON", false);
       return text;
     }
+  }
+}
+
+function isClippedHtmlEnvelope(text: string): boolean {
+  if (!text.trimStart().startsWith('{"html')) return false;
+  try {
+    JSON.parse(text);
+    return false;
+  } catch {
+    return true;
   }
 }

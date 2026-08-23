@@ -5,12 +5,22 @@ import type {
   Exemplar,
   GeneratedArtifact,
   ModelProvider,
+  RepairContext,
   TeacherBrief,
 } from "./ai/provider";
 export const PUBLIC_REPORT_MARKER = "data-studio-report";
+export type Issue =
+  | { kind: "shape"; message: string }
+  | { kind: "structure"; message: string }
+  | { kind: "policy"; message: string }
+  | { kind: "syntax"; message: string }
+  | { kind: "asset"; message: string; assetId: string };
+export type Issues = readonly [Issue, ...Issue[]];
 export class InvalidModelOutputError extends Error {
-  constructor(readonly issues: string[]) {
+  readonly issues: string[];
+  constructor(readonly diagnosed: Issues) {
     super("Invalid generated HTML");
+    this.issues = [...new Set(diagnosed.map((issue) => issue.message))];
   }
 }
 export interface RequiredManagedAsset {
@@ -19,6 +29,7 @@ export interface RequiredManagedAsset {
   decorative: boolean;
 }
 const MAX_HTML_BYTES = 200_000;
+const MAX_MODEL_REPAIRS = 2;
 const URL_ATTRIBUTE =
   /\b(src|href|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
 const CSS_URL = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis;
@@ -42,6 +53,26 @@ const JAVASCRIPT_TYPES = new Set([
   "text/x-ecmascript",
   "text/x-javascript",
 ]);
+
+type ParsedHtml = {
+  html: string;
+  designCard?: DesignCard;
+  referencedImages: ReadonlySet<string>;
+  bodyEnd?: number;
+};
+
+type Inspection =
+  | { status: "accepted"; artifact: GeneratedArtifact }
+  | {
+      status: "rejected";
+      candidate: unknown;
+      issues: Issues;
+      parsed?: ParsedHtml;
+    };
+
+type RepairIntent =
+  | { action: "generate"; brief: TeacherBrief }
+  | { action: "revise"; brief: TeacherBrief; instruction: string };
 
 function attributeValue(match: RegExpMatchArray): string {
   return match[2] ?? match[3] ?? match[4] ?? "";
@@ -76,15 +107,35 @@ function referencedImageAssetIdsFrom(
   return ids;
 }
 
+function rejected(
+  candidate: unknown,
+  issues: Issue[],
+  parsed?: ParsedHtml,
+): Inspection {
+  const first = issues[0];
+  if (first === undefined) {
+    throw new Error("Rejected inspection needs at least one issue.");
+  }
+  return {
+    status: "rejected",
+    candidate,
+    issues: [first, ...issues.slice(1)],
+    parsed,
+  };
+}
+
 function validateScripts(
   document: DefaultTreeAdapterTypes.Document,
-  issues: string[],
+  issues: Issue[],
 ) {
   function validateJavaScript(source: string, sourceType: "script" | "module") {
     try {
       parseJavaScript(source, { ecmaVersion: "latest", sourceType });
     } catch {
-      issues.push("Inline JavaScript must use valid syntax.");
+      issues.push({
+        kind: "syntax",
+        message: "Inline JavaScript must use valid syntax.",
+      });
     }
   }
   function visit(node: DefaultTreeAdapterTypes.Node) {
@@ -98,13 +149,22 @@ function validateScripts(
       }
       if (node.tagName === "script") {
         if (attributes.has("src")) {
-          issues.push("External scripts are not allowed.");
+          issues.push({
+            kind: "policy",
+            message: "External scripts are not allowed.",
+          });
         } else if (!node.sourceCodeLocation?.endTag) {
-          issues.push("Script elements must have a closing tag.");
+          issues.push({
+            kind: "structure",
+            message: "Script elements must have a closing tag.",
+          });
         } else {
           const type = (attributes.get("type") ?? "").trim().toLowerCase();
           if (type === "importmap" || type === "speculationrules") {
-            issues.push("Import maps and speculation rules are not allowed.");
+            issues.push({
+              kind: "policy",
+              message: "Import maps and speculation rules are not allowed.",
+            });
           } else if (type === "module" || JAVASCRIPT_TYPES.has(type)) {
             const source = node.childNodes
               .filter(
@@ -124,28 +184,48 @@ function validateScripts(
   visit(document);
 }
 
-function inspectGeneratedOutput(value: unknown): {
-  artifact: GeneratedArtifact;
-  referencedImages: Set<string>;
-} {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new InvalidModelOutputError([
-      "Output must be exactly a JSON object.",
+function inspect(
+  candidate: unknown,
+  requiredAssets: readonly RequiredManagedAsset[],
+): Inspection {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+    return rejected(candidate, [
+      { kind: "shape", message: "Output must be exactly a JSON object." },
     ]);
-  const keys = Object.keys(value);
+  const keys = Object.keys(candidate);
   if (keys.some((k) => k !== "html" && k !== "designCard"))
-    throw new InvalidModelOutputError([
-      "Only html and designCard are allowed.",
+    return rejected(candidate, [
+      { kind: "shape", message: "Only html and designCard are allowed." },
     ]);
-  const html = Reflect.get(value, "html");
-  const card = Reflect.get(value, "designCard");
-  const issues: string[] = [];
-  let referencedImages = new Set<string>();
+  const html = Reflect.get(candidate, "html");
+  const card = Reflect.get(candidate, "designCard");
+  const issues: Issue[] = [];
+  let parsed: ParsedHtml | undefined;
   if (typeof html !== "string" || !html.trim())
-    issues.push("html must be nonempty.");
+    issues.push({ kind: "shape", message: "html must be nonempty." });
   else {
+    let bodyEnd: number | undefined;
+    const document = parseHtml(html, { sourceCodeLocationInfo: true });
+    function findBodyEnd(node: DefaultTreeAdapterTypes.Node) {
+      if ("tagName" in node && node.tagName === "body")
+        bodyEnd = node.sourceCodeLocation?.endTag?.startOffset;
+      if ("childNodes" in node) node.childNodes.forEach(findBodyEnd);
+    }
+    findBodyEnd(document);
+    const parsedHtml: ParsedHtml = {
+      html,
+      referencedImages: referencedImageAssetIdsFrom(document),
+      bodyEnd,
+      ...(card !== undefined &&
+      card !== null &&
+      typeof card === "object" &&
+      !Array.isArray(card)
+        ? { designCard: card as DesignCard }
+        : {}),
+    };
+    parsed = parsedHtml;
     if (new TextEncoder().encode(html).byteLength > MAX_HTML_BYTES)
-      issues.push("HTML exceeds 200KB.");
+      issues.push({ kind: "structure", message: "HTML exceeds 200KB." });
     if (
       !/^\s*<!doctype html>/i.test(html) ||
       !/<html[\s>]/i.test(html) ||
@@ -153,11 +233,20 @@ function inspectGeneratedOutput(value: unknown): {
       !/<body[\s>][\s\S]*?<\/body>/i.test(html) ||
       !/<\/html>\s*$/i.test(html)
     )
-      issues.push("HTML must be a complete document with head and body elements.");
+      issues.push({
+        kind: "structure",
+        message: "HTML must be a complete document with head and body elements.",
+      });
     if (/<(?:base|iframe|object|embed)\b/i.test(html))
-      issues.push("Embedded documents and base URLs are not allowed.");
+      issues.push({
+        kind: "policy",
+        message: "Embedded documents and base URLs are not allowed.",
+      });
     if (/\b(?:srcset|poster)\s*=/i.test(html) || /<meta\b[^>]*http-equiv\s*=\s*["']?refresh/i.test(html))
-      issues.push("Redirecting and multi-source URLs are not allowed.");
+      issues.push({
+        kind: "policy",
+        message: "Redirecting and multi-source URLs are not allowed.",
+      });
     for (const match of html.matchAll(URL_ATTRIBUTE)) {
       const attribute = (match[1] ?? "").toLowerCase(),
         value = attributeValue(match).trim();
@@ -168,43 +257,71 @@ function inspectGeneratedOutput(value: unknown): {
           /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(
             value,
           ));
-      if (!allowed) issues.push(`Unsupported ${attribute} URL.`);
+      if (!allowed)
+        issues.push({
+          kind: "policy",
+          message: `Unsupported ${attribute} URL.`,
+        });
       if (/^javascript:/i.test(value))
-        issues.push("JavaScript URLs are not allowed.");
+        issues.push({
+          kind: "policy",
+          message: "JavaScript URLs are not allowed.",
+        });
     }
     for (const match of html.matchAll(CSS_URL)) {
       const value = (match[1] ?? match[2] ?? match[3] ?? "").trim();
       if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value))
-        issues.push("Unsupported CSS URL.");
+        issues.push({
+          kind: "policy",
+          message: "Unsupported CSS URL.",
+        });
     }
     if (
       /@import\b/i.test(html) ||
       /\b(?:import\s*(?:\(|[^;]*?from\s*)|require\s*\()["']/i.test(html)
     )
-      issues.push("External packages and imports are not allowed.");
+      issues.push({
+        kind: "policy",
+        message: "External packages and imports are not allowed.",
+      });
     if (
       /\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|import\s*\(|serviceWorker\b)/i.test(
         html,
       )
     )
-      issues.push("Network APIs are not allowed.");
+      issues.push({
+        kind: "policy",
+        message: "Network APIs are not allowed.",
+      });
     if (
       /\b(?:localStorage|sessionStorage|indexedDB|caches)\b|document\.cookie/i.test(
         html,
       )
     )
-      issues.push(
-        "Storage APIs are not allowed; applets must keep all state in memory.",
-      );
-    const document = parseHtml(html, { sourceCodeLocationInfo: true });
+      issues.push({
+        kind: "policy",
+        message:
+          "Storage APIs are not allowed; applets must keep all state in memory.",
+      });
     validateScripts(document, issues);
-    referencedImages = referencedImageAssetIdsFrom(document);
     if (new RegExp(PUBLIC_REPORT_MARKER, "i").test(html))
-      issues.push("Reserved server report marker is not allowed.");
+      issues.push({
+        kind: "policy",
+        message: "Reserved server report marker is not allowed.",
+      });
+    const missing = [...new Set(requiredAssets.map((asset) => asset.id))].filter(
+      (id) => !parsedHtml.referencedImages.has(id),
+    );
+    for (const id of missing)
+      issues.push({
+        kind: "asset",
+        assetId: id,
+        message: `HTML must include an img with the required managed image URL assets/${id}.`,
+      });
   }
   if (card !== undefined) {
     if (card === null || typeof card !== "object" || Array.isArray(card))
-      issues.push("designCard must be an object.");
+      issues.push({ kind: "shape", message: "designCard must be an object." });
     else {
       const value = card as Record<string, unknown>;
       if (
@@ -213,17 +330,21 @@ function inspectGeneratedOutput(value: unknown): {
           !value.title.trim() ||
           value.title.length > 200)
       )
-        issues.push(
-          "designCard.title must be a nonempty string up to 200 characters.",
-        );
+        issues.push({
+          kind: "shape",
+          message:
+            "designCard.title must be a nonempty string up to 200 characters.",
+        });
       if (
         value.description !== undefined &&
         (typeof value.description !== "string" ||
           value.description.length > 1000)
       )
-        issues.push(
-          "designCard.description must be a string up to 1000 characters.",
-        );
+        issues.push({
+          kind: "shape",
+          message:
+            "designCard.description must be a string up to 1000 characters.",
+        });
       if (
         value.tags !== undefined &&
         (!Array.isArray(value.tags) ||
@@ -232,38 +353,21 @@ function inspectGeneratedOutput(value: unknown): {
             (tag) => typeof tag !== "string" || !tag.trim() || tag.length > 50,
           ))
       )
-        issues.push("designCard.tags must contain up to 20 short strings.");
+        issues.push({
+          kind: "shape",
+          message: "designCard.tags must contain up to 20 short strings.",
+        });
     }
   }
-  if (issues.length) throw new InvalidModelOutputError(issues);
+  if (issues.length) return rejected(candidate, issues, parsed);
+  if (!parsed) return rejected(candidate, [{ kind: "shape", message: "html must be nonempty." }]);
   return {
+    status: "accepted",
     artifact: {
-      html: html as string,
-      ...(card === undefined ? {} : { designCard: card as DesignCard }),
+      html: parsed.html,
+      ...(parsed.designCard === undefined ? {} : { designCard: parsed.designCard }),
     },
-    referencedImages,
   };
-}
-
-export function validateHtmlOutput(value: unknown): GeneratedArtifact {
-  return inspectGeneratedOutput(value).artifact;
-}
-function validateCandidate(
-  candidate: unknown,
-  requiredAssets: RequiredManagedAsset[],
-): GeneratedArtifact {
-  const { artifact, referencedImages } = inspectGeneratedOutput(candidate),
-    missing = [...new Set(requiredAssets.map((asset) => asset.id))].filter(
-      (id) => !referencedImages.has(id),
-    );
-  if (missing.length)
-    throw new InvalidModelOutputError(
-      missing.map(
-        (id) =>
-          `HTML must include an img with the required managed image URL assets/${id}.`,
-      ),
-    );
-  return artifact;
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -280,29 +384,20 @@ function escapeHtmlAttribute(value: string): string {
   );
 }
 
-function insertMissingRequiredAssets(
-  artifact: GeneratedArtifact,
-  requiredAssets: RequiredManagedAsset[],
-): GeneratedArtifact {
-  const document = parseHtml(artifact.html, { sourceCodeLocationInfo: true }),
-    referenced = referencedImageAssetIdsFrom(document),
-    missing = requiredAssets.filter(
-      (asset, index) =>
-        !referenced.has(asset.id) &&
-        requiredAssets.findIndex((candidate) => candidate.id === asset.id) === index,
-    );
-  if (!missing.length) return artifact;
-  let bodyEnd: number | undefined;
-  function visit(node: DefaultTreeAdapterTypes.Node) {
-    if ("tagName" in node && node.tagName === "body")
-      bodyEnd = node.sourceCodeLocation?.endTag?.startOffset;
-    if ("childNodes" in node) node.childNodes.forEach(visit);
-  }
-  visit(document);
-  if (bodyEnd === undefined)
-    throw new InvalidModelOutputError([
-      "HTML must have an explicit closing body tag.",
-    ]);
+function applyHostInsert(
+  inspection: Inspection,
+  requiredAssets: readonly RequiredManagedAsset[],
+): Inspection {
+  if (inspection.status === "accepted") return inspection;
+  const parsed = inspection.parsed;
+  if (parsed?.bodyEnd === undefined) return inspection;
+  const missing = requiredAssets.filter(
+    (asset, index) =>
+      !parsed.referencedImages.has(asset.id) &&
+      requiredAssets.findIndex((candidate) => candidate.id === asset.id) ===
+        index,
+  );
+  if (!missing.length) return inspection;
   const markup = missing
     .map((asset) => {
       const alt = asset.decorative
@@ -311,40 +406,78 @@ function insertMissingRequiredAssets(
       return `<figure data-tapplet-managed-image="${asset.id}" style="margin:1rem auto;text-align:center"><img src="assets/${asset.id}" alt="${alt}"${asset.decorative ? ' role="presentation" aria-hidden="true"' : ""} style="max-width:100%;height:auto"></figure>`;
     })
     .join("\n");
+  return inspect(
+    {
+      html: `${parsed.html.slice(0, parsed.bodyEnd)}\n${markup}\n${parsed.html.slice(parsed.bodyEnd)}`,
+      ...(parsed.designCard === undefined ? {} : { designCard: parsed.designCard }),
+    },
+    requiredAssets,
+  );
+}
+
+function issueSignature(issue: Issue): string {
+  return issue.kind === "asset"
+    ? `asset:${issue.assetId}`
+    : `${issue.kind}:${issue.message}`;
+}
+
+function issueSetKey(issues: readonly Issue[]): string {
+  return [...issues.map(issueSignature)].sort().join("\n");
+}
+
+function repairContext(intent: RepairIntent, final: boolean): RepairContext {
   return {
-    ...artifact,
-    html: `${artifact.html.slice(0, bodyEnd)}\n${markup}\n${artifact.html.slice(bodyEnd)}`,
+    brief: intent.brief,
+    ...(intent.action === "revise" ? { instruction: intent.instruction } : {}),
+    ...(final ? { final: true } : {}),
   };
 }
 
-async function oneRepair(
+async function accept(
   provider: ModelProvider,
   candidate: unknown,
-  requiredAssets: RequiredManagedAsset[] = [],
+  intent: RepairIntent,
+  requiredAssets: readonly RequiredManagedAsset[] = [],
 ): Promise<GeneratedArtifact> {
-  try {
-    return validateCandidate(candidate, requiredAssets);
-  } catch (error) {
-    if (!(error instanceof InvalidModelOutputError)) throw error;
-    const repaired = validateHtmlOutput(
-      await provider.repair(candidate, error.issues),
-    );
-    return validateCandidate(
-      insertMissingRequiredAssets(repaired, requiredAssets),
+  let current = candidate;
+  let previous: string | undefined;
+  for (let repairs = 0; ; repairs += 1) {
+    const inspection = applyHostInsert(
+      inspect(current, requiredAssets),
       requiredAssets,
     );
+    if (inspection.status === "accepted") return inspection.artifact;
+    if (repairs === MAX_MODEL_REPAIRS)
+      throw new InvalidModelOutputError(inspection.issues);
+    if (previous !== undefined && previous === issueSetKey(inspection.issues))
+      throw new InvalidModelOutputError(inspection.issues);
+    current = await provider.repair(
+      inspection.candidate,
+      [...new Set(inspection.issues.map((issue) => issue.message))],
+      repairContext(intent, repairs === MAX_MODEL_REPAIRS - 1),
+    );
+    previous = issueSetKey(inspection.issues);
   }
 }
+
+export function validateHtmlOutput(value: unknown): GeneratedArtifact {
+  const inspection = inspect(value, []);
+  if (inspection.status === "accepted") return inspection.artifact;
+  throw new InvalidModelOutputError(inspection.issues);
+}
+
 export async function generateArtifact(
   provider: ModelProvider,
   brief: TeacherBrief,
   exemplars: Exemplar[] = [],
 ) {
-  return oneRepair(
+  return accept(
     provider,
     await provider.generate(brief, exemplars.slice(0, 2)),
+    { action: "generate", brief },
   );
 }
+
 export async function reviseArtifact(
   provider: ModelProvider,
   html: string,
@@ -353,9 +486,10 @@ export async function reviseArtifact(
   brief: TeacherBrief,
   requiredAssets: RequiredManagedAsset[] = [],
 ) {
-  return oneRepair(
+  return accept(
     provider,
     await provider.revise(html, card, instruction, brief),
+    { action: "revise", brief, instruction },
     requiredAssets,
   );
 }
