@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: verify-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   node:
@@ -69,3 +69,29 @@ jobs:
           SIMULATOR_SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; version=sys.argv[1].replace(".", "-"); d=json.load(sys.stdin)["devices"]; runtime=next((key for key in d if key.endswith("iOS-" + version)), None); candidates=[] if runtime is None else [x for x in d[runtime] if "iPad" in x["name"]]; assert candidates, f"No available iPad for iOS {sys.argv[1]}"; print(candidates[0]["udid"])' "$SIMULATOR_SDK")
           xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletTests -only-testing:TappletUITests test
+
+  deploy-api:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs:
+      - node
+      - ipad
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply production D1 migrations
+        working-directory: services/api
+        run: npx wrangler d1 migrations apply DB --remote
+      - name: Deploy production Worker
+        working-directory: services/api
+        run: npx wrangler deploy
+      - name: Verify production health
+        run: curl --fail --retry 5 --retry-delay 2 --retry-all-errors https://classroom-widgets-studio-api.tinkertanker.workers.dev/health
