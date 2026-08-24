@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: verify-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   node:
@@ -69,3 +69,33 @@ jobs:
           SIMULATOR_SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; version=sys.argv[1].replace(".", "-"); d=json.load(sys.stdin)["devices"]; runtime=next((key for key in d if key.endswith("iOS-" + version)), None); candidates=[] if runtime is None else [x for x in d[runtime] if "iPad" in x["name"]]; assert candidates, f"No available iPad for iOS {sys.argv[1]}"; print(candidates[0]["udid"])' "$SIMULATOR_SDK")
           xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletTests -only-testing:TappletUITests test
+
+  deploy-api:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs:
+      - node
+      - ipad
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      # Keep the Cloudflare token off this step: npm lifecycle scripts run here.
+      - run: npm ci
+      - name: Apply production D1 migrations
+        working-directory: services/api
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler d1 migrations apply DB --remote
+      - name: Deploy production Worker
+        working-directory: services/api
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy
+      - name: Verify production health
+        run: curl --fail --retry 5 --retry-delay 2 --retry-all-errors https://classroom-widgets-studio-api.tinkertanker.workers.dev/health
