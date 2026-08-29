@@ -1,0 +1,167 @@
+{
+  "schemaVersion": "3.0",
+  "provenance": {
+    "gitCommit": "6bce8a851df2f435c9047bc07426f1c7a483c763",
+    "workingTreeDirty": false,
+    "sourcePatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "promptVersion": "html-v7",
+    "manifestSha256": "dab442db748b79a5726774b59587d82d65f5ccc42e48d779716fdbc6d4dde281",
+    "retrievalSnapshotSha256": "a29f4eb2416cd8872a0310ac678219ebdba0487bdd8b9a10898ae8b77b6d32fe",
+    "provider": {
+      "provider": "opencode-go",
+      "model": "muse-spark-1.2-contributor",
+      "baseUrl": "https://opencode.ai/zen/go/v1",
+      "credentialSource": "environment"
+    },
+    "providerConfigurationSource": "createModelProvider defaults plus services/api/wrangler.jsonc and explicit EVAL_* overrides",
+    "retrievalRanking": "node:sqlite FTS5 with production D1 MATCH, curated-first, and bm25 ordering",
+    "node": "v22.23.2",
+    "platform": "linux-x64",
+    "browserEngine": "playwright-chromium/151.0.7922.34"
+  },
+  "privacy": {
+    "dataClass": "metadata-only",
+    "retained": [
+      "configuration",
+      "aggregate metrics",
+      "evaluation check and validation issue kinds",
+      "provider usage and latency",
+      "browser geometry and behavior counts"
+    ],
+    "omitted": [
+      "briefs and prompts",
+      "evaluation criteria text and scenario names",
+      "generated and revised HTML",
+      "images",
+      "console and exception text",
+      "student and teacher data",
+      "provider credentials"
+    ]
+  },
+  "startedAt": "2026-08-29T15:05:33.033Z",
+  "completedAt": "2026-08-29T15:06:18.216Z",
+  "repetitions": 1,
+  "caseIds": [
+    "published-source-boundary"
+  ],
+  "runs": [
+    {
+      "configuration": {
+        "retrievalMode": "production",
+        "maxModelRepairs": 2,
+        "promptBoundaryMode": "bounded"
+      },
+      "configurationSha256": "712072402d30d21e7a45ab92433a70b281cbf02e8f8cce9ef22db51efa25487f",
+      "passed": false,
+      "metrics": {
+        "cases": 1,
+        "firstPassRate": 0,
+        "finalPassRate": 0,
+        "heuristicFidelityRate": 1,
+        "revisionPassRate": null,
+        "browserPassRate": null,
+        "latencyMs": {
+          "count": 1,
+          "p50": 45015,
+          "p95": 45015,
+          "mean": 45015
+        },
+        "repairAttempts": {
+          "count": 1,
+          "p50": 0,
+          "p95": 0,
+          "mean": 0
+        },
+        "modelCalls": {
+          "count": 1,
+          "errorCount": 1,
+          "durationMs": {
+            "count": 1,
+            "p50": 45004,
+            "p95": 45004,
+            "mean": 45004
+          },
+          "inputBytes": {
+            "count": 1,
+            "p50": 10758,
+            "p95": 10758,
+            "mean": 10758
+          },
+          "inputTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          },
+          "cachedInputTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          },
+          "outputTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          },
+          "reasoningTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          }
+        }
+      },
+      "results": [
+        {
+          "id": "published-source-boundary",
+          "firstPassValid": false,
+          "finalValid": false,
+          "repairAttempts": 0,
+          "latencyMs": 45015,
+          "exemplarRevisionIds": [],
+          "heuristicChecks": [],
+          "issues": [
+            {
+              "code": "MODEL_PROVIDER_ERROR"
+            }
+          ],
+          "traces": [
+            {
+              "kind": "retrieval",
+              "requestId": "99e5a1dc-af99-41aa-8f29-74c3f01f17cd",
+              "mode": "automatic",
+              "entries": [
+                {
+                  "revisionId": "source-reliability-check-seed",
+                  "rank": 1,
+                  "curated": true
+                },
+                {
+                  "revisionId": "persuasive-language-lab-seed",
+                  "rank": 2,
+                  "curated": true
+                }
+              ],
+              "durationMs": 2
+            },
+            {
+              "kind": "model_call",
+              "requestId": "99e5a1dc-af99-41aa-8f29-74c3f01f17cd",
+              "operation": "generate",
+              "provider": "opencode-go:muse-spark-1.2-contributor",
+              "configuredModel": "muse-spark-1.2-contributor",
+              "status": "error",
+              "durationMs": 45004,
+              "systemBytes": 1889,
+              "inputBytes": 10758
+            }
+          ],
+          "repetition": 1
+        }
+      ]
+    }
+  ],
+  "comparisons": []
+}
