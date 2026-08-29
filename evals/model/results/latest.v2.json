@@ -1,0 +1,166 @@
+{
+  "schemaVersion": "2.0",
+  "provenance": {
+    "gitCommit": "7b6c43ef802fbcad03c0af3fedc36056aa5c3337",
+    "workingTreeDirty": false,
+    "sourcePatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "promptVersion": "html-v6",
+    "manifestSha256": "dab442db748b79a5726774b59587d82d65f5ccc42e48d779716fdbc6d4dde281",
+    "retrievalSnapshotSha256": "a29f4eb2416cd8872a0310ac678219ebdba0487bdd8b9a10898ae8b77b6d32fe",
+    "provider": {
+      "provider": "opencode-go",
+      "model": "muse-spark-1.2-contributor",
+      "baseUrl": "https://opencode.ai/zen/go/v1",
+      "credentialSource": "environment"
+    },
+    "providerConfigurationSource": "createModelProvider defaults plus services/api/wrangler.jsonc and explicit EVAL_* overrides",
+    "node": "v22.23.2",
+    "platform": "linux-x64",
+    "browserEngine": "playwright-chromium"
+  },
+  "privacy": {
+    "dataClass": "metadata-only",
+    "retained": [
+      "configuration",
+      "aggregate metrics",
+      "validation issue kinds",
+      "provider usage and latency",
+      "browser geometry and behavior counts"
+    ],
+    "omitted": [
+      "briefs and prompts",
+      "generated and revised HTML",
+      "images",
+      "console and exception text",
+      "student and teacher data",
+      "provider credentials"
+    ]
+  },
+  "startedAt": "2026-08-29T13:50:57.867Z",
+  "completedAt": "2026-08-29T13:51:43.058Z",
+  "repetitions": 1,
+  "caseIds": [
+    "published-source-boundary"
+  ],
+  "runs": [
+    {
+      "configuration": {
+        "retrievalMode": "production",
+        "maxModelRepairs": 2,
+        "promptBoundaryMode": "bounded"
+      },
+      "configurationSha256": "712072402d30d21e7a45ab92433a70b281cbf02e8f8cce9ef22db51efa25487f",
+      "passed": false,
+      "metrics": {
+        "cases": 1,
+        "firstPassRate": 0,
+        "finalPassRate": 0,
+        "heuristicFidelityRate": 1,
+        "revisionPassRate": null,
+        "browserPassRate": null,
+        "latencyMs": {
+          "count": 1,
+          "p50": 45013,
+          "p95": 45013,
+          "mean": 45013
+        },
+        "repairAttempts": {
+          "count": 1,
+          "p50": 0,
+          "p95": 0,
+          "mean": 0
+        },
+        "modelCalls": {
+          "count": 1,
+          "errorCount": 1,
+          "durationMs": {
+            "count": 1,
+            "p50": 45005,
+            "p95": 45005,
+            "mean": 45005
+          },
+          "inputBytes": {
+            "count": 1,
+            "p50": 12466,
+            "p95": 12466,
+            "mean": 12466
+          },
+          "inputTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          },
+          "cachedInputTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          },
+          "outputTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          },
+          "reasoningTokens": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "mean": null
+          }
+        }
+      },
+      "results": [
+        {
+          "id": "published-source-boundary",
+          "firstPassValid": false,
+          "finalValid": false,
+          "repairAttempts": 0,
+          "latencyMs": 45013,
+          "exemplarRevisionIds": [],
+          "heuristicChecks": [],
+          "issues": [
+            {
+              "code": "MODEL_PROVIDER_ERROR",
+              "message": "Generator unavailable."
+            }
+          ],
+          "traces": [
+            {
+              "kind": "retrieval",
+              "requestId": "c4ca257b-f2a8-49ef-83a9-b23f1c6ea1d1",
+              "mode": "automatic",
+              "entries": [
+                {
+                  "revisionId": "catchment-under-pressure-seed",
+                  "rank": 1,
+                  "curated": true
+                },
+                {
+                  "revisionId": "cut-extra-words-seed",
+                  "rank": 2,
+                  "curated": true
+                }
+              ],
+              "durationMs": 1
+            },
+            {
+              "kind": "model_call",
+              "requestId": "c4ca257b-f2a8-49ef-83a9-b23f1c6ea1d1",
+              "operation": "generate",
+              "provider": "opencode-go:muse-spark-1.2-contributor",
+              "configuredModel": "muse-spark-1.2-contributor",
+              "status": "error",
+              "durationMs": 45005,
+              "systemBytes": 1889,
+              "inputBytes": 12466
+            }
+          ],
+          "repetition": 1
+        }
+      ]
+    }
+  ],
+  "comparisons": []
+}
