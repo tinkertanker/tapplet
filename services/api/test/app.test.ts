@@ -5,6 +5,7 @@ import type { AssetStore, StoredAsset } from "../src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../src/auth";
 import { createStudioApp } from "../src/app";
 import { injectPublicHtml } from "../src/index";
+import { MemoryOperationalTraceSink } from "../src/operationalTrace";
 import { MemorySourceStore } from "../src/sourceStore";
 import { MemoryStudioRepository } from "../src/storage/memoryRepository";
 import type { RevisionRecord } from "../src/storage/repository";
@@ -364,12 +365,14 @@ describe("Tapplet API registration and public HTML", () => {
       receivedExemplars = exemplars.map((exemplar) => exemplar.revisionId);
       return generate(brief, exemplars);
     };
+    const trace = new MemoryOperationalTraceSink();
     app = createStudioApp({
       repository,
       provider,
       config,
       sources,
       now: () => new Date("2026-08-02T00:00:00Z"),
+      traceSink: trace,
     });
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", {
@@ -379,6 +382,30 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(generated.status).toBe(201);
     expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    expect(trace.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "retrieval",
+        mode: "preferred",
+        entries: [{
+          revisionId: `${seed.seedId}-seed`,
+          rank: 1,
+          curated: true,
+        }],
+      }),
+      expect.objectContaining({
+        kind: "artifact_validation",
+        operation: "generate",
+        status: "accepted",
+      }),
+      expect.objectContaining({
+        kind: "artifact_commit",
+        operation: "generate",
+        exemplarRevisionIds: [`${seed.seedId}-seed`],
+      }),
+    ]));
+    const serialisedTrace = JSON.stringify(trace.events);
+    expect(serialisedTrace).not.toContain(creationBrief.creationBrief);
+    expect(serialisedTrace).not.toContain(seed.artifact.html);
 
     const anonymousSearch = await app.fetch(
       new Request("https://api.test/v1/examples/search?q=fractions"),

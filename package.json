@@ -16,20 +16,26 @@
     "api:typecheck": "npm run typecheck -w @tinkercademy/tapplet-api",
     "api:db:migrate:local": "npm run db:migrate:local -w @tinkercademy/tapplet-api",
     "test": "node --test scripts/class-access.test.mjs scripts/examples.test.mjs scripts/live-image-fixture.test.mjs evals/model/artifact-eval.test.mjs",
-    "verify": "npm test && npm run api:test && npm run api:typecheck && npm run examples:validate && npm run eval:artifacts",
+    "verify": "npm test && npm run api:test && npm run api:typecheck && npm run eval:typecheck && npm run examples:validate && npm run eval:artifacts && npm run eval:model:test && npm run eval:browser:test",
     "examples:package": "node scripts/examples.mjs package",
     "examples:validate": "node scripts/examples.mjs validate",
     "examples:import": "node scripts/examples.mjs import",
     "examples:verify-production": "node scripts/examples.mjs parity",
     "eval:artifacts": "tsx evals/artifacts/run.ts",
+    "eval:typecheck": "tsc --project evals/tsconfig.json",
     "eval:model": "tsx evals/model/run.ts",
+    "eval:model:test": "tsx --test evals/model/production-harness.test.ts evals/model/run.test.ts",
     "eval:model-moderation": "tsx evals/model/moderation.ts",
+    "eval:browser": "tsx evals/browser/run.ts",
+    "eval:browser:test": "tsx --test evals/browser/evaluate.test.ts",
     "verify:live": "tsx scripts/verify-live-api.ts",
     "class-access:provision": "node scripts/provision-class-access.mjs",
     "ipad:generate": "cd apps/ipad && xcodegen generate"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",
+    "jsonc-parser": "^3.3.1",
+    "playwright": "^1.62.1",
     "tsx": "^4.21.0"
   }
 }

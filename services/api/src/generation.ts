@@ -8,6 +8,10 @@ import type {
   RepairContext,
   TeacherBrief,
 } from "./ai/provider";
+import type {
+  ArtifactOperation,
+  OperationalTraceContext,
+} from "./operationalTrace";
 export const PUBLIC_REPORT_MARKER = "data-studio-report";
 export type Issue =
   | { kind: "shape"; message: string }
@@ -29,7 +33,7 @@ export interface RequiredManagedAsset {
   decorative: boolean;
 }
 const MAX_HTML_BYTES = 200_000;
-const MAX_MODEL_REPAIRS = 2;
+export const DEFAULT_MAX_MODEL_REPAIRS = 2;
 const URL_ATTRIBUTE =
   /\b(src|href|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
 const CSS_URL = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis;
@@ -73,6 +77,11 @@ type Inspection =
 type RepairIntent =
   | { action: "generate"; brief: TeacherBrief }
   | { action: "revise"; brief: TeacherBrief; instruction: string };
+
+export interface GenerationOptions {
+  maxModelRepairs?: number;
+  trace?: OperationalTraceContext;
+}
 
 function attributeValue(match: RegExpMatchArray): string {
   return match[2] ?? match[3] ?? match[4] ?? "";
@@ -452,21 +461,50 @@ async function accept(
   candidate: unknown,
   intent: RepairIntent,
   requiredAssets: readonly RequiredManagedAsset[] = [],
+  options: GenerationOptions = {},
 ): Promise<GeneratedArtifact> {
   let current = candidate;
+  const maxRepairs = options.maxModelRepairs ?? DEFAULT_MAX_MODEL_REPAIRS;
+  if (!Number.isInteger(maxRepairs) || maxRepairs < 0 || maxRepairs > 2)
+    throw new RangeError("maxModelRepairs must be a whole number from 0 to 2.");
   for (let repairs = 0; ; repairs += 1) {
+    const initialInspection = inspect(current, requiredAssets);
+    const insertedAssetCount = initialInspection.status === "rejected"
+      ? missingRequiredAssets(initialInspection.issues, requiredAssets).length
+      : 0;
     const inspection = applyHostInsert(
-      inspect(current, requiredAssets),
+      initialInspection,
       requiredAssets,
     );
+    options.trace?.sink.emit({
+      kind: "artifact_validation",
+      requestId: options.trace.requestId,
+      operation: intent.action satisfies ArtifactOperation,
+      attempt: repairs,
+      maxRepairs,
+      status: inspection.status,
+      issueKinds: inspection.status === "rejected"
+        ? [...new Set(inspection.issues.map((issue) => issue.kind))]
+        : [],
+      issueCount: inspection.status === "rejected" ? inspection.issues.length : 0,
+      ...(inspection.status === "accepted"
+        ? { outputBytes: new TextEncoder().encode(inspection.artifact.html).byteLength }
+        : {}),
+      hostInsertedAssetCount: insertedAssetCount,
+    });
     if (inspection.status === "accepted") return inspection.artifact;
-    if (repairs === MAX_MODEL_REPAIRS)
+    if (repairs === maxRepairs)
       throw new InvalidModelOutputError(inspection.issues);
-    current = await provider.repair(
-      inspection.candidate,
-      [...new Set(inspection.issues.map((issue) => issue.message))],
-      repairContext(intent, repairs === MAX_MODEL_REPAIRS - 1),
-    );
+    const issues = [...new Set(inspection.issues.map((issue) => issue.message))];
+    const context = repairContext(intent, repairs === maxRepairs - 1);
+    current = options.trace
+      ? await provider.repair(
+          inspection.candidate,
+          issues,
+          context,
+          options.trace,
+        )
+      : await provider.repair(inspection.candidate, issues, context);
   }
 }
 
@@ -480,11 +518,14 @@ export async function generateArtifact(
   provider: ModelProvider,
   brief: TeacherBrief,
   exemplars: Exemplar[] = [],
+  options: GenerationOptions = {},
 ) {
   return accept(
     provider,
-    await provider.generate(brief, exemplars.slice(0, 2)),
+    await provider.generate(brief, exemplars.slice(0, 2), options.trace),
     { action: "generate", brief },
+    [],
+    options,
   );
 }
 
@@ -495,11 +536,13 @@ export async function reviseArtifact(
   instruction: string,
   brief: TeacherBrief,
   requiredAssets: RequiredManagedAsset[] = [],
+  options: GenerationOptions = {},
 ) {
   return accept(
     provider,
-    await provider.revise(html, card, instruction, brief),
+    await provider.revise(html, card, instruction, brief, options.trace),
     { action: "revise", brief, instruction },
     requiredAssets,
+    options,
   );
 }

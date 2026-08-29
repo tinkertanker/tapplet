@@ -1,3 +1,5 @@
+import type { OperationalTraceContext } from "../operationalTrace";
+
 export interface TeacherBrief {
   level: string;
   subject: string;
@@ -40,19 +42,28 @@ export interface RepairContext {
 }
 export interface ModelProvider {
   readonly name: string;
-  generate(brief: TeacherBrief, exemplars: Exemplar[]): Promise<unknown>;
+  generate(
+    brief: TeacherBrief,
+    exemplars: Exemplar[],
+    trace?: OperationalTraceContext,
+  ): Promise<unknown>;
   revise(
     currentHtml: string,
     designCard: DesignCard | undefined,
     instruction: string,
     brief: TeacherBrief,
+    trace?: OperationalTraceContext,
   ): Promise<unknown>;
   repair(
     candidate: unknown,
     issues: string[],
     context?: RepairContext,
+    trace?: OperationalTraceContext,
   ): Promise<unknown>;
-  moderate(html: string): Promise<ModerationDecision>;
+  moderate(
+    html: string,
+    trace?: OperationalTraceContext,
+  ): Promise<ModerationDecision>;
 }
 export class ModelProviderError extends Error {
   constructor(

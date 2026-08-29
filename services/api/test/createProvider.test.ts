@@ -172,6 +172,62 @@ describe("model provider selection", () => {
       "OPENROUTER_API_KEY",
     );
   });
+
+  it("supports explicit evaluation-only reasoning and prompt-boundary overrides", async () => {
+    const fetch = successfulFetch();
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(
+      env({
+        AI_PROVIDER: "openrouter",
+        AI_MODEL: "vendor/model",
+        OPENROUTER_API_KEY: "openrouter-secret",
+      }),
+      {
+        provider: "openrouter",
+        model: "vendor/model",
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "openrouter-secret",
+        reasoningEffort: "low",
+        promptBoundaryMode: "legacy-unbounded",
+      },
+    );
+
+    await provider.revise(
+      "<!doctype html><html><body>source</body></html>",
+      undefined,
+      "Add a reset.",
+      brief,
+    );
+
+    expect(requestBody(fetch)).toMatchObject({
+      reasoning: { effort: "low", exclude: true },
+    });
+    expect(JSON.stringify(requestBody(fetch).messages)).not.toContain(
+      "BEGIN UNTRUSTED CURRENT HTML",
+    );
+  });
+
+  it("enables DeepSeek reasoning only for an explicit evaluation override", async () => {
+    const fetch = successfulFetch();
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(
+      env({}),
+      {
+        provider: "openai-compatible",
+        model: "deepseek-v4-flash",
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "evaluation-secret",
+        reasoningEffort: "low",
+      },
+    );
+
+    await provider.generate(brief, []);
+
+    expect(requestBody(fetch)).toMatchObject({
+      thinking: { type: "enabled" },
+      reasoning_effort: "low",
+    });
+  });
 });
 
 function successfulFetch() {

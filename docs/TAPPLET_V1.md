@@ -70,7 +70,7 @@ The service applies structural checks before saving a generated revision:
 - no external scripts, styles, packages, frames or arbitrary resource URLs;
 - no network APIs;
 - only existing images owned by the teacher's device;
-- one bounded model repair when generated output fails those structural checks.
+- at most two bounded model repairs when generated output fails those structural checks.
 
 Deterministic text review runs alongside these checks, but its findings are
 advisory: the revision is preserved and the teacher can edit, re-prompt or
@@ -134,6 +134,13 @@ revisions are not globally indexed. Retrieval is a rebuildable projection over
 titles, descriptions, subjects, levels, interaction patterns and tags; the HTML
 sources remain authoritative.
 
+The share sheet now discloses that publishing a student link also makes that
+revision eligible as generation context and that turning off the link removes
+it from retrieval. This documents the current coupled behavior; it does **not**
+settle whether publication consent is sufficient or whether future pilots need
+a separate, explicit retrieval opt-in. That product/privacy decision remains
+open and runtime policy must not change silently.
+
 The reviewed corpus is deployed through the authenticated, idempotent seed
 import route. Operational secret configuration and import steps live in the
 pilot runbook.
@@ -183,8 +190,11 @@ V1 does not provide:
   image ownership and explicit image liveness.
 - All curated seeds pass the shared artifact checks and initialise in jsdom.
 - Bundled iPad examples are byte-for-byte copies of the canonical corpus.
-- Model evaluation measures first-pass validity, one-repair success and whether
-  requested interactions/content appear in the artifact.
+- Model evaluation measures first-pass validity, bounded-repair success and whether
+  requested interactions/content appear in the artifact. Version 2 also uses
+  the production API path for retrieval, zero-to-two repair policy, revision,
+  managed image insertion, stale-head conflict, restore, and browser checks at
+  phone and iPad viewports.
 - Live verification covers generate, a deliberately triggered warning-only
   advisory, revise, restore, image use, publish, anonymous Safari delivery,
   report, extension, revocation and deletion.
@@ -195,3 +205,18 @@ V1 does not provide:
 This release is a clean pre-launch cutover. Legacy schema drafts and
 publications are reset by migration; no conversion or dual renderer is
 maintained.
+
+## Operational trace privacy
+
+The API emits structured operational events for model calls, artifact
+validation, retrieval, and successful revision commits. Events contain random
+request correlation IDs, provider/model identifiers, durations, byte and token
+counts when supplied, validation issue kinds/counts, curated provenance,
+revision identifiers, source hashes, and repair/image-insertion counts. They do
+not contain briefs, prompts, HTML, model output, images, console/exception text,
+provider keys, or student/teacher content.
+
+The default Worker sink writes only this metadata as JSON. Adding another sink
+or retaining raw payloads requires explicit privacy approval and a documented
+retention policy; neither is enabled by this contract. Platform log retention
+remains an environment setting rather than an application memory system.

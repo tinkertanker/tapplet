@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "legacy-pre-v2",
   "ranAt": "2026-07-18T15:21:28.099Z",
   "provider": "openai-compatible:deepseek-v4-flash",
   "passRate": 1,
