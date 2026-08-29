@@ -1,0 +1,1922 @@
+{
+  "schemaVersion": "2.0",
+  "provenance": {
+    "gitCommit": "6bce8a851df2f435c9047bc07426f1c7a483c763",
+    "workingTreeDirty": false,
+    "sourcePatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "manifestSha256": "b763671cfaf9c573c629a3675ad914a8147eafcffe19d71fa0853f78dafcf0da",
+    "corpusSha256": "a29f4eb2416cd8872a0310ac678219ebdba0487bdd8b9a10898ae8b77b6d32fe",
+    "browser": "playwright-chromium/151.0.7922.34",
+    "node": "v22.23.2",
+    "platform": "linux-x64"
+  },
+  "privacy": {
+    "dataClass": "metadata-only-reviewed-seed-corpus",
+    "rawHtmlRetained": false,
+    "screenshotsRetained": false,
+    "consoleAndExceptionTextRetained": false
+  },
+  "ranAt": "2026-08-29T15:05:22.521Z",
+  "summary": {
+    "artifacts": 18,
+    "viewportEvaluations": 36,
+    "overallPassRate": 0.5555555555555556,
+    "behaviorPassRate": 0.7777777777777778,
+    "sandboxPassRate": 1,
+    "viewportFitPassRate": 1,
+    "accessibilityBasicPassRate": 0.8333333333333334,
+    "renderedQualityPassRate": 0.8055555555555556
+  },
+  "results": [
+    {
+      "id": "catchment-under-pressure",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 8,
+            "exercisedControlCount": 8,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1292,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": false,
+            "unnamedControlCount": 3,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": false,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 11
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 8,
+            "exercisedControlCount": 8,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": false,
+            "unnamedControlCount": 3,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": false,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": "cool-box-fair-test-lab",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 19,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 2482,
+            "controlsOutsideInitialViewport": 15,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": false,
+            "undersizedTouchTargetCount": 4,
+            "touchTargetPassRate": 0.7894736842105263,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 19,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1775,
+            "controlsOutsideInitialViewport": 14,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": false,
+            "undersizedTouchTargetCount": 4,
+            "touchTargetPassRate": 0.7894736842105263,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "conductor-or-insulator",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 10,
+            "exercisedControlCount": 10,
+            "changedControlCount": 10,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 844,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 16
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 10,
+            "exercisedControlCount": 10,
+            "changedControlCount": 10,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "cut-extra-words",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 20,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 933,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 20,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 771,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "fixed-perimeter-rectangle-explorer",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 8,
+            "exercisedControlCount": 8,
+            "changedControlCount": 7,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.875,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1217,
+            "controlsOutsideInitialViewport": 5,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": false,
+            "undersizedTouchTargetCount": 2,
+            "touchTargetPassRate": 0.75,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 13
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 8,
+            "exercisedControlCount": 8,
+            "changedControlCount": 7,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.875,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 839,
+            "controlsOutsideInitialViewport": 1,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": false,
+            "undersizedTouchTargetCount": 2,
+            "touchTargetPassRate": 0.75,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "fraction-equivalence-diagnostic",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 21,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1059,
+            "controlsOutsideInitialViewport": 5,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 21,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 834,
+            "controlsOutsideInitialViewport": 1,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear-function-explorer",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 6,
+            "exercisedControlCount": 6,
+            "changedControlCount": 5,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8333333333333334,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 975,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": false,
+            "unnamedControlCount": 2,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 6,
+            "exercisedControlCount": 6,
+            "changedControlCount": 5,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8333333333333334,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": false,
+            "unnamedControlCount": 2,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "line-golf",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 4,
+            "exercisedControlCount": 4,
+            "changedControlCount": 3,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.75,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 935,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": false,
+            "unnamedControlCount": 2,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 12
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 4,
+            "exercisedControlCount": 4,
+            "changedControlCount": 3,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.75,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": false,
+            "unnamedControlCount": 2,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "market-street-field-notes",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 15,
+            "exercisedControlCount": 12,
+            "changedControlCount": 11,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.9166666666666666,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1540,
+            "controlsOutsideInitialViewport": 8,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 15,
+            "exercisedControlCount": 12,
+            "changedControlCount": 11,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.9166666666666666,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 823,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "mean-and-median",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 4,
+            "exercisedControlCount": 4,
+            "changedControlCount": 3,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.75,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 844,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 13
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 4,
+            "exercisedControlCount": 4,
+            "changedControlCount": 3,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.75,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 820,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "paragraph-structure-sequencer",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 10,
+            "exercisedControlCount": 10,
+            "changedControlCount": 9,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.9,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1284,
+            "controlsOutsideInitialViewport": 5,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 10,
+            "exercisedControlCount": 10,
+            "changedControlCount": 9,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.9,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 776,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "persuasive-language-lab",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 9,
+            "exercisedControlCount": 9,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8888888888888888,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1307,
+            "controlsOutsideInitialViewport": 4,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 9,
+            "exercisedControlCount": 9,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8888888888888888,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 974,
+            "controlsOutsideInitialViewport": 2,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "plant-cell-hotspots",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 16,
+            "exercisedControlCount": 12,
+            "changedControlCount": 5,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.4166666666666667,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1398,
+            "controlsOutsideInitialViewport": 7,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": false,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 1,
+            "minimumTextSizePixels": 16
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 16,
+            "exercisedControlCount": 12,
+            "changedControlCount": 5,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.4166666666666667,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1235,
+            "controlsOutsideInitialViewport": 11,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "source-reliability-check",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 9,
+            "exercisedControlCount": 9,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8888888888888888,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1114,
+            "controlsOutsideInitialViewport": 3,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 12
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 9,
+            "exercisedControlCount": 9,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8888888888888888,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 950,
+            "controlsOutsideInitialViewport": 2,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "spell-it-before-the-sun-sets",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 26,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 844,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 16
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 26,
+            "exercisedControlCount": 12,
+            "changedControlCount": 12,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "times-tables-lightning",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 4,
+            "exercisedControlCount": 4,
+            "changedControlCount": 4,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 844,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 16
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 4,
+            "exercisedControlCount": 4,
+            "changedControlCount": 4,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 1,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "town-council-budget",
+      "schemaVersion": "2.0",
+      "passed": true,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 9,
+            "exercisedControlCount": 9,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8888888888888888,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 1148,
+            "controlsOutsideInitialViewport": 4,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": true,
+            "controlCount": 9,
+            "exercisedControlCount": 9,
+            "changedControlCount": 8,
+            "interactionErrorCount": 0,
+            "interactionPassRate": 0.8888888888888888,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "where-the-shadow-falls",
+      "schemaVersion": "2.0",
+      "passed": false,
+      "viewports": [
+        {
+          "viewport": {
+            "name": "phone",
+            "width": 390,
+            "height": 844
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 8,
+            "exercisedControlCount": 8,
+            "changedControlCount": 6,
+            "interactionErrorCount": 1,
+            "interactionPassRate": 0.75,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 844,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 13
+          }
+        },
+        {
+          "viewport": {
+            "name": "ipad",
+            "width": 1024,
+            "height": 768
+          },
+          "behavior": {
+            "passed": false,
+            "controlCount": 8,
+            "exercisedControlCount": 8,
+            "changedControlCount": 6,
+            "interactionErrorCount": 1,
+            "interactionPassRate": 0.75,
+            "consoleErrorCount": 0,
+            "pageErrorCount": 0,
+            "scenarios": []
+          },
+          "sandbox": {
+            "passed": true,
+            "blockedRequestCount": 0,
+            "crossOriginRequestCount": 0,
+            "sameOriginUnexpectedRequestCount": 0,
+            "cspViolationCount": 0,
+            "violatedDirectives": []
+          },
+          "viewportFit": {
+            "passed": true,
+            "horizontalOverflowPixels": 0,
+            "documentHeight": 768,
+            "controlsOutsideInitialViewport": 0,
+            "clippedControlCount": 0
+          },
+          "accessibilityBasic": {
+            "passed": true,
+            "unnamedControlCount": 0,
+            "duplicateIdCount": 0,
+            "imageMissingAltCount": 0,
+            "headingLevelSkipCount": 0,
+            "h1Count": 1,
+            "focusFailureCount": 0
+          },
+          "renderedQuality": {
+            "passed": true,
+            "undersizedTouchTargetCount": 0,
+            "touchTargetPassRate": 1,
+            "overlappingControlPairCount": 0,
+            "minimumTextSizePixels": 13
+          }
+        }
+      ]
+    }
+  ]
+}

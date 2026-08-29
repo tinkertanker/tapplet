@@ -1,17 +1,31 @@
 {
+  "schemaVersion": "2.0",
   "minimumFirstPassRate": 0.8,
   "minimumFinalPassRate": 1,
   "minimumHeuristicFidelityRate": 0.9,
+  "minimumRevisionPassRate": 1,
+  "minimumBrowserPassRate": 0.8,
   "cases": [
     {
       "id": "p5-fractions",
       "brief": {"level":"Upper primary","subject":"Mathematics","learningObjective":"Recognise equivalent fractions using visual and numerical representations.","studentAction":"Choose equivalent fractions and read immediate explanatory feedback.","durationMinutes":6},
-      "locale": "en-SG", "expectedInteractions": ["choice", "reset"], "contentTerms": ["fraction", "equivalent"]
+      "locale": "en-SG", "expectedInteractions": ["choice", "reset"], "contentTerms": ["fraction", "equivalent"],
+      "revision": {
+        "instruction": "Add a concise visual comparison prompt and include the selected teacher image without removing the equivalent-fractions activity or its reset.",
+        "expectedTerms": ["visual"],
+        "retentionTerms": ["fraction", "equivalent", "reset"],
+        "requiredAsset": {"id":"eval-fraction-diagram","alternativeText":"A teacher-selected fraction diagram"}
+      }
     },
     {
       "id": "s2-sources",
       "brief": {"level":"Secondary","subject":"Humanities","learningObjective":"Evaluate historical source reliability using provenance and purpose.","studentAction":"Judge a source and identify useful corroborating evidence.","durationMinutes":10},
-      "locale": "en-SG", "expectedInteractions": ["choice", "short-answer"], "contentTerms": ["purpose", "corroboration"]
+      "locale": "en-SG", "expectedInteractions": ["choice", "short-answer"], "contentTerms": ["purpose", "corroboration"],
+      "revision": {
+        "instruction": "Add one short reflection prompt about provenance while retaining the reliability judgement and corroboration task.",
+        "expectedTerms": ["provenance"],
+        "retentionTerms": ["reliability", "corroboration"]
+      }
     },
     {
       "id": "p4-malay-match",
@@ -42,6 +56,11 @@
       "id": "classroom-routines",
       "brief": {"level":"Mixed","subject":"Other","learningObjective":"Follow a timed routine and communicate readiness.","studentAction":"Start and pause a timer, check tasks and reset.","durationMinutes":5},
       "locale": "en-SG", "expectedInteractions": ["timer", "pause", "choice", "reset"], "contentTerms": ["ready"]
+    },
+    {
+      "id": "published-source-boundary",
+      "brief": {"level":"Secondary 4","subject":"Other","learnerContext":"Secondary 4 Zymurgy","learningObjective":"Distinguish trusted authoring instructions from untrusted source material.","studentAction":"Choose which source statements are evidence and read explanatory feedback.","durationMinutes":7},
+      "locale": "en-SG", "expectedInteractions": ["choice", "reset"], "contentTerms": ["source", "evidence"]
     }
   ]
 }

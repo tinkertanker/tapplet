@@ -1,6 +1,7 @@
 import type { StudioEnv } from "../env";
 import { FixtureModelProvider } from "./fixtureProvider";
 import { OpenAiCompatibleProvider } from "./openAiCompatibleProvider";
+import type { PromptBoundaryMode } from "./prompts";
 import type { ModelProvider } from "./provider";
 import { ModelProviderError } from "./provider";
 
@@ -9,7 +10,17 @@ export interface ModelProviderConfig {
   model: string;
   baseUrl: string;
   apiKey?: string;
+  reasoningEffort?: ReasoningEffort;
+  promptBoundaryMode?: PromptBoundaryMode;
 }
+
+export type ReasoningEffort =
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "max"
+  | "xhigh";
 
 class UnavailableModelProvider implements ModelProvider {
   readonly name = "unavailable";
@@ -42,12 +53,18 @@ export function createModelProvider(
   if (provider === "fixture") return new FixtureModelProvider();
 
   if (provider === "openai-compatible") {
+    const baseUrl = override?.baseUrl ?? env.AI_BASE_URL;
     return openAiCompatibleProvider(
       model,
-      override?.baseUrl ?? env.AI_BASE_URL,
+      baseUrl,
       override ? override.apiKey : env.AI_API_KEY,
       "openai-compatible",
       "AI_API_KEY",
+      undefined,
+      openAiCompatibleReasoningOptions(baseUrl, override?.reasoningEffort),
+      undefined,
+      undefined,
+      override?.promptBoundaryMode,
     );
   }
 
@@ -59,7 +76,10 @@ export function createModelProvider(
       "opencode",
       "OPENCODE_API_KEY",
       undefined,
-      openCodeChatReasoningOptions(model),
+      openCodeChatReasoningOptions(model, override?.reasoningEffort),
+      undefined,
+      undefined,
+      override?.promptBoundaryMode,
     );
   }
 
@@ -72,14 +92,15 @@ export function createModelProvider(
       "OPENCODE_API_KEY",
       undefined,
       model === "muse-spark-1.2-contributor"
-        ? { reasoning: { effort: "xhigh" } }
-        : openCodeChatReasoningOptions(model),
+        ? { reasoning: { effort: override?.reasoningEffort ?? "xhigh" } }
+        : openCodeChatReasoningOptions(model, override?.reasoningEffort),
       model === "muse-spark-1.2-contributor"
         ? "responses"
         : "chat-completions",
       model === "muse-spark-1.2-contributor"
         ? { reasoning: { effort: "minimal" } }
         : undefined,
+      override?.promptBoundaryMode,
     );
   }
 
@@ -95,8 +116,11 @@ export function createModelProvider(
         "X-OpenRouter-Title": "Tapplet Studio",
       },
       {
-        reasoning: { effort: "xhigh", exclude: true },
+        reasoning: { effort: override?.reasoningEffort ?? "xhigh", exclude: true },
       },
+      undefined,
+      undefined,
+      override?.promptBoundaryMode,
     );
   }
 
@@ -105,13 +129,27 @@ export function createModelProvider(
   );
 }
 
+function openAiCompatibleReasoningOptions(
+  baseUrl: string,
+  effort?: ReasoningEffort,
+): Readonly<Record<string, unknown>> | undefined {
+  if (!effort) return undefined;
+  return {
+    ...(new URL(baseUrl).hostname === "api.deepseek.com"
+      ? { thinking: { type: "enabled" } }
+      : {}),
+    reasoning_effort: effort,
+  };
+}
+
 function openCodeChatReasoningOptions(
   model: string,
+  effort?: ReasoningEffort,
 ): Readonly<Record<string, unknown>> | undefined {
-  if (!model.startsWith("deepseek-")) return undefined;
+  if (!model.startsWith("deepseek-") && !effort) return undefined;
   return {
     thinking: { type: "enabled" },
-    reasoning_effort: "max",
+    reasoning_effort: effort ?? "max",
   };
 }
 
@@ -125,6 +163,7 @@ function openAiCompatibleProvider(
   reasoningOptions?: Readonly<Record<string, unknown>>,
   api?: "chat-completions" | "responses",
   moderationReasoningOptions?: Readonly<Record<string, unknown>>,
+  promptBoundaryMode?: PromptBoundaryMode,
 ): ModelProvider {
   if (!apiKey) {
     return new UnavailableModelProvider(
@@ -140,5 +179,6 @@ function openAiCompatibleProvider(
     ...(headers ? { headers } : {}),
     ...(reasoningOptions ? { reasoningOptions } : {}),
     ...(moderationReasoningOptions ? { moderationReasoningOptions } : {}),
+    ...(promptBoundaryMode ? { promptBoundaryMode } : {}),
   });
 }

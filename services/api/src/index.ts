@@ -5,6 +5,7 @@ import { CloudflareAssetStore } from "./assets";
 import { readConfig, type StudioEnv } from "./env";
 import { OpenCodeGoImageSafetyInspector } from "./imageSafety";
 import { CloudflareImageNormalizer } from "./imageNormalizer";
+import { consoleOperationalTraceSink } from "./operationalTrace";
 import { D1StudioRepository } from "./storage/d1Repository";
 import { cleanupArtifactStorage, R2SourceStore } from "./sourceStore";
 import { PUBLIC_REPORT_MARKER } from "./generation";
@@ -43,6 +44,7 @@ export default {
             })
           : undefined,
       ),
+      traceSink: consoleOperationalTraceSink,
     }).fetch(request);
   },
   async scheduled(

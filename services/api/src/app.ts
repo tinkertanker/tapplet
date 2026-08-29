@@ -14,11 +14,17 @@ import {
 import type { StudioConfig } from "./env";
 import {
   generateArtifact,
+  type GenerationOptions,
   InvalidModelOutputError,
   referencedAssetIds,
   reviseArtifact,
   validateHtmlOutput,
 } from "./generation";
+import type {
+  OperationalTraceContext,
+  OperationalTraceSink,
+} from "./operationalTrace";
+import { emitOperationalTrace } from "./operationalTrace";
 import {
   apiError,
   corsHeaders,
@@ -58,6 +64,8 @@ interface Deps {
   now?: () => Date;
   createId?: () => string;
   createSlug?: () => string;
+  traceSink?: OperationalTraceSink;
+  generationPolicy?: Pick<GenerationOptions, "maxModelRepairs">;
 }
 const ID = /^[A-Za-z0-9_-]{1,100}$/,
   SLUG = /^[A-Za-z0-9_-]{16,64}$/,
@@ -468,6 +476,10 @@ export function createStudioApp(d: Deps) {
     await quota(r, ownerHash, "artifact");
   }
   async function handle(r: Request): Promise<Response> {
+    const requestStarted = performance.now();
+    const trace: OperationalTraceContext | undefined = d.traceSink
+      ? { requestId: crypto.randomUUID(), sink: d.traceSink }
+      : undefined;
     const u = new URL(r.url),
       s = u.pathname.split("/").filter(Boolean);
     if (r.method === "OPTIONS") {
@@ -674,6 +686,7 @@ export function createStudioApp(d: Deps) {
         ]);
       await reserveArtifactCreation(r, o);
       await quota(r, o, "generation");
+      const retrievalStarted = performance.now();
       const query = generationRetrievalQuery(b);
       const preferred = request.preferredExampleRevisionId
         ? await d.repository.getRevision(request.preferredExampleRevisionId)
@@ -711,7 +724,31 @@ export function createStudioApp(d: Deps) {
           }),
         )
       ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-      const out = await generateArtifact(d.provider, b, ex);
+      if (trace) {
+        emitOperationalTrace(trace.sink, {
+          kind: "retrieval",
+          requestId: trace.requestId,
+          mode: request.preferredExampleRevisionId
+            ? "preferred"
+            : query
+              ? "automatic"
+              : "none",
+          entries: found.map((entry, index) => ({
+            revisionId: entry.revisionId,
+            rank: index + 1,
+            ...(entry.revisionId === preferred?.id
+              ? { curated: preferred.modelVersion === "curated" }
+              : "curated" in entry
+                ? { curated: entry.curated }
+                : {}),
+          })),
+          durationMs: Math.round(performance.now() - retrievalStarted),
+        });
+      }
+      const out = await generateArtifact(d.provider, b, ex, {
+        ...d.generationPolicy,
+        ...(trace ? { trace } : {}),
+      });
       warnings.push(
         ...advisoryWarnings("generated_content", [
           ...inspectHtml(out.html),
@@ -760,6 +797,19 @@ export function createStudioApp(d: Deps) {
         revision: rv,
         assetIds,
       });
+      if (trace) {
+        emitOperationalTrace(trace.sink, {
+          kind: "artifact_commit",
+          requestId: trace.requestId,
+          operation: "generate",
+          artifactId: aid,
+          revisionId: rid,
+          sourceHash: hash,
+          outputBytes: rv.sourceBytes,
+          exemplarRevisionIds: rv.exemplars,
+          durationMs: Math.round(performance.now() - requestStarted),
+        });
+      }
       return json(
         {
           ...(await projectResponse(a, o, u.origin, {
@@ -992,6 +1042,10 @@ export function createStudioApp(d: Deps) {
               alternativeText: asset.alternativeText,
               decorative: asset.decorative,
             })),
+            {
+              ...d.generationPolicy,
+              ...(trace ? { trace } : {}),
+            },
           ),
           rid = id(),
           hash = await persist(out.html),
@@ -1024,6 +1078,19 @@ export function createStudioApp(d: Deps) {
             "HEAD_REVISION_CONFLICT",
             "Artifact head changed.",
           );
+        if (trace) {
+          emitOperationalTrace(trace.sink, {
+            kind: "artifact_commit",
+            requestId: trace.requestId,
+            operation: "revise",
+            artifactId: a.id,
+            revisionId: rid,
+            sourceHash: hash,
+            outputBytes: rv.sourceBytes,
+            exemplarRevisionIds: [],
+            durationMs: Math.round(performance.now() - requestStarted),
+          });
+        }
         return json(
           {
             ...(await projectResponse(
@@ -1070,7 +1137,7 @@ export function createStudioApp(d: Deps) {
         await assets(html, o);
         await quota(r, o, "safety");
         try {
-          const m = await d.provider.moderate(html);
+          const m = await d.provider.moderate(html, trace);
           if (!m.safe) warnings.push(publicationReviewWarning(m.categories));
         } catch (error) {
           const diagnostic = error instanceof Error

@@ -137,6 +137,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Dismiss warning"].isHittable)
         app.buttons["Dismiss warning"].tap()
         XCTAssertTrue(warning.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["publication-generation-context-notice"].exists)
         XCTAssertTrue(app.buttons["Create student link"].exists)
     }
 

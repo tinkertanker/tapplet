@@ -217,6 +217,11 @@ private struct ShareArtifactView: View {
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("advisory-warning")
                     }
+                    Text("Published tapplets can currently be used as examples for future generation. Turning off the student link also removes this revision from that example pool.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("publication-generation-context-notice")
                     if let publication = project?.artifact.publication {
                         if let qr = qrCode(publication.url) {
                             Image(uiImage: qr)
