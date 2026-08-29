@@ -425,6 +425,41 @@ describe("Tapplet API registration and public HTML", () => {
     });
   });
 
+  it("keeps successful commits independent of operational trace sink failures", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      app = createStudioApp({
+        repository,
+        provider: new FixtureModelProvider(),
+        config,
+        sources,
+        now: () => new Date("2026-08-02T00:00:00Z"),
+        traceSink: {
+          emit() {
+            throw new Error("trace storage unavailable");
+          },
+        },
+      });
+
+      const generated = await app.fetch(
+        authenticated("/v1/artifacts/generate", "POST", creationBrief),
+      );
+      expect(generated.status).toBe(201);
+      const body = await generated.json() as {
+        artifact: { id: string };
+        headRevision: { id: string; sourceHash: string };
+      };
+      expect(repository.artifacts.has(body.artifact.id)).toBe(true);
+      expect(await sources.getSource(body.headRevision.sourceHash)).not.toBeNull();
+      expect(warning).toHaveBeenCalledWith(
+        "Tapplet operational trace sink unavailable.",
+      );
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("trace storage unavailable");
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it("records the requested activity form and infers subject from the learner context", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", {

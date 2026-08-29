@@ -2,6 +2,7 @@ import {
   chromium,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
 } from "playwright";
 
@@ -41,6 +42,7 @@ export interface BrowserEvaluationOptions {
   viewports?: EvaluationViewport[];
   scenarios?: BrowserScenario[];
   browser?: Browser;
+  settleTimeMs?: number;
 }
 
 export interface BrowserViewportResult {
@@ -50,11 +52,12 @@ export interface BrowserViewportResult {
     controlCount: number;
     exercisedControlCount: number;
     changedControlCount: number;
+    interactionPassRate: number;
     interactionErrorCount: number;
     consoleErrorCount: number;
     pageErrorCount: number;
     scenarios: Array<{
-      name: string;
+      index: number;
       passed: boolean;
       stateChanged: boolean;
       failedAssertions: number;
@@ -94,7 +97,7 @@ export interface BrowserViewportResult {
 }
 
 export interface BrowserEvaluationResult {
-  schemaVersion: "1.0";
+  schemaVersion: "2.0";
   passed: boolean;
   viewports: BrowserViewportResult[];
 }
@@ -122,15 +125,47 @@ interface InteractionMetrics {
   interactionErrorCount: number;
 }
 
+interface BrowserRuntimeMetrics {
+  consoleErrorCount: number;
+  pageErrorCount: number;
+  cspViolationCount: number;
+  violatedDirectiveSet: Set<string>;
+}
+
 const DEFAULT_VIEWPORTS: EvaluationViewport[] = [
   { name: "phone", width: 390, height: 844 },
   { name: "ipad", width: 1024, height: 768 },
 ];
+const DEFAULT_SETTLE_TIME_MS = 100;
+const MIN_INTERACTION_PASS_RATE = 0.8;
+const STATE_FINGERPRINT_FUNCTION = String.raw`() => {
+  const controlState = [...document.querySelectorAll("input,select,textarea")]
+    .map((element) => {
+      if (element instanceof HTMLInputElement) {
+        return [element.tagName, element.type, element.value, element.checked];
+      }
+      if (element instanceof HTMLSelectElement) {
+        return [element.tagName, element.value, element.selectedIndex];
+      }
+      return [element.tagName, element.value];
+    });
+  const value = document.documentElement.outerHTML + "\n" + JSON.stringify(controlState);
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
+}`;
 
 export async function evaluateHtmlInBrowser(
   html: string,
   options: BrowserEvaluationOptions = {},
 ): Promise<BrowserEvaluationResult> {
+  const settleTimeMs = options.settleTimeMs ?? DEFAULT_SETTLE_TIME_MS;
+  if (!Number.isFinite(settleTimeMs) || settleTimeMs < 0 || settleTimeMs > 5_000) {
+    throw new RangeError("settleTimeMs must be between 0 and 5000.");
+  }
   const browser = options.browser ?? await chromium.launch({
     headless: true,
     args: ["--disable-background-networking"],
@@ -144,10 +179,11 @@ export async function evaluateHtmlInBrowser(
         html,
         viewport,
         options.scenarios ?? [],
+        settleTimeMs,
       ));
     }
     return {
-      schemaVersion: "1.0",
+      schemaVersion: "2.0",
       passed: results.every((result) =>
         result.behavior.passed
         && result.sandbox.passed
@@ -167,6 +203,7 @@ async function evaluateViewport(
   html: string,
   viewport: EvaluationViewport,
   scenarios: BrowserScenario[],
+  settleTimeMs: number,
 ): Promise<BrowserViewportResult> {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
@@ -177,47 +214,51 @@ async function evaluateViewport(
     sameOriginUnexpectedRequestCount: 0,
   };
   await installEvaluationRoutes(context, html, network);
-  const page = await context.newPage();
-  let consoleErrorCount = 0;
-  let pageErrorCount = 0;
-  page.on("console", (message) => {
-    if (message.type() === "error") consoleErrorCount += 1;
-  });
-  page.on("pageerror", () => {
-    pageErrorCount += 1;
-  });
-  page.on("dialog", (dialog) => void dialog.dismiss());
-  await page.addInitScript(`
-    globalThis.__tappletCspViolations = [];
-    addEventListener('securitypolicyviolation', event => {
-      globalThis.__tappletCspViolations.push(event.effectiveDirective || event.violatedDirective || 'unknown');
-    });
-  `);
+  const runtime: BrowserRuntimeMetrics = {
+    consoleErrorCount: 0,
+    pageErrorCount: 0,
+    cspViolationCount: 0,
+    violatedDirectiveSet: new Set<string>(),
+  };
 
   try {
-    await page.goto(`${EVALUATION_ORIGIN}/`, { waitUntil: "load" });
-    await page.waitForTimeout(50);
-    const dom = await collectDomMetrics(page);
-    const scenarioResults = [];
-    for (const scenario of scenarios) {
-      scenarioResults.push(await runScenario(page, scenario));
+    const metricsPage = await createEvaluationPage(context, runtime);
+    let dom: DomMetrics;
+    try {
+      await navigateToArtifact(metricsPage, settleTimeMs);
+      dom = await collectDomMetrics(metricsPage);
+    } finally {
+      await metricsPage.close();
     }
-    const interactions = await exerciseGenericInteractions(page);
-    await page.waitForTimeout(25);
-    const violatedDirectives = await page.evaluate(
-      "[...new Set(globalThis.__tappletCspViolations || [])]",
-    ) as string[];
-    const cspViolationCount = await page.evaluate(
-      "(globalThis.__tappletCspViolations || []).length",
-    ) as number;
+    const scenarioResults = [];
+    for (const [scenarioIndex, scenario] of scenarios.entries()) {
+      const scenarioPage = await createEvaluationPage(context, runtime);
+      try {
+        await navigateToArtifact(scenarioPage, settleTimeMs);
+        scenarioResults.push(await runScenario(
+          scenarioPage,
+          scenario,
+          scenarioIndex,
+          settleTimeMs,
+        ));
+      } finally {
+        await scenarioPage.close();
+      }
+    }
+    const interactions = await exerciseGenericInteractions(context, runtime, settleTimeMs);
+    const violatedDirectives = [...runtime.violatedDirectiveSet].sort();
+    const interactionPassRate = interactions.exercisedControlCount === 0
+      ? (dom.controlCount === 0 ? 1 : 0)
+      : interactions.changedControlCount / interactions.exercisedControlCount;
     const touchTargetPassRate = dom.controlCount === 0
       ? 1
       : (dom.controlCount - dom.undersizedTouchTargetCount) / dom.controlCount;
-    const sandboxPassed = network.blockedRequestCount === 0 && cspViolationCount === 0;
-    const behaviorPassed = consoleErrorCount === 0
-      && pageErrorCount === 0
+    const sandboxPassed = network.blockedRequestCount === 0
+      && runtime.cspViolationCount === 0;
+    const behaviorPassed = runtime.consoleErrorCount === 0
+      && runtime.pageErrorCount === 0
       && interactions.interactionErrorCount === 0
-      && (dom.controlCount === 0 || interactions.exercisedControlCount > 0)
+      && interactionPassRate >= MIN_INTERACTION_PASS_RATE
       && scenarioResults.every((scenario) => scenario.passed);
     const accessibilityPassed = dom.unnamedControlCount === 0
       && dom.duplicateIdCount === 0
@@ -236,14 +277,15 @@ async function evaluateViewport(
         passed: behaviorPassed,
         controlCount: dom.controlCount,
         ...interactions,
-        consoleErrorCount,
-        pageErrorCount,
+        interactionPassRate,
+        consoleErrorCount: runtime.consoleErrorCount,
+        pageErrorCount: runtime.pageErrorCount,
         scenarios: scenarioResults,
       },
       sandbox: {
         passed: sandboxPassed,
         ...network,
-        cspViolationCount,
+        cspViolationCount: runtime.cspViolationCount,
         violatedDirectives,
       },
       viewportFit: {
@@ -275,6 +317,39 @@ async function evaluateViewport(
   }
 }
 
+async function navigateToArtifact(page: Page, settleTimeMs: number): Promise<void> {
+  await page.goto(`${EVALUATION_ORIGIN}/`, { waitUntil: "load" });
+  await page.waitForTimeout(settleTimeMs);
+}
+
+async function createEvaluationPage(
+  context: BrowserContext,
+  runtime: BrowserRuntimeMetrics,
+): Promise<Page> {
+  const page = await context.newPage();
+  page.on("console", (message) => {
+    if (message.type() === "error") runtime.consoleErrorCount += 1;
+  });
+  page.on("pageerror", () => {
+    runtime.pageErrorCount += 1;
+  });
+  page.on("dialog", (dialog) => void dialog.dismiss());
+  await page.exposeFunction("__tappletRecordCspViolation", (directive: unknown) => {
+    runtime.cspViolationCount += 1;
+    runtime.violatedDirectiveSet.add(
+      typeof directive === "string" ? directive : "unknown",
+    );
+  });
+  await page.addInitScript(`
+    addEventListener('securitypolicyviolation', event => {
+      void globalThis.__tappletRecordCspViolation(
+        event.effectiveDirective || event.violatedDirective || 'unknown',
+      );
+    });
+  `);
+  return page;
+}
+
 async function installEvaluationRoutes(
   context: BrowserContext,
   html: string,
@@ -287,7 +362,16 @@ async function installEvaluationRoutes(
   await context.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.origin === EVALUATION_ORIGIN && url.pathname === "/") {
+    const isMainDocument = request.method() === "GET"
+      && request.resourceType() === "document"
+      && request.isNavigationRequest()
+      && request.frame().parentFrame() === null;
+    if (
+      isMainDocument
+      && url.origin === EVALUATION_ORIGIN
+      && url.pathname === "/"
+      && url.search === ""
+    ) {
       await route.fulfill({
         status: 200,
         contentType: "text/html; charset=utf-8",
@@ -297,7 +381,10 @@ async function installEvaluationRoutes(
       return;
     }
     if (
-      url.origin === EVALUATION_ORIGIN
+      request.method() === "GET"
+      && request.resourceType() === "image"
+      && url.origin === EVALUATION_ORIGIN
+      && url.search === ""
       && /^\/assets\/[A-Za-z0-9_-]+$/.test(url.pathname)
     ) {
       await route.fulfill({ status: 200, contentType: "image/png", body: TRANSPARENT_PNG });
@@ -419,8 +506,10 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
 async function runScenario(
   page: Page,
   scenario: BrowserScenario,
+  scenarioIndex: number,
+  settleTimeMs: number,
 ): Promise<{
-  name: string;
+  index: number;
   passed: boolean;
   stateChanged: boolean;
   failedAssertions: number;
@@ -445,105 +534,213 @@ async function runScenario(
   }
   let failedAssertions = 0;
   for (const assertion of scenario.assertions) {
-    try {
-      const locator = page.locator(assertion.selector).first();
-      if (await locator.count() === 0) {
-        failedAssertions += 1;
-        continue;
-      }
-      if (assertion.visible !== undefined
-        && await locator.isVisible() !== assertion.visible) failedAssertions += 1;
-      if (assertion.textIncludes !== undefined
-        && !(await locator.textContent() ?? "").includes(assertion.textIncludes)) {
-        failedAssertions += 1;
-      }
-      if (assertion.attribute !== undefined
-        && await locator.getAttribute(assertion.attribute.name) !== assertion.attribute.value) {
-        failedAssertions += 1;
-      }
-    } catch {
-      failedAssertions += 1;
-    }
+    if (!await waitForAssertion(page, assertion, settleTimeMs)) failedAssertions += 1;
   }
   return {
-    name: scenario.name,
+    index: scenarioIndex,
     passed: !actionFailed && failedAssertions === 0,
     stateChanged: await stateFingerprint(page) !== before,
     failedAssertions,
   };
 }
 
-async function stateFingerprint(page: Page): Promise<number> {
-  return page.evaluate(String.raw`(() => {
-    const value = document.body.innerHTML;
-    let hash = 2166136261;
-    for (let index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
+async function waitForAssertion(
+  page: Page,
+  assertion: BrowserAssertion,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = performance.now() + timeoutMs;
+  for (;;) {
+    try {
+      const locator = page.locator(assertion.selector).first();
+      if (await locator.count() > 0) {
+        const visible = assertion.visible === undefined
+          || await locator.isVisible() === assertion.visible;
+        const text = assertion.textIncludes === undefined
+          || await locator.evaluate((root, expected) => {
+            const renderedText: string[] = [];
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              const textNode = node as Text;
+              if (!(textNode.nodeValue ?? "").trim()) continue;
+              const parent = textNode.parentElement;
+              if (!parent || ["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT"].includes(parent.tagName))
+                continue;
+              const range = document.createRange();
+              range.selectNodeContents(textNode);
+              const textRect = range.getBoundingClientRect();
+              if (textRect.width <= 0 || textRect.height <= 0) continue;
+              let left = textRect.left;
+              let right = textRect.right;
+              let top = textRect.top;
+              let bottom = textRect.bottom;
+              let rendered = true;
+              for (let element: Element | null = parent; element; element = element.parentElement) {
+                const style = getComputedStyle(element);
+                const transparentColor = style.color === "transparent"
+                  || /^rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/.test(style.color)
+                  || /\/\s*0(?:\.0+)?\s*\)$/.test(style.color);
+                if (
+                  style.display === "none"
+                  || style.visibility === "hidden"
+                  || style.visibility === "collapse"
+                  || style.contentVisibility === "hidden"
+                  || Number(style.opacity) <= 0
+                  || transparentColor
+                  || /opacity\(\s*0(?:\.0+)?\s*\)/.test(style.filter)
+                ) {
+                  rendered = false;
+                  break;
+                }
+                const rect = element.getBoundingClientRect();
+                if (["hidden", "clip"].includes(style.overflowX)) {
+                  left = Math.max(left, rect.left);
+                  right = Math.min(right, rect.right);
+                }
+                if (["hidden", "clip"].includes(style.overflowY)) {
+                  top = Math.max(top, rect.top);
+                  bottom = Math.min(bottom, rect.bottom);
+                }
+                if (right <= left || bottom <= top) {
+                  rendered = false;
+                  break;
+                }
+                if (element === root) break;
+              }
+              if (!rendered) continue;
+              const pageLeft = left + scrollX;
+              const pageRight = right + scrollX;
+              const pageTop = top + scrollY;
+              const pageBottom = bottom + scrollY;
+              if (
+                pageRight <= 0
+                || pageBottom <= 0
+                || pageLeft >= document.documentElement.scrollWidth
+                || pageTop >= document.documentElement.scrollHeight
+              ) continue;
+              renderedText.push(textNode.nodeValue ?? "");
+            }
+            const actual = renderedText.join(" ")
+              .toLocaleLowerCase()
+              .replace(/\s+/g, " ")
+              .trim();
+            const wanted = expected
+              .toLocaleLowerCase()
+              .replace(/\s+/g, " ")
+              .trim();
+            return actual.includes(wanted);
+          }, assertion.textIncludes);
+        const attribute = assertion.attribute === undefined
+          || await locator.getAttribute(assertion.attribute.name) === assertion.attribute.value;
+        if (visible && text && attribute) return true;
+      }
+    } catch {
+      // Retry until the bounded assertion deadline.
     }
-    return hash >>> 0;
-  })()`) as Promise<number>;
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) return false;
+    await page.waitForTimeout(Math.min(20, remaining));
+  }
 }
 
-async function exerciseGenericInteractions(page: Page): Promise<InteractionMetrics> {
-  return page.evaluate(String.raw`(async () => {
-    const visible = element => {
-      const rect = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return rect.width > 0
-        && rect.height > 0
-        && style.display !== "none"
-        && style.visibility !== "hidden"
-        && !element.hasAttribute("disabled");
-    };
-    const fingerprint = () => {
-      const value = document.body.innerHTML;
-      let hash = 2_166_136_261;
-      for (let index = 0; index < value.length; index += 1) {
-        hash ^= value.charCodeAt(index);
-        hash = Math.imul(hash, 16_777_619);
-      }
-      return hash >>> 0;
-    };
-    const controls = [...document.querySelectorAll(
-      "button,input,select,textarea,[role='button']",
-    )].filter(visible).slice(0, 12);
-    let changedControlCount = 0;
-    let interactionErrorCount = 0;
-    for (const element of controls) {
-      const before = fingerprint();
-      try {
-        if (element instanceof HTMLInputElement && element.type === "range") {
-          element.value = element.max || "100";
-          element.dispatchEvent(new Event("input", { bubbles: true }));
-          element.dispatchEvent(new Event("change", { bubbles: true }));
-        } else if (
-          element instanceof HTMLInputElement
-          && ["checkbox", "radio"].includes(element.type)
-        ) {
-          element.click();
-        } else if (element instanceof HTMLSelectElement && element.options.length > 1) {
-          element.selectedIndex = 1;
-          element.dispatchEvent(new Event("change", { bubbles: true }));
-        } else if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-          element.value = "Evaluation input";
-          element.dispatchEvent(new Event("input", { bubbles: true }));
-          element.dispatchEvent(new Event("change", { bubbles: true }));
-        } else if (typeof element.click === "function") {
-          element.click();
-        } else {
-          element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        }
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        if (fingerprint() !== before) changedControlCount += 1;
-      } catch {
-        interactionErrorCount += 1;
-      }
+async function stateFingerprint(page: Page): Promise<number> {
+  return page.evaluate(`(${STATE_FINGERPRINT_FUNCTION})()`) as Promise<number>;
+}
+
+async function exerciseGenericInteractions(
+  context: BrowserContext,
+  runtime: BrowserRuntimeMetrics,
+  settleTimeMs: number,
+): Promise<InteractionMetrics> {
+  const controlSelector = "button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[role='button']:not([aria-disabled='true'])";
+  const countPage = await createEvaluationPage(context, runtime);
+  let exercisedControlCount: number;
+  try {
+    await navigateToArtifact(countPage, settleTimeMs);
+    exercisedControlCount = Math.min(
+      await countPage.locator(controlSelector).filter({ visible: true }).count(),
+      12,
+    );
+  } finally {
+    await countPage.close();
+  }
+  let changedControlCount = 0;
+  let interactionErrorCount = 0;
+  for (let index = 0; index < exercisedControlCount; index += 1) {
+    const page = await createEvaluationPage(context, runtime);
+    try {
+      await navigateToArtifact(page, settleTimeMs);
+      const control = page.locator(controlSelector).filter({ visible: true }).nth(index);
+      const before = await stateFingerprint(page);
+      await exerciseGenericControl(control, settleTimeMs);
+      await page.waitForTimeout(settleTimeMs);
+      if (await stateFingerprint(page) !== before) changedControlCount += 1;
+    } catch {
+      interactionErrorCount += 1;
+    } finally {
+      await page.close();
     }
-    return {
-      exercisedControlCount: controls.length,
-      changedControlCount,
-      interactionErrorCount,
-    };
-  })()`) as Promise<InteractionMetrics>;
+  }
+  return {
+    exercisedControlCount,
+    changedControlCount,
+    interactionErrorCount,
+  };
+}
+
+async function exerciseGenericControl(
+  control: Locator,
+  settleTimeMs: number,
+): Promise<void> {
+  const timeout = Math.max(500, settleTimeMs * 5);
+  await control.scrollIntoViewIfNeeded({ timeout });
+  const descriptor = await control.evaluate((element) => ({
+    tag: element.tagName.toLocaleLowerCase(),
+    type: element instanceof HTMLInputElement ? element.type.toLocaleLowerCase() : "",
+    value: element instanceof HTMLInputElement
+      || element instanceof HTMLSelectElement
+      || element instanceof HTMLTextAreaElement
+      ? element.value
+      : "",
+    minimum: element instanceof HTMLInputElement ? element.min : "",
+    maximum: element instanceof HTMLInputElement ? element.max : "",
+    selectedIndex: element instanceof HTMLSelectElement ? element.selectedIndex : -1,
+    optionCount: element instanceof HTMLSelectElement ? element.options.length : 0,
+  }));
+  if (descriptor.tag === "select") {
+    if (descriptor.optionCount > 1) {
+      const index = descriptor.selectedIndex === 0 ? 1 : 0;
+      await control.selectOption({ index }, { timeout });
+    }
+    return;
+  }
+  if (descriptor.tag === "textarea") {
+    await control.fill(
+      descriptor.value === "Evaluation input" ? "Alternate evaluation input" : "Evaluation input",
+      { timeout },
+    );
+    return;
+  }
+  if (descriptor.tag === "input") {
+    if (["checkbox", "radio", "button", "submit", "reset"].includes(descriptor.type)) {
+      await control.click({ timeout });
+      return;
+    }
+    if (descriptor.type === "range") {
+      const minimum = descriptor.minimum || "0";
+      const maximum = descriptor.maximum || "100";
+      await control.fill(descriptor.value === maximum ? minimum : maximum, { timeout });
+      return;
+    }
+    const value = descriptor.type === "number"
+      ? (descriptor.value === "1" ? "2" : "1")
+      : descriptor.type === "date"
+        ? (descriptor.value === "2026-08-29" ? "2026-08-30" : "2026-08-29")
+        : descriptor.value === "Evaluation input"
+          ? "Alternate evaluation input"
+          : "Evaluation input";
+    await control.fill(value, { timeout });
+    return;
+  }
+  await control.click({ timeout });
 }

@@ -219,4 +219,6 @@ provider keys, or student/teacher content.
 The default Worker sink writes only this metadata as JSON. Adding another sink
 or retaining raw payloads requires explicit privacy approval and a documented
 retention policy; neither is enabled by this contract. Platform log retention
-remains an environment setting rather than an application memory system.
+remains an environment setting rather than an application memory system. Trace
+emission is best effort: sink outages produce only a generic warning and never
+change generation, revision, moderation, or commit outcomes.

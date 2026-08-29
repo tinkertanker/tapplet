@@ -3,10 +3,13 @@
 The version 2 harness sends `artifact-requests.json` through `createStudioApp`
 and `createModelProvider`, not a parallel prompt or validation implementation.
 It imports the canonical reviewed seed corpus through the real seed route, uses
-the repository's current retrieval ranking, executes generation, zero-to-two
-finding-led repairs, revision, host image insertion, optimistic conflict,
-history restore, and the Chromium evaluator. The generated and revised source
-exists only in memory and is discarded after evaluation.
+the same SQLite FTS5 `MATCH`, curated-first, and `bm25` retrieval ordering as
+the production D1 repository, executes generation, zero-to-two finding-led
+repairs, revision, host managed-image reference insertion, optimistic conflict,
+history restore, and the Chromium evaluator. Image upload, normalization, and
+safety review are separate API test surfaces, not claims of this model harness.
+The generated and revised source exists only in memory and is discarded after
+evaluation.
 
 Install the pinned browser and run focused tests without provider credentials:
 
@@ -53,14 +56,16 @@ hatch and is recorded in provenance.
 
 ## Provenance and privacy
 
-Single runs write `results/latest.v2.json`; matrices write
-`results/latest-ablation.v2.json`; moderation writes
-`results/latest-moderation.v2.json`. Version 2 includes the Git commit, prompt
-version, manifest and retrieval snapshot hashes, non-secret provider settings,
-Node/platform, policy settings, aggregate distributions, and metadata-only
-traces. It omits briefs, prompts, generated/revised HTML, images, console and
-exception text, student/teacher data, and keys. Legacy 18 July results are
-isolated under `results/archive` and are not comparable.
+Single runs write `results/latest.v3.json`; matrices write
+`results/latest-ablation.v3.json`; moderation remains on its independent
+`results/latest-moderation.v2.json` schema. Generation schema 3 includes the Git
+commit, prompt version, manifest and retrieval snapshot hashes, non-secret
+provider settings, Node/platform, policy settings, aggregate distributions,
+check/issue kinds, and metadata-only traces. It omits criteria and scenario
+text, issue messages, briefs, prompts, generated/revised HTML, images, console
+and exception text, student/teacher data, and keys. The incompatible generation
+schema 2 snapshot and legacy 18 July results remain separate and are not
+comparable.
 
 The moderation corpus uses synthetic complete HTML and calls the production
 `provider.moderate` method:
@@ -69,7 +74,9 @@ The moderation corpus uses synthetic complete HTML and calls the production
 npm run eval:model-moderation
 ```
 
-Durable asynchronous generation, generator vision, and independent visual
-model review remain disabled conditional experiments. Browser geometry and
-behavior metrics are not a substitute for teacher review or pedagogical
-judgement.
+When browser evaluation is enabled, generation and revision `finalValid` also
+requires the browser foundation to pass. Revision retention terms must be
+visible rendered text; source-only occurrences do not pass. Durable
+asynchronous generation, generator vision, and independent visual model review
+remain disabled conditional experiments. Browser geometry and behavior metrics
+are not a substitute for teacher review or pedagogical judgement.

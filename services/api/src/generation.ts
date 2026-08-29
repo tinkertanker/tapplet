@@ -12,6 +12,7 @@ import type {
   ArtifactOperation,
   OperationalTraceContext,
 } from "./operationalTrace";
+import { emitOperationalTrace } from "./operationalTrace";
 export const PUBLIC_REPORT_MARKER = "data-studio-report";
 export type Issue =
   | { kind: "shape"; message: string }
@@ -476,22 +477,24 @@ async function accept(
       initialInspection,
       requiredAssets,
     );
-    options.trace?.sink.emit({
-      kind: "artifact_validation",
-      requestId: options.trace.requestId,
-      operation: intent.action satisfies ArtifactOperation,
-      attempt: repairs,
-      maxRepairs,
-      status: inspection.status,
-      issueKinds: inspection.status === "rejected"
-        ? [...new Set(inspection.issues.map((issue) => issue.kind))]
-        : [],
-      issueCount: inspection.status === "rejected" ? inspection.issues.length : 0,
-      ...(inspection.status === "accepted"
-        ? { outputBytes: new TextEncoder().encode(inspection.artifact.html).byteLength }
-        : {}),
-      hostInsertedAssetCount: insertedAssetCount,
-    });
+    if (options.trace) {
+      emitOperationalTrace(options.trace.sink, {
+        kind: "artifact_validation",
+        requestId: options.trace.requestId,
+        operation: intent.action satisfies ArtifactOperation,
+        attempt: repairs,
+        maxRepairs,
+        status: inspection.status,
+        issueKinds: inspection.status === "rejected"
+          ? [...new Set(inspection.issues.map((issue) => issue.kind))]
+          : [],
+        issueCount: inspection.status === "rejected" ? inspection.issues.length : 0,
+        ...(inspection.status === "accepted"
+          ? { outputBytes: new TextEncoder().encode(inspection.artifact.html).byteLength }
+          : {}),
+        hostInsertedAssetCount: insertedAssetCount,
+      });
+    }
     if (inspection.status === "accepted") return inspection.artifact;
     if (repairs === maxRepairs)
       throw new InvalidModelOutputError(inspection.issues);

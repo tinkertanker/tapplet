@@ -19,6 +19,7 @@ import type {
   ModelOperation,
   OperationalTraceContext,
 } from "../operationalTrace";
+import { emitOperationalTrace } from "../operationalTrace";
 export interface OpenAiCompatibleProviderOptions {
   baseUrl: string;
   apiKey: string;
@@ -293,7 +294,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
   ): void {
     if (!trace) return;
     const usage = event.usage ?? event.body?.usage;
-    trace.sink.emit({
+    emitOperationalTrace(trace.sink, {
       kind: "model_call",
       requestId: trace.requestId,
       operation: event.operation,

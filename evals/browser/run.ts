@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     const rate = (predicate: (result: typeof viewports[number]) => boolean) =>
       viewports.filter(predicate).length / viewports.length;
     const report = {
-      schemaVersion: "1.0",
+      schemaVersion: "2.0",
       provenance: {
         ...await repositoryProvenance(repoRoot),
         manifestSha256: createHash("sha256").update(manifestSource).digest("hex"),
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     };
     await mkdir(resolve(repoRoot, "evals/browser/results"), { recursive: true });
     await writeFile(
-      resolve(repoRoot, "evals/browser/results/latest.v1.json"),
+      resolve(repoRoot, "evals/browser/results/latest.v2.json"),
       `${JSON.stringify(report, null, 2)}\n`,
     );
     console.log(JSON.stringify(report.summary, null, 2));

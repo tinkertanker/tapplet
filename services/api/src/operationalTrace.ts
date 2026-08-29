@@ -73,6 +73,17 @@ export interface OperationalTraceContext {
   sink: OperationalTraceSink;
 }
 
+export function emitOperationalTrace(
+  sink: OperationalTraceSink,
+  event: OperationalTraceEvent,
+): void {
+  try {
+    sink.emit(event);
+  } catch {
+    console.warn("Tapplet operational trace sink unavailable.");
+  }
+}
+
 export class MemoryOperationalTraceSink implements OperationalTraceSink {
   readonly events: OperationalTraceEvent[] = [];
 

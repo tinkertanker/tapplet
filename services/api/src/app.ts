@@ -24,6 +24,7 @@ import type {
   OperationalTraceContext,
   OperationalTraceSink,
 } from "./operationalTrace";
+import { emitOperationalTrace } from "./operationalTrace";
 import {
   apiError,
   corsHeaders,
@@ -723,25 +724,27 @@ export function createStudioApp(d: Deps) {
           }),
         )
       ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-      trace?.sink.emit({
-        kind: "retrieval",
-        requestId: trace.requestId,
-        mode: request.preferredExampleRevisionId
-          ? "preferred"
-          : query
-            ? "automatic"
-            : "none",
-        entries: found.map((entry, index) => ({
-          revisionId: entry.revisionId,
-          rank: index + 1,
-          ...(entry.revisionId === preferred?.id
-            ? { curated: preferred.modelVersion === "curated" }
-            : "curated" in entry
-              ? { curated: entry.curated }
-              : {}),
-        })),
-        durationMs: Math.round(performance.now() - retrievalStarted),
-      });
+      if (trace) {
+        emitOperationalTrace(trace.sink, {
+          kind: "retrieval",
+          requestId: trace.requestId,
+          mode: request.preferredExampleRevisionId
+            ? "preferred"
+            : query
+              ? "automatic"
+              : "none",
+          entries: found.map((entry, index) => ({
+            revisionId: entry.revisionId,
+            rank: index + 1,
+            ...(entry.revisionId === preferred?.id
+              ? { curated: preferred.modelVersion === "curated" }
+              : "curated" in entry
+                ? { curated: entry.curated }
+                : {}),
+          })),
+          durationMs: Math.round(performance.now() - retrievalStarted),
+        });
+      }
       const out = await generateArtifact(d.provider, b, ex, {
         ...d.generationPolicy,
         ...(trace ? { trace } : {}),
@@ -794,17 +797,19 @@ export function createStudioApp(d: Deps) {
         revision: rv,
         assetIds,
       });
-      trace?.sink.emit({
-        kind: "artifact_commit",
-        requestId: trace.requestId,
-        operation: "generate",
-        artifactId: aid,
-        revisionId: rid,
-        sourceHash: hash,
-        outputBytes: rv.sourceBytes,
-        exemplarRevisionIds: rv.exemplars,
-        durationMs: Math.round(performance.now() - requestStarted),
-      });
+      if (trace) {
+        emitOperationalTrace(trace.sink, {
+          kind: "artifact_commit",
+          requestId: trace.requestId,
+          operation: "generate",
+          artifactId: aid,
+          revisionId: rid,
+          sourceHash: hash,
+          outputBytes: rv.sourceBytes,
+          exemplarRevisionIds: rv.exemplars,
+          durationMs: Math.round(performance.now() - requestStarted),
+        });
+      }
       return json(
         {
           ...(await projectResponse(a, o, u.origin, {
@@ -1073,17 +1078,19 @@ export function createStudioApp(d: Deps) {
             "HEAD_REVISION_CONFLICT",
             "Artifact head changed.",
           );
-        trace?.sink.emit({
-          kind: "artifact_commit",
-          requestId: trace.requestId,
-          operation: "revise",
-          artifactId: a.id,
-          revisionId: rid,
-          sourceHash: hash,
-          outputBytes: rv.sourceBytes,
-          exemplarRevisionIds: [],
-          durationMs: Math.round(performance.now() - requestStarted),
-        });
+        if (trace) {
+          emitOperationalTrace(trace.sink, {
+            kind: "artifact_commit",
+            requestId: trace.requestId,
+            operation: "revise",
+            artifactId: a.id,
+            revisionId: rid,
+            sourceHash: hash,
+            outputBytes: rv.sourceBytes,
+            exemplarRevisionIds: [],
+            durationMs: Math.round(performance.now() - requestStarted),
+          });
+        }
         return json(
           {
             ...(await projectResponse(

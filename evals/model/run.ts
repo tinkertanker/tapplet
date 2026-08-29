@@ -220,7 +220,7 @@ async function main(): Promise<void> {
     }
     const repository = await repositoryProvenance(repoRoot);
     const output = {
-      schemaVersion: "2.0",
+      schemaVersion: "3.0",
       provenance: {
         ...repository,
         promptVersion: PROMPT_VERSION,
@@ -228,21 +228,25 @@ async function main(): Promise<void> {
         retrievalSnapshotSha256: await canonicalRetrievalSnapshotHash(repoRoot),
         provider: publicProviderSettings(plan.provider),
         providerConfigurationSource: "createModelProvider defaults plus services/api/wrangler.jsonc and explicit EVAL_* overrides",
+        retrievalRanking: "node:sqlite FTS5 with production D1 MATCH, curated-first, and bm25 ordering",
         node: process.version,
         platform: `${process.platform}-${process.arch}`,
-        browserEngine: plan.browser ? "playwright-chromium" : "disabled-explicitly",
+        browserEngine: browser
+          ? `playwright-chromium/${browser.version()}`
+          : "disabled-explicitly",
       },
       privacy: {
         dataClass: "metadata-only",
         retained: [
           "configuration",
           "aggregate metrics",
-          "validation issue kinds",
+          "evaluation check and validation issue kinds",
           "provider usage and latency",
           "browser geometry and behavior counts",
         ],
         omitted: [
           "briefs and prompts",
+          "evaluation criteria text and scenario names",
           "generated and revised HTML",
           "images",
           "console and exception text",
@@ -258,8 +262,8 @@ async function main(): Promise<void> {
       comparisons: comparisonDeltas(runs),
     };
     const outputName = configurations.length === 1
-      ? "latest.v2.json"
-      : "latest-ablation.v2.json";
+      ? "latest.v3.json"
+      : "latest-ablation.v3.json";
     await mkdir(resolve(repoRoot, "evals/model/results"), { recursive: true });
     await writeFile(
       resolve(repoRoot, "evals/model/results", outputName),
@@ -535,8 +539,11 @@ export async function repositoryProvenance(repoRoot: string): Promise<{
   const excluded = [
     ":(exclude)evals/model/results/latest.v2.json",
     ":(exclude)evals/model/results/latest-ablation.v2.json",
+    ":(exclude)evals/model/results/latest.v3.json",
+    ":(exclude)evals/model/results/latest-ablation.v3.json",
     ":(exclude)evals/model/results/latest-moderation.v2.json",
     ":(exclude)evals/browser/results/latest.v1.json",
+    ":(exclude)evals/browser/results/latest.v2.json",
   ];
   const diff = await git(["diff", "--binary", "HEAD", "--", ".", ...excluded]);
   const untracked = (await git(["ls-files", "--others", "--exclude-standard", "-z"]))
@@ -545,8 +552,11 @@ export async function repositoryProvenance(repoRoot: string): Promise<{
     .filter((path) => ![
       "evals/model/results/latest.v2.json",
       "evals/model/results/latest-ablation.v2.json",
+      "evals/model/results/latest.v3.json",
+      "evals/model/results/latest-ablation.v3.json",
       "evals/model/results/latest-moderation.v2.json",
       "evals/browser/results/latest.v1.json",
+      "evals/browser/results/latest.v2.json",
     ].includes(path));
   const hash = createHash("sha256").update(diff);
   for (const path of untracked.sort()) {

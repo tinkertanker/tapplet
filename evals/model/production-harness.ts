@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { createStudioApp } from "../../services/api/src/app";
 import type { AssetRecord, AssetStore, StoredAsset } from "../../services/api/src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../../services/api/src/auth";
@@ -24,6 +25,51 @@ const SECRET = "evaluation-device-signing-secret-with-at-least-32-characters";
 const API_ORIGIN = "https://eval-api.tapplet.invalid";
 const STUDIO_ORIGIN = "https://eval-studio.tapplet.invalid";
 const SEED_TOKEN = "evaluation-seed-import-token";
+
+export class ProductionRankedMemoryRepository extends MemoryStudioRepository {
+  private readonly ranking = new DatabaseSync(":memory:");
+
+  constructor() {
+    super();
+    this.ranking.exec(
+      "CREATE TABLE retrieval_rank(artifact_id TEXT PRIMARY KEY,curated INTEGER NOT NULL,live INTEGER NOT NULL);"
+      + "CREATE VIRTUAL TABLE retrieval_fts USING fts5(artifact_id UNINDEXED,title,descriptor);",
+    );
+  }
+
+  override async searchRetrieval(query: string, limit: number, now: string) {
+    this.ranking.exec("BEGIN IMMEDIATE;DELETE FROM retrieval_rank;DELETE FROM retrieval_fts;");
+    try {
+      const insertRank = this.ranking.prepare(
+        "INSERT INTO retrieval_rank(artifact_id,curated,live) VALUES(?,?,?)",
+      );
+      const insertDocument = this.ranking.prepare(
+        "INSERT INTO retrieval_fts(artifact_id,title,descriptor) VALUES(?,?,?)",
+      );
+      for (const entry of this.retrieval.values()) {
+        const live = entry.curated || [...this.publications.values()].some((publication) =>
+          publication.artifactId === entry.artifactId
+          && publication.revisionId === entry.revisionId
+          && !publication.revokedAt
+          && publication.expiresAt > now
+        );
+        insertRank.run(entry.artifactId, Number(entry.curated), Number(live));
+        insertDocument.run(entry.artifactId, entry.title, entry.descriptor);
+      }
+      this.ranking.exec("COMMIT");
+    } catch (error) {
+      this.ranking.exec("ROLLBACK");
+      throw error;
+    }
+    const rows = this.ranking.prepare(
+      "SELECT f.artifact_id FROM retrieval_fts f JOIN retrieval_rank r ON r.artifact_id=f.artifact_id WHERE retrieval_fts MATCH ? AND r.live=1 ORDER BY r.curated DESC,bm25(retrieval_fts) LIMIT ?",
+    ).all(query, limit) as Array<{ artifact_id: string }>;
+    return rows.flatMap((row) => {
+      const entry = this.retrieval.get(row.artifact_id);
+      return entry ? [structuredClone(entry)] : [];
+    });
+  }
+}
 
 export type RetrievalMode =
   | "production"
@@ -68,8 +114,8 @@ export interface ProductionCaseResult {
   repairAttempts: number;
   latencyMs: number;
   exemplarRevisionIds: string[];
-  heuristicChecks: Array<{ kind: string; requested: string; passed: boolean }>;
-  issues: Array<{ code: string; message: string }>;
+  heuristicChecks: Array<{ kind: string; passed: boolean }>;
+  issues: Array<{ code: string }>;
   browser?: BrowserEvaluationResult;
   revision?: {
     finalValid: boolean;
@@ -79,7 +125,7 @@ export interface ProductionCaseResult {
     requiredAssetInserted: boolean | null;
     staleHeadRejected: boolean;
     restoreSucceeded: boolean;
-    checks: Array<{ kind: string; requested: string; passed: boolean }>;
+    checks: Array<{ kind: string; passed: boolean }>;
     browser?: BrowserEvaluationResult;
   };
   traces: OperationalTraceEvent[];
@@ -110,7 +156,7 @@ interface SeedManifest {
 
 export class ProductionEvaluationHarness {
   readonly traces = new MemoryOperationalTraceSink();
-  readonly repository = new MemoryStudioRepository();
+  readonly repository = new ProductionRankedMemoryRepository();
   readonly sources = new MemorySourceStore();
   private readonly assets = new EvaluationAssetStore();
   private readonly app: ReturnType<typeof createStudioApp>;
@@ -155,7 +201,7 @@ export class ProductionEvaluationHarness {
         latencyMs: Math.round(performance.now() - started),
         exemplarRevisionIds: commitExemplars(generationTraces),
         heuristicChecks: [],
-        issues: [error],
+        issues: [{ code: error.code }],
         traces: generationTraces,
       };
     }
@@ -169,27 +215,27 @@ export class ProductionEvaluationHarness {
     const validationTraces = generationTraces.filter((event) =>
       event.kind === "artifact_validation" && event.operation === "generate"
     );
+    const latencyMs = Math.round(performance.now() - started);
+    const browser = this.options.browser
+      ? await evaluateHtmlInBrowser(project.html, {
+          browser: this.options.browser,
+          scenarios: browserScenarios(entry),
+        })
+      : undefined;
     const result: ProductionCaseResult = {
       id: entry.id,
       firstPassValid:
         validationTraces[0]?.kind === "artifact_validation"
         && validationTraces[0].status === "accepted"
         && assessment.valid,
-      finalValid: assessment.valid,
+      finalValid: assessment.valid && (browser?.passed ?? true),
       repairAttempts: validationRepairCount(generationTraces, "generate"),
-      latencyMs: Math.round(performance.now() - started),
+      latencyMs,
       exemplarRevisionIds: commitExemplars(generationTraces),
-      heuristicChecks: assessment.checks,
-      issues: assessment.issues,
+      heuristicChecks: assessment.checks.map(({ kind, passed }) => ({ kind, passed })),
+      issues: assessment.issues.map((issue) => ({ code: issue.code })),
       traces: generationTraces,
-      ...(this.options.browser
-        ? {
-            browser: await evaluateHtmlInBrowser(project.html, {
-              browser: this.options.browser,
-              scenarios: entry.browserScenarios,
-            }),
-          }
-        : {}),
+      ...(browser ? { browser } : {}),
     };
 
     if (entry.revision) {
@@ -336,7 +382,13 @@ export class ProductionEvaluationHarness {
       };
     }
     const revised = await response.json() as ProjectEnvelope;
+    const preservation = assessArtifact({ html: revised.html }, {
+      locale: entry.locale,
+      expectedInteractions: entry.expectedInteractions,
+      contentTerms: entry.contentTerms,
+    });
     const checks = [
+      ...preservation.checks,
       ...revision.expectedTerms.map((term) => ({
         kind: "revision-change",
         requested: term,
@@ -380,8 +432,19 @@ export class ProductionEvaluationHarness {
     const requiredAssetInserted = revision.requiredAsset
       ? revised.html.includes(`src="assets/${revision.requiredAsset.id}"`)
       : null;
+    const browser = this.options.browser
+      ? await evaluateHtmlInBrowser(revised.html, {
+          browser: this.options.browser,
+          scenarios: browserScenarios(entry, [
+            ...revision.expectedTerms,
+            ...revision.retentionTerms,
+          ]),
+        })
+      : undefined;
     return {
-      finalValid: checks.every((check) => check.passed) && requiredAssetInserted !== false,
+      finalValid: checks.every((check) => check.passed)
+        && requiredAssetInserted !== false
+        && (browser?.passed ?? true),
       repairAttempts: validationRepairCount(currentTraces, "revise"),
       requestedChangeRetained: checks
         .filter((check) => check.kind === "revision-change")
@@ -392,15 +455,8 @@ export class ProductionEvaluationHarness {
       requiredAssetInserted,
       staleHeadRejected: stale.status === 409,
       restoreSucceeded: restored.status === 200 && returned?.status === 200,
-      checks,
-      ...(this.options.browser
-        ? {
-            browser: await evaluateHtmlInBrowser(revised.html, {
-              browser: this.options.browser,
-              scenarios: entry.browserScenarios,
-            }),
-          }
-        : {}),
+      checks: checks.map(({ kind, passed }) => ({ kind, passed })),
+      ...(browser ? { browser } : {}),
     };
   }
 
@@ -469,6 +525,28 @@ function generationRequest(brief: TeacherBrief) {
     },
     preferredExampleRevisionId: null,
   };
+}
+
+function browserScenarios(
+  entry: ProductionEvaluationCase,
+  additionalVisibleTerms: string[] = [],
+): BrowserScenario[] {
+  const visibleTerms = [...new Set([...entry.contentTerms, ...additionalVisibleTerms])]
+    .filter((term) => term.trim().length > 0);
+  return [
+    ...(entry.browserScenarios ?? []),
+    ...(visibleTerms.length > 0
+      ? [{
+          name: "required visible content",
+          actions: [],
+          assertions: visibleTerms.map((term) => ({
+            selector: "body",
+            textIncludes: term,
+            visible: true,
+          })),
+        } satisfies BrowserScenario]
+      : []),
+  ];
 }
 
 function validationRepairCount(
