@@ -283,26 +283,36 @@ final class TappletUITests: XCTestCase {
 
     @MainActor
     func testDismissedShareDoesNotRetainALateAccessError() {
-        let app = launchApp(extraArguments: [
-            "--ui-testing-access-required-on-action", "--ui-testing-delayed-access-error"
-        ])
-        selectSidebarItem(label: "Make", in: app)
-        let plan = app.buttons["starter-plan-times-tables-lightning"]
-        XCTAssertTrue(plan.waitForExistence(timeout: 5))
-        plan.tap()
-        app.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
-        app.buttons["Share"].tap()
-        let createLink = app.buttons["Create student link"]
-        XCTAssertTrue(createLink.waitForExistence(timeout: 3))
-        createLink.tap()
-        app.buttons["Done"].tap()
+        for reopenBeforeFailure in [false, true] {
+            let app = launchApp(extraArguments: [
+                "--ui-testing-access-required-on-action", "--ui-testing-delayed-access-error"
+            ])
+            selectSidebarItem(label: "Make", in: app)
+            let plan = app.buttons["starter-plan-times-tables-lightning"]
+            XCTAssertTrue(plan.waitForExistence(timeout: 5))
+            plan.tap()
+            app.buttons["Make my tapplet"].tap()
+            XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+            app.buttons["Share"].tap()
+            let createLink = app.buttons["Create student link"]
+            XCTAssertTrue(createLink.waitForExistence(timeout: 3))
+            createLink.tap()
+            app.buttons["Done"].tap()
 
-        XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 5))
-        app.buttons["Share"].tap()
-        XCTAssertTrue(app.buttons["Create student link"].waitForExistence(timeout: 3))
-        app.buttons["Done"].tap()
-        XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 2))
+            if !reopenBeforeFailure {
+                XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 8))
+            }
+            app.buttons["Share"].tap()
+            XCTAssertTrue(app.buttons["Create student link"].waitForExistence(timeout: 3))
+            if reopenBeforeFailure {
+                XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 8))
+                XCTAssertTrue(app.navigationBars["Share with students"].exists)
+                XCTAssertTrue(app.buttons["Create student link"].isEnabled)
+            }
+            app.buttons["Done"].tap()
+            XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 2))
+            app.terminate()
+        }
     }
 
     @MainActor

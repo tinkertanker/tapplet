@@ -9,9 +9,12 @@ struct AppletEditorView: View {
     @State private var previewLoadState: PreviewLoadState = .loading
     @State private var previewError: String?
     @State private var shareAccessError: TappletAPIError?
+    @State private var sharePresentationID = UUID()
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } ?? store.examples.first { $0.id == projectID } }
-    var body: some View { if let project { VStack(spacing: 0) {
-        HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { showShare = true }.buttonStyle(.borderedProminent) } }
+    var body: some View { if let project {
+        let presentationID = sharePresentationID
+        VStack(spacing: 0) {
+        HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { sharePresentationID = UUID(); showShare = true }.buttonStyle(.borderedProminent) } }
             .padding().background(TappletTheme.surface)
         HStack(spacing: 0) { AppletPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
             VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { operationError = error.localizedDescription } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
@@ -23,7 +26,7 @@ struct AppletEditorView: View {
             }
         }) {
             ShareArtifactView(store: store, projectID: projectID) { error in
-                guard showShare else { return }
+                guard showShare, sharePresentationID == presentationID else { return }
                 shareAccessError = error
                 showShare = false
             }

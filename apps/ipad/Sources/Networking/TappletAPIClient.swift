@@ -346,7 +346,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--ui-testing-reset"), arguments.contains("--ui-testing-access-required-on-action") {
             if arguments.contains("--ui-testing-delayed-access-error") {
-                try await Task.sleep(for: .seconds(3))
+                try await Task.sleep(for: .seconds(6))
             }
             throw TappletAPIError.registrationRequired
         }
