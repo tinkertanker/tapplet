@@ -307,7 +307,8 @@ struct ExploreView: View {
             do {
                 try await store.remix(project)
             } catch {
-                self.error = error.localizedDescription
+                let presentation = store.present(error, during: .generation)
+                self.error = presentation.requestsWorkshopAccess ? nil : presentation.message
             }
         }
     }

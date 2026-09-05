@@ -14,6 +14,7 @@ struct AppletProjectCard: View {
     var onDelete: (() -> Void)? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var confirmsDeletion = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -69,6 +70,16 @@ struct AppletProjectCard: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .tappletCard()
+        .confirmationDialog(
+            "Delete \(project.artifact.title)?",
+            isPresented: $confirmsDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Delete tapplet", role: .destructive) { onDelete?() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes the tapplet and its revision history, and turns off any student link. This cannot be undone.")
+        }
     }
 
     @ViewBuilder
@@ -109,8 +120,8 @@ struct AppletProjectCard: View {
                 .accessibilityHint(secondaryAccessibilityHint ?? "")
         }
 
-        if let onDelete {
-            Button("Delete", role: .destructive, action: onDelete)
+        if onDelete != nil {
+            Button("Delete", role: .destructive) { confirmsDeletion = true }
                 .controlSize(.large)
                 .frame(maxWidth: expanded ? .infinity : nil)
         }

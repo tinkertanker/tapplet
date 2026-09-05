@@ -29,6 +29,12 @@ struct GuidedBriefDraft: Equatable, Sendable {
         [learnerContext, learningObjective, studentAction, sourceContent, feedback, classroomFit]
     }
 
+    var isReadyForReview: Bool {
+        BriefQuestion.all.filter { !$0.isOptional }.allSatisfy {
+            !answer(at: $0.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
     mutating func setAnswer(_ answer: String, at index: Int) {
         switch index {
         case 0: learnerContext = answer

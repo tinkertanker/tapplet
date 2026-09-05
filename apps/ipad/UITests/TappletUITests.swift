@@ -1,4 +1,5 @@
 import XCTest
+import Vision
 
 final class TappletUITests: XCTestCase {
     @MainActor
@@ -142,6 +143,48 @@ final class TappletUITests: XCTestCase {
     }
 
     @MainActor
+    func testSharingDistinguishesCurrentStaleAndExpiredLinks() throws {
+        for state in ["current", "stale", "expired"] {
+            let arguments = state == "expired"
+                ? ["--ui-testing-expired-publication"]
+                : ["--ui-testing-published"] + (state == "stale" ? ["--ui-testing-stale-publication"] : [])
+            let app = launchApp(extraArguments: arguments)
+            selectSidebarItem(label: "Make", in: app)
+            let plan = app.buttons["starter-plan-times-tables-lightning"]
+            XCTAssertTrue(plan.waitForExistence(timeout: 5))
+            plan.tap()
+            app.buttons["Make my tapplet"].tap()
+            XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+            app.buttons["Share"].tap()
+            XCTAssertTrue(app.navigationBars["Share with students"].waitForExistence(timeout: 3))
+
+            XCTAssertEqual(app.buttons["update-student-link"].exists, state == "stale")
+            XCTAssertEqual(app.staticTexts["publication-stale-notice"].exists, state == "stale")
+            XCTAssertEqual(app.buttons["Create student link"].exists, state == "expired")
+            XCTAssertEqual(app.buttons["Extend 90 days"].exists, state != "expired")
+            if state == "expired" {
+                XCTAssertTrue(app.staticTexts["The student link has expired."].exists)
+                XCTAssertFalse(app.staticTexts["https://example.test/class"].exists)
+            }
+            let renderedScreen = app.screenshot()
+            let screenshot = XCTAttachment(screenshot: renderedScreen)
+            screenshot.name = "Share-\(state)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            let image = try XCTUnwrap(renderedScreen.image.cgImage)
+            let request = VNDetectBarcodesRequest()
+            // Use the CPU-compatible barcode detector on the simulator.
+            request.revision = VNDetectBarcodesRequestRevision1
+            request.usesCPUOnly = true
+            request.symbologies = [.qr]
+            try VNImageRequestHandler(cgImage: image).perform([request])
+            let payloads = (request.results ?? []).compactMap(\.payloadStringValue)
+            XCTAssertEqual(payloads, state == "expired" ? [] : ["https://example.test/class"])
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testExploreGamesFilterAndUseThisPlan() {
         let app = launchApp()
         XCTAssertTrue(app.buttons["form-filter-game"].waitForExistence(timeout: 8))
@@ -200,6 +243,69 @@ final class TappletUITests: XCTestCase {
     }
 
     @MainActor
+    func testCopyRequestsAccessInsteadOfShowingAGenericError() {
+        let app = launchApp(extraArguments: ["--ui-testing-access-required-on-action"])
+        let copy = app.buttons.matching(NSPredicate(format: "label == 'Make a copy'")).firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        copy.tap()
+        XCTAssertTrue(app.buttons["activate-workshop-access"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.alerts["Could not make a copy"].exists)
+        capture("Copy-access-recovery", app: app)
+    }
+
+    @MainActor
+    func testRefineAndShareRequestAccessInsteadOfShowingAGenericError() {
+        for action in ["refine", "share"] {
+            let app = launchApp(extraArguments: ["--ui-testing-access-required-on-action"])
+            selectSidebarItem(label: "Make", in: app)
+            let plan = app.buttons["starter-plan-times-tables-lightning"]
+            XCTAssertTrue(plan.waitForExistence(timeout: 5))
+            plan.tap()
+            app.buttons["Make my tapplet"].tap()
+            XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+
+            if action == "share" {
+                app.buttons["Share"].tap()
+                let createLink = app.buttons["Create student link"]
+                XCTAssertTrue(createLink.waitForExistence(timeout: 3))
+                createLink.tap()
+            } else {
+                app.buttons["refine-suggestion-timer"].tap()
+                app.buttons["Make this change"].tap()
+            }
+            XCTAssertTrue(app.buttons["activate-workshop-access"].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.alerts["Tapplet Studio could not complete this action"].exists)
+            XCTAssertFalse(app.navigationBars["Share with students"].exists)
+            capture("\(action)-access-recovery", app: app)
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testDismissedShareDoesNotRetainALateAccessError() {
+        let app = launchApp(extraArguments: [
+            "--ui-testing-access-required-on-action", "--ui-testing-delayed-access-error"
+        ])
+        selectSidebarItem(label: "Make", in: app)
+        let plan = app.buttons["starter-plan-times-tables-lightning"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+        plan.tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        app.buttons["Share"].tap()
+        let createLink = app.buttons["Create student link"]
+        XCTAssertTrue(createLink.waitForExistence(timeout: 3))
+        createLink.tap()
+        app.buttons["Done"].tap()
+
+        XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 5))
+        app.buttons["Share"].tap()
+        XCTAssertTrue(app.buttons["Create student link"].waitForExistence(timeout: 3))
+        app.buttons["Done"].tap()
+        XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testWorkshopAccessExplainsAndValidatesAShortCodeWithoutClearingIt() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         let code = app.textFields["workshop-access-code"]
@@ -245,6 +351,38 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
         app.buttons["edit-brief-answer-1"].tap()
         XCTAssertTrue(app.staticTexts["What should they understand or be able to do?"].waitForExistence(timeout: 3))
+        app.buttons["Recall key ideas"].tap()
+        advanceGuidedFlow(in: app)
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Explain projectile range\nRecall key ideas"].exists)
+        XCTAssertFalse(app.buttons["Change answers"].exists)
+        capture("Edited-answer-back-to-summary", app: app)
+    }
+
+    @MainActor
+    func testDeletingATappletCanBeCancelled() {
+        let app = launchApp()
+        selectSidebarItem(label: "Make", in: app)
+        let plan = app.buttons["starter-plan-times-tables-lightning"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+        plan.tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        app.buttons["Back"].tap()
+        selectSidebarItem(label: "My Tapplets", in: app)
+
+        let delete = app.buttons["Delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        delete.tap()
+        XCTAssertTrue(app.buttons["Delete tapplet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["This deletes the tapplet and its revision history, and turns off any student link. This cannot be undone."].exists)
+        capture("Delete-confirmation", app: app)
+        // iPad confirmation popovers cancel by tapping outside, not a Cancel row.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.8)).tap()
+        XCTAssertTrue(app.buttons["Delete tapplet"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Open"].exists)
+        XCTAssertFalse(app.staticTexts["Your tapplets will appear here"].exists)
+        capture("Delete-cancelled", app: app)
     }
 
     @MainActor
@@ -261,6 +399,46 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.buttons["empty-make-applet"].waitForExistence(timeout: 5))
         app.buttons["empty-make-applet"].tap()
         XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testOptionalBlankAnswerHasOneSkipAndEditorHidesSource() {
+        let app = launchApp()
+        selectSidebarItem(label: "Make", in: app)
+        for suggestion in ["Primary 5 Science", "Recall key ideas", "Beat a 60-second countdown"] {
+            XCTAssertTrue(app.buttons[suggestion].waitForExistence(timeout: 5))
+            app.buttons[suggestion].tap()
+            advanceGuidedFlow(in: app)
+        }
+        XCTAssertEqual(app.buttons.matching(identifier: "guided-continue").count, 1)
+        XCTAssertEqual(app.buttons["guided-continue"].label, "Skip")
+        let keyboardAction = app.buttons.matching(identifier: "guided-continue-keyboard")
+        if keyboardAction.firstMatch.exists {
+            XCTAssertEqual(keyboardAction.count, 1)
+            XCTAssertEqual(keyboardAction.firstMatch.label, "Skip")
+        }
+        capture("Optional-blank-one-Skip", app: app)
+        advanceGuidedFlow(in: app)
+        app.terminate()
+
+        let editorApp = launchApp()
+        selectSidebarItem(label: "Make", in: editorApp)
+        editorApp.buttons["starter-plan-times-tables-lightning"].tap()
+        editorApp.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(editorApp.buttons["Share"].waitForExistence(timeout: 8))
+        let form = editorApp.descendants(matching: .any)["tapplet-editor-form"]
+        for _ in 0..<3 { form.swipeUp() }
+        XCTAssertFalse(editorApp.staticTexts["Source"].exists)
+        XCTAssertFalse(editorApp.staticTexts.matching(NSPredicate(format: "label CONTAINS '<!DOCTYPE' OR label CONTAINS '<html'")).firstMatch.exists)
+        capture("Editor-no-raw-Source", app: editorApp)
+    }
+
+    @MainActor
+    private func capture(_ name: String, app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     @MainActor

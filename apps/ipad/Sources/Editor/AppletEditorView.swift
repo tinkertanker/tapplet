@@ -8,13 +8,27 @@ struct AppletEditorView: View {
     @State private var prompt = ""; @State private var working = false; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
     @State private var previewLoadState: PreviewLoadState = .loading
     @State private var previewError: String?
+    @State private var shareAccessError: TappletAPIError?
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } ?? store.examples.first { $0.id == projectID } }
     var body: some View { if let project { VStack(spacing: 0) {
         HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { showShare = true }.buttonStyle(.borderedProminent) } }
             .padding().background(TappletTheme.surface)
         HStack(spacing: 0) { AppletPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
             VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { operationError = error.localizedDescription } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
-    }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }.sheet(isPresented: $showShare) { ShareArtifactView(store: store, projectID: projectID) }.alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
+    }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }
+        .sheet(isPresented: $showShare, onDismiss: {
+            if let error = shareAccessError {
+                shareAccessError = nil
+                _ = store.present(error, during: .publish)
+            }
+        }) {
+            ShareArtifactView(store: store, projectID: projectID) { error in
+                guard showShare else { return }
+                shareAccessError = error
+                showShare = false
+            }
+        }
+        .alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
     private func editor(_ project: ArtifactProject) -> some View {
         Form {
             Section("Ask Tapplet Studio") {
@@ -41,7 +55,8 @@ struct AppletEditorView: View {
                             let warnings = try await store.refine(prompt, projectID: project.id)
                             if warnings.isEmpty { prompt = "" }
                         } catch {
-                            operationError = error.localizedDescription
+                            let presentation = store.present(error, during: .refinement)
+                            operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
                         }
                     }
                 }
@@ -77,9 +92,6 @@ struct AppletEditorView: View {
                         .disabled(revision.id == project.artifact.headRevisionId)
                     }
                 }
-            }
-            Section("Source") {
-                Text(project.source.html).font(.caption.monospaced()).textSelection(.enabled).lineLimit(12)
             }
         }
         .formStyle(.grouped)
@@ -191,6 +203,7 @@ struct StudentPreviewView: View {
 private struct ShareArtifactView: View {
     let store: TappletStore
     let projectID: String
+    let onAccessRequired: (TappletAPIError) -> Void
     @Environment(\.dismiss) var dismiss
     @State private var working = false
     @State private var error: String?
@@ -222,7 +235,15 @@ private struct ShareArtifactView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .accessibilityIdentifier("publication-generation-context-notice")
-                    if let publication = project?.artifact.publication {
+                    if let publication = project?.artifact.publication,
+                       publication.revokedAt == nil, !publication.isExpired() {
+                        if project?.artifact.publicationStale == true {
+                            Text("Students still see the earlier version. Update the link to share your latest changes.")
+                                .accessibilityIdentifier("publication-stale-notice")
+                            Button("Update student link") { perform { _ = try await store.publish(projectID: projectID) } }
+                                .buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("update-student-link")
+                        }
                         if let qr = qrCode(publication.url) {
                             Image(uiImage: qr)
                                 .interpolation(.none)
@@ -237,11 +258,15 @@ private struct ShareArtifactView: View {
                         Button("Turn off link", role: .destructive) { perform { try await store.unpublish(projectID: projectID) } }
                     } else {
                         PressedAppletMark(size: 72, rotation: .degrees(12))
+                        if let publication = project?.artifact.publication {
+                            Text(publication.revokedAt != nil ? "The student link is turned off." : "The student link has expired.")
+                        }
                         Button("Create student link") { perform { _ = try await store.publish(projectID: projectID) } }
-                            .disabled(working)
+                            .buttonStyle(.borderedProminent)
                     }
                     if let error { Text(error).foregroundStyle(TappletTheme.danger) }
                 }
+                .disabled(working)
                 .padding()
             }
             .navigationTitle("Share with students")
@@ -249,6 +274,27 @@ private struct ShareArtifactView: View {
         }
     }
 
-    private func perform(_ operation: @escaping @MainActor () async throws -> Void) { working = true; error = nil; Task { defer { working = false }; do { try await operation() } catch { self.error = error.localizedDescription } } }
-    private func qrCode(_ url: URL) -> UIImage? { let filter = CIFilter.qrCodeGenerator(); filter.message = Data(url.absoluteString.utf8); filter.correctionLevel = "M"; guard let output = filter.outputImage else { return nil }; return UIImage(ciImage: output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))) }
+    private func perform(_ operation: @escaping @MainActor () async throws -> Void) {
+        working = true
+        error = nil
+        Task {
+            defer { working = false }
+            do {
+                try await operation()
+            } catch let error as TappletAPIError where error.requiresRegistration {
+                onAccessRequired(error)
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+    private func qrCode(_ url: URL) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(url.absoluteString.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
+        guard let image = CIContext().createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: image)
+    }
 }

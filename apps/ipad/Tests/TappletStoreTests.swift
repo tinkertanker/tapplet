@@ -245,6 +245,29 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testUpdatingPublicationUsesCurrentRevisionAndClearsStaleStatus() async throws {
+        var project = makeProject(revisionID: "r2", html: "<html>Updated</html>")
+        project.artifact.publication = ArtifactPublication(
+            slug: "class",
+            url: URL(string: "https://example.test/class")!,
+            title: "Artifact",
+            createdAt: "2026-08-02T00:00:00Z",
+            expiresAt: "2099-01-01T00:00:00Z"
+        )
+        project.artifact.publicationStale = true
+        let api = ArtifactAPIStub(generated: project, revised: project)
+        let store = TappletStore(api: api, storageDirectory: temporaryDirectory(), bundle: Bundle(for: Self.self))
+        store.projects = [project]
+
+        let publication = try await store.publish(projectID: project.id)
+
+        let publishedRevisionID = await api.lastPublishedRevisionID
+        XCTAssertEqual(publishedRevisionID, "r2")
+        XCTAssertEqual(publication.url, project.artifact.publication?.url)
+        XCTAssertEqual(store.projects.first?.artifact.publicationStale, false)
+    }
+
+    @MainActor
     func testExampleCopyUsesExactRemixWithoutGeneration() async throws {
         let example = makeProject(revisionID: "seed-revision", html: "<html>Seed</html>")
         let copy = makeProject(revisionID: "copy-revision", html: "<html>Seed</html>")
@@ -608,6 +631,7 @@ private actor ArtifactAPIStub: TappletAPI {
     private(set) var lastGenerationRequest: GuidedGenerationRequest?
     private(set) var lastRevisionRequest: RevisionRequest?
     private(set) var lastRemixRequest: RemixRequest?
+    private(set) var lastPublishedRevisionID: String?
 
     init(
         generated: ArtifactProject,
@@ -673,7 +697,8 @@ private actor ArtifactAPIStub: TappletAPI {
     }
     func uploadScreenshot(revisionId: String, jpeg: Data) async throws {}
     func publish(id: String, revisionId: String) async throws -> AdvisoryResult<ArtifactPublication> {
-        AdvisoryResult(value: ArtifactPublication(
+        lastPublishedRevisionID = revisionId
+        return AdvisoryResult(value: ArtifactPublication(
             slug: "class",
             url: URL(string: "https://example.test/class")!,
             title: "Artifact",

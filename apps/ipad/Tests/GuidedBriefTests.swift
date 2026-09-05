@@ -2,6 +2,21 @@ import XCTest
 @testable import Tapplet
 
 final class GuidedBriefTests: XCTestCase {
+    func testReviewNeedsEveryRequiredAnswerButNotSourceContent() throws {
+        XCTAssertFalse(GuidedBriefDraft().isReadyForReview)
+        var draft = try XCTUnwrap(StarterPlan.all.first).draft
+        draft.sourceContent = ""
+        XCTAssertTrue(draft.isReadyForReview)
+
+        for question in BriefQuestion.all where !question.isOptional {
+            var incomplete = draft
+            incomplete.setAnswer(" \n ", at: question.id)
+            XCTAssertFalse(incomplete.isReadyForReview, question.prompt)
+            incomplete.setAnswer("Updated answer", at: question.id)
+            XCTAssertTrue(incomplete.isReadyForReview, question.prompt)
+        }
+    }
+
     func testLaterPlaceholdersStaySubjectNeutral() {
         let placeholders = BriefQuestion.all.map(\.placeholder).joined(separator: "\n")
 

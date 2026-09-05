@@ -125,7 +125,19 @@ private enum RestoreFetch: Sendable {
         isCreatingGuidedDraft = true; defer { isCreatingGuidedDraft = false }
         let text = brief.answers.enumerated().map { "\(BriefQuestion.all[$0.offset].prompt)\n\($0.element)" }.joined(separator: "\n\n")
         if isUITesting {
-            let project = Self.testingProject(brief: brief, creationBrief: text)
+            var project = Self.testingProject(brief: brief, creationBrief: text)
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("--ui-testing-published") || arguments.contains("--ui-testing-expired-publication") {
+                project.artifact.publication = ArtifactPublication(
+                    slug: "class",
+                    url: URL(string: "https://example.test/class")!,
+                    title: project.artifact.title,
+                    createdAt: "2026-08-02T00:00:00Z",
+                    expiresAt: arguments.contains("--ui-testing-expired-publication")
+                        ? "2020-01-01T00:00:00Z" : "2099-01-01T00:00:00Z"
+                )
+                project.artifact.publicationStale = arguments.contains("--ui-testing-stale-publication")
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing-advisory-warning") {
                 presentAdvisories([
                     AdvisoryWarning(

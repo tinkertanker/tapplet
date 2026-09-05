@@ -343,6 +343,13 @@ struct TappletAPIClient: TappletAPI, Sendable {
     }
 
     private func authorisedRequest(_ route: String, method: String) async throws -> URLRequest {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--ui-testing-reset"), arguments.contains("--ui-testing-access-required-on-action") {
+            if arguments.contains("--ui-testing-delayed-access-error") {
+                try await Task.sleep(for: .seconds(3))
+            }
+            throw TappletAPIError.registrationRequired
+        }
         var result = try request(route, method: method)
         result.setValue(try await tokenStore.token(), forHTTPHeaderField: "X-Device-Token")
         return result

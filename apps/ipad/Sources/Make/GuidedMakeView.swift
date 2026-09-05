@@ -41,9 +41,6 @@ struct GuidedMakeView: View {
             if !store.guidedMakeShowsSummary {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    if question.isOptional && cleanResponse.isEmpty {
-                        Button("Skip") { moveForward() }
-                    }
                     Button(continueTitle) { moveForward() }
                         .disabled(!question.isOptional && cleanResponse.isEmpty)
                         .accessibilityIdentifier("guided-continue-keyboard")
@@ -54,7 +51,14 @@ struct GuidedMakeView: View {
     }
 
     private var continueTitle: String {
-        store.guidedMakeQuestionIndex == BriefQuestion.all.count - 1 ? "Review answers" : "Continue"
+        if answeredDraft.isReadyForReview { return "Review answers" }
+        return question.isOptional && cleanResponse.isEmpty ? "Skip" : "Continue"
+    }
+
+    private var answeredDraft: GuidedBriefDraft {
+        var draft = store.guidedMakeDraft
+        draft.setAnswer(cleanResponse, at: store.guidedMakeQuestionIndex)
+        return draft
     }
 
     private var questionCard: some View {
@@ -146,11 +150,6 @@ struct GuidedMakeView: View {
                     .controlSize(.large)
                     .disabled(store.guidedMakeQuestionIndex == 0)
                 Spacer()
-                if question.isOptional && cleanResponse.isEmpty {
-                    Button("Skip") { moveForward() }
-                        .buttonStyle(TappletSecondaryButtonStyle())
-                        .controlSize(.large)
-                }
                 Button(continueTitle) {
                     moveForward()
                 }
@@ -236,12 +235,6 @@ struct GuidedMakeView: View {
             }
 
             HStack {
-                Button("Change answers") {
-                    editAnswer(at: 0)
-                }
-                .buttonStyle(TappletSecondaryButtonStyle())
-                .controlSize(.large)
-                .disabled(store.isCreatingGuidedDraft)
                 Spacer()
                 Button {
                     createDraft()
@@ -432,8 +425,8 @@ struct GuidedMakeView: View {
 
     private func moveForward() {
         guard !store.isCreatingGuidedDraft else { return }
-        store.guidedMakeDraft.setAnswer(cleanResponse, at: store.guidedMakeQuestionIndex)
-        if store.guidedMakeQuestionIndex == BriefQuestion.all.count - 1 {
+        store.guidedMakeDraft = answeredDraft
+        if store.guidedMakeDraft.isReadyForReview {
             store.guidedMakeShowsSummary = true
             responseIsFocused = false
         } else {
