@@ -210,7 +210,11 @@ The unsigned CI build is not a distribution check. Before uploading:
 2. Generate the project with XcodeGen 2.44.1, create a signed Release archive
    with Xcode 26, export with `ExportOptions.plist`, and run Xcode's Validate App
    action. Increment `CURRENT_PROJECT_VERSION` before any upload after build 1;
-   automatic build-number management is intentionally disabled.
+   automatic build-number management is disabled for local exports. Alternatively,
+   use the manual **TestFlight** Xcode Cloud archive workflow described in the
+   [iPad README](../apps/ipad/README.md#xcode-cloud-and-testflight). Cloud manages
+   its own signing and build counter; start above the existing build number and
+   verify the exact run's uploaded build has finished processing.
 3. Have the release owner confirm the export-compliance determination behind
    `ITSAppUsesNonExemptEncryption = NO`: native first-party use is limited to
    Apple-provided HTTPS/Keychain and SHA-256 hashing, and no bundled code adds
