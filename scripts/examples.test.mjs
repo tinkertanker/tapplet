@@ -127,3 +127,61 @@ test('line golf rejects a half-unit miss on a horizontal hole', async () => {
   assert.equal(dom.window.onLine(2, 1, 1, 3), true);
   dom.window.close();
 });
+
+function loadExample(file) {
+  return readFile(path.resolve('apps/ipad/Resources/Examples', file), 'utf8')
+    .then((html) => new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' }));
+}
+
+test('fair-test variables mark each wrong choice and give a hint', async () => {
+  const dom = await loadExample('cool-box-fair-test-lab.html');
+  const document = dom.window.document;
+  const selects = [...document.querySelectorAll('#vars select')];
+  ['changed', 'measured', 'changed', 'same', 'same', 'same'].forEach((value, i) => { selects[i].value = value; });
+  document.getElementById('checkVars').click();
+  assert.equal(document.querySelectorAll('#vars .is-bad').length, 1);
+  assert.ok(selects[2].parentElement.classList.contains('is-bad'));
+  const msg = document.getElementById('vm');
+  assert.match(msg.textContent, /^✗ 5 of 6 correct/);
+  assert.ok(msg.classList.contains('no'));
+  selects[2].value = 'same';
+  document.getElementById('checkVars').click();
+  assert.match(msg.textContent, /^✓ Correct!/);
+  dom.window.close();
+});
+
+test('named-technique hints change on each wrong attempt', async () => {
+  for (const [file, answer] of [['persuasive-language-lab.html', 'rhetorical question'], ['source-reliability-check.html', 'corroboration']]) {
+    const dom = await loadExample(file);
+    const document = dom.window.document;
+    const term = document.getElementById('term');
+    const msg = document.getElementById('tm');
+    term.value = 'wrong guess';
+    const seen = new Set();
+    for (let i = 0; i < 3; i += 1) {
+      document.getElementById('check').click();
+      assert.match(msg.textContent, /^✗ /, file);
+      seen.add(msg.textContent);
+    }
+    assert.equal(seen.size, 3, file);
+    term.value = answer;
+    document.getElementById('check').click();
+    assert.match(msg.textContent, /^✓ Correct!/, file);
+    dom.window.close();
+  }
+});
+
+test('plant cell matches are listed structure beside job', async () => {
+  const dom = await loadExample('plant-cell-hotspots.html');
+  const document = dom.window.document;
+  document.querySelectorAll('.hot').forEach((spot) => spot.click());
+  document.querySelector('#picks [data-s="3"]').click();
+  document.querySelector('#jobs [data-j="1"]').click();
+  assert.equal(document.querySelectorAll('#matched li').length, 0);
+  assert.match(document.getElementById('feedback').textContent, /^✗ /);
+  document.querySelector('#jobs [data-j="3"]').click();
+  const rows = [...document.querySelectorAll('#matched li')];
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /^Nucleus.*genetic material/);
+  dom.window.close();
+});
