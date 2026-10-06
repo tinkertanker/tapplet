@@ -56,10 +56,14 @@ export ASC_APP_ID=6804056340
 asc xcode-cloud workflows --app "$ASC_APP_ID"
 asc xcode-cloud run --app "$ASC_APP_ID" --workflow TestFlight --branch master
 # Use the exact run ID returned above, not the latest build for the app.
+read -r -p 'Run ID returned above: ' RUN_ID
 asc xcode-cloud status --run-id "$RUN_ID" --wait
 asc xcode-cloud build-runs builds --run-id "$RUN_ID"
-asc builds wait --build-id "$BUILD_ID"
+read -r -p 'Build ID from that run: ' BUILD_ID
+asc builds wait --build-id "$BUILD_ID" --fail-on-invalid
 ```
+
+A usable upload must finish with `processingState: VALID`.
 
 A successful archive/upload is not approval for external testing. Follow the
 [TestFlight release gate](../../docs/TAPPLET_PILOT_RUNBOOK.md#testflight-release-gate)

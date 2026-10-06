@@ -202,19 +202,21 @@ them.
 
 ## TestFlight release gate
 
-The unsigned CI build is not a distribution check. Before uploading:
+The unsigned CI build is not a distribution check. Before distribution:
 
 1. Confirm App Store Connect ownership for `sg.tinkertanker.Tapplet`, active
-   agreements, the `PQ6U5ESLN2` team, and an automatic-distribution signing
-   identity/profile on the release Mac.
-2. Generate the project with XcodeGen 2.44.1, create a signed Release archive
-   with Xcode 26, export with `ExportOptions.plist`, and run Xcode's Validate App
-   action. Increment `CURRENT_PROJECT_VERSION` before any upload after build 1;
-   automatic build-number management is disabled for local exports. Alternatively,
-   use the manual **TestFlight** Xcode Cloud archive workflow described in the
-   [iPad README](../apps/ipad/README.md#xcode-cloud-and-testflight). Cloud manages
-   its own signing and build counter; start above the existing build number and
-   verify the exact run's uploaded build has finished processing.
+   agreements, and the configured development team. Local exports also require
+   an automatic-distribution signing identity/profile on the release Mac;
+   Xcode Cloud manages its own signing.
+2. For local uploads, generate the project with XcodeGen 2.44.1, create a signed
+   Release archive with Xcode 26, export with `ExportOptions.plist`, and run
+   Xcode's Validate App action. Increment `CURRENT_PROJECT_VERSION` before any
+   upload after build 1; automatic build-number management is disabled for local
+   exports. Alternatively, use the manual **TestFlight** Xcode Cloud archive
+   workflow described in the
+   [iPad README](../apps/ipad/README.md#xcode-cloud-and-testflight), starting its
+   build counter above the existing build number. After upload, verify the exact
+   run's uploaded build has finished processing with `processingState: VALID`.
 3. Have the release owner confirm the export-compliance determination behind
    `ITSAppUsesNonExemptEncryption = NO`: native first-party use is limited to
    Apple-provided HTTPS/Keychain and SHA-256 hashing, and no bundled code adds
