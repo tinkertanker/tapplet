@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Static assets-only Worker for the public preview site. It deliberately has
+  // no Worker script, routes, bindings, D1/R2 resources or secrets.
+  "name": "tapplet-preview",
+  "account_id": "b8b1032c61d9475cd00229c74db7ec72",
+  "compatibility_date": "2026-07-18",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    // Serve privacy/index.html at /privacy rather than redirecting to /privacy/.
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

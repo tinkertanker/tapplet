@@ -1,0 +1,190 @@
+/* Colour roles follow docs/DESIGN.md. The canvas matches the app icon's
+   background exactly so the icon has no visible tile edge. */
+:root {
+  --canvas: #f8f6f1;
+  --accent: #bd3a34;
+  --accent-bright: #f05d57;
+  --ink: #171718;
+  --muted-ink: #6f6d67;
+  --border: #dfdeda;
+  --display: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --text: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--text);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 0.18em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Landing */
+
+.landing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2rem, 6vw, 5rem) 1.5rem 2rem;
+  text-align: center;
+}
+
+.landing-logo {
+  width: min(22rem, 68vw);
+  margin: 0 0 clamp(0.5rem, 2vw, 1.25rem);
+}
+
+.landing h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(3rem, 11vw, 5.5rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.tagline {
+  max-width: 32rem;
+  margin: 1.25rem 0 0;
+  color: var(--muted-ink);
+  font-size: clamp(1.125rem, 2.6vw, 1.375rem);
+  line-height: 1.45;
+}
+
+.status {
+  margin: 2.25rem 0 0;
+  color: var(--accent);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.status::before {
+  content: "";
+  display: block;
+  width: 2.5rem;
+  height: 3px;
+  margin: 0 auto 1rem;
+  border-radius: 2px;
+  background: var(--accent-bright);
+}
+
+.site-footer {
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 0.9375rem;
+}
+
+.site-footer a {
+  color: var(--muted-ink);
+}
+
+.site-footer a:hover {
+  color: var(--ink);
+}
+
+/* Privacy and other text pages */
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 5vw, 3.5rem) 1.25rem 3rem;
+}
+
+.home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--ink);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.125rem;
+  text-decoration: none;
+}
+
+.home-link img {
+  width: 2.5rem;
+}
+
+.page h1 {
+  margin: 2.5rem 0 0.25rem;
+  font-family: var(--display);
+  font-size: clamp(2rem, 7vw, 2.75rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.updated {
+  margin: 0 0 2rem;
+  color: var(--muted-ink);
+}
+
+.page h2 {
+  margin: 2.5rem 0 0.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--display);
+  font-size: 1.375rem;
+  line-height: 1.3;
+}
+
+.page p,
+.page ul {
+  margin: 0 0 1rem;
+}
+
+.page ul {
+  padding-left: 1.25rem;
+}
+
+.page li + li {
+  margin-top: 0.4rem;
+}
+
+.back {
+  margin-top: 3rem;
+}
