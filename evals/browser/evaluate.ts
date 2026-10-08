@@ -664,21 +664,39 @@ async function exerciseGenericInteractions(
   } finally {
     await countPage.close();
   }
+  // The Playwright clock is context-wide. Install it only after metrics and
+  // declarative scenarios have finished, so their real-time assertions stay intact.
+  // Paired pages start at the same paused time; runFor fires every due callback
+  // in both, rather than attributing an unrelated timer tick to the interaction.
+  const clockTime = new Date("2026-01-01T00:00:00Z");
+  await context.clock.install({ time: clockTime });
+  await context.clock.pauseAt(new Date(clockTime.getTime() + 1_000));
   let changedControlCount = 0;
   let interactionErrorCount = 0;
   for (let index = 0; index < exercisedControlCount; index += 1) {
     const page = await createEvaluationPage(context, runtime);
+    const baseline = await createEvaluationPage(context, runtime);
     try {
-      await navigateToArtifact(page, settleTimeMs);
+      await Promise.all([page, baseline].map((candidate) =>
+        candidate.goto(`${EVALUATION_ORIGIN}/`, { waitUntil: "load" })
+      ));
+      await context.clock.runFor(settleTimeMs);
       const control = page.locator(controlSelector).filter({ visible: true }).nth(index);
       const before = await stateFingerprint(page);
+      const baselineBefore = await stateFingerprint(baseline);
       await exerciseGenericControl(control, settleTimeMs);
-      await page.waitForTimeout(settleTimeMs);
-      if (await stateFingerprint(page) !== before) changedControlCount += 1;
+      await context.clock.runFor(settleTimeMs);
+      const after = await stateFingerprint(page);
+      const baselineAfter = await stateFingerprint(baseline);
+      // Fail closed if the independently loaded initial states differ (e.g.
+      // random content). Divergent finals alone would not then establish cause.
+      if (before === baselineBefore && after !== before && after !== baselineAfter) {
+        changedControlCount += 1;
+      }
     } catch {
       interactionErrorCount += 1;
     } finally {
-      await page.close();
+      await Promise.all([page.close(), baseline.close()]);
     }
   }
   return {

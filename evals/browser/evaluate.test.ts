@@ -83,6 +83,23 @@ test("browser evaluator rejects inert controls and observes bounded delayed beha
   assert.equal(delayed.viewports[0]?.behavior.passed, true);
 });
 
+test("generic interactions distinguish autonomous timers from synchronous and delayed handlers", async () => {
+  const timer = `<p id="clock"></p><script>let ticks=0;setInterval(()=>{document.getElementById('clock').textContent=String(++ticks)},20)</script>`;
+  const fixtures = [
+    { html: inertFixture, changed: 0, passed: false },
+    { html: goodFixture, changed: 1, passed: true },
+    { html: delayedFixture, changed: 1, passed: true },
+  ];
+  for (const fixture of fixtures) {
+    const result = await evaluateHtmlInBrowser(fixture.html.replace('</body>', `${timer}</body>`), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(result.viewports[0]?.behavior.changedControlCount, fixture.changed);
+    assert.equal(result.viewports[0]?.behavior.passed, fixture.passed);
+    assert.equal(result.passed, fixture.passed);
+  }
+});
+
 test("browser evaluator isolates controls and requires most exercised controls to change", async () => {
   const result = await evaluateHtmlInBrowser(mixedFixture, {
     viewports: [{ name: "phone", width: 390, height: 844 }],
