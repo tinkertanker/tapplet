@@ -143,6 +143,13 @@ private enum RestoreFetch: Sendable {
                     try LocalAppletAssetStorage.store(DownloadedAppletAsset(data: png, mediaType: "image/png"), id: "ui-test-history-\($0)")
                 }
             }
+            if arguments.contains("--ui-testing-uncached-current-images") {
+                let images = (1...3).map {
+                    "<img src=\"assets/ui-test-current-\($0)\" alt=\"Uncached image \($0)\">"
+                }.joined()
+                project.source.html = "<!doctype html><html><body>\(images)</body></html>"
+                project.artifact.html = project.source.html
+            }
             if arguments.contains("--ui-testing-published") || arguments.contains("--ui-testing-expired-publication") {
                 project.artifact.publication = ArtifactPublication(
                     slug: "class",

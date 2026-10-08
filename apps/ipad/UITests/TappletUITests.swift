@@ -504,6 +504,31 @@ final class TappletUITests: XCTestCase {
     }
 
     @MainActor
+    func testImagesListIncludesCurrentReferencesWithoutCachedFiles() {
+        let app = launchApp(extraArguments: ["--ui-testing-history-images", "--ui-testing-uncached-current-images"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        let form = app.descendants(matching: .any)["tapplet-editor-form"]
+        let photos = app.buttons["Choose from Photos"]
+        for _ in 0..<5 {
+            if photos.isHittable { break }
+            form.swipeUp()
+        }
+        XCTAssertTrue(photos.isHittable)
+        XCTAssertTrue(app.buttons["Choose a file"].exists)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Remove'")).count, 3,
+                       "Every current image must remain removable when its cache is missing")
+        for index in 1...3 {
+            XCTAssertTrue(app.staticTexts["ui-test-current-\(index)"].exists)
+            XCTAssertFalse(app.staticTexts["ui-test-history-\(index)"].exists)
+        }
+        capture("Images-include-uncached-current-references", app: app)
+    }
+
+    @MainActor
     private func capture(_ name: String, app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

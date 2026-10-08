@@ -83,7 +83,7 @@ struct AppletEditorView: View {
             Section("Images") {
                 let referencedIDs = TappletStore.referencedAssetIDs(in: project.source.html)
                 ImageManagementView(store: store, projectID: project.id,
-                                    assets: project.localAssets.filter { referencedIDs.contains($0.id) })
+                                    assetIDs: referencedIDs.sorted())
             }
             Section("History") {
                 ForEach(project.revisions.reversed()) { revision in
@@ -116,7 +116,7 @@ struct AppletEditorView: View {
 private struct ImageManagementView: View {
     let store: TappletStore
     let projectID: String
-    let assets: [LocalAppletAssetFile]
+    let assetIDs: [String]
     @State private var photo: PhotosPickerItem?
     @State private var pendingData: Data?
     @State private var description = ""
@@ -126,13 +126,13 @@ private struct ImageManagementView: View {
     @State private var error: String?
 
     var body: some View {
-        ForEach(assets) { asset in
+        ForEach(assetIDs, id: \.self) { assetID in
             HStack {
-                Label(asset.id, systemImage: "photo")
+                Label(assetID, systemImage: "photo")
                 Spacer()
                 Button("Remove", role: .destructive) {
                     Task {
-                        do { try await store.removeImage(assetID: asset.id, projectID: projectID) }
+                        do { try await store.removeImage(assetID: assetID, projectID: projectID) }
                         catch { self.error = error.localizedDescription }
                     }
                 }
