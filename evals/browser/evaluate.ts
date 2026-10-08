@@ -652,6 +652,15 @@ async function exerciseGenericInteractions(
   runtime: BrowserRuntimeMetrics,
   settleTimeMs: number,
 ): Promise<InteractionMetrics> {
+  // Match each fresh page's random question/shuffle sequence as well as its
+  // clock. Install only for generic checks, after real-time scenarios finish.
+  await context.addInitScript(`(() => {
+    let state = 0x5eed;
+    Math.random = () => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
+  })()`);
   const controlSelector = "button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[role='button']:not([aria-disabled='true'])";
   const countPage = await createEvaluationPage(context, runtime);
   let exercisedControlCount: number;
@@ -688,8 +697,8 @@ async function exerciseGenericInteractions(
       await context.clock.runFor(settleTimeMs);
       const after = await stateFingerprint(page);
       const baselineAfter = await stateFingerprint(baseline);
-      // Fail closed if the independently loaded initial states differ (e.g.
-      // random content). Divergent finals alone would not then establish cause.
+      // Fail closed if initial states still differ: divergent finals alone
+      // would not then establish cause.
       if (before === baselineBefore && after !== before && after !== baselineAfter) {
         changedControlCount += 1;
       }
