@@ -92,8 +92,18 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
   }
 
   function activity(page: Page) {
-    return page.frames().find((frame) => frame.url() === "about:srcdoc") ?? page.mainFrame();
+    const frame = page.frames().find((candidate) => candidate.url() === "about:srcdoc");
+    if (!frame) throw new Error("Sandboxed activity frame not found");
+    return frame;
   }
+
+  it("rejects a missing sandboxed activity instead of testing the parent", async () => {
+    const state = await open(source);
+    try {
+      await state.page.evaluate("document.querySelector('iframe').remove()");
+      expect(() => activity(state.page)).toThrow("Sandboxed activity frame not found");
+    } finally { await state.context.close(); }
+  });
 
   it("places the scoped base in the real head, not a preceding comment", async () => {
     const state = await open(source.replace("<head>", "<!-- explain <head> here --><head>"));
