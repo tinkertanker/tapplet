@@ -1108,7 +1108,7 @@ describe("Tapplet API registration and public HTML", () => {
     expect(queries).toBe(1);
   });
 
-  it("allows sandboxed player origins to preflight anonymous content reports", async () => {
+  it("does not allow opaque activity origins to preflight content reports", async () => {
     const preflight = await app.fetch(
       new Request(
         "https://api.test/v1/publications/ABCDEFGHIJKLMNOPQRSTUV/reports",
@@ -1122,8 +1122,8 @@ describe("Tapplet API registration and public HTML", () => {
         },
       ),
     );
-    expect(preflight.status).toBe(204);
-    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.status).toBe(403);
+    expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("stops expired publications from authorising search, preferred context, or remix", async () => {

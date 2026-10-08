@@ -63,6 +63,8 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
         return;
       }
       if (url.pathname === `/v1/publications/${slug}/reports`) {
+        // Deliberately permissive: containment must stop activity requests even
+        // if the server's independent CORS defense is accidentally relaxed.
         if (request.method() === "POST") reports.push(request.postDataJSON());
         await route.fulfill({
           status: request.method() === "OPTIONS" ? 204 : 201,
@@ -115,6 +117,33 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(state.external).toEqual([]);
       expect(state.page.url()).toBe(`${origin}/${slug}`);
       expect(await state.page.getByRole("button", { name: "Report this activity", exact: true }).count()).toBe(1);
+    } finally { await state.context.close(); }
+  });
+
+  it("blocks activity fetch and beacon reports while allowing a parent report", async () => {
+    const endpoint = `${origin}/v1/publications/${slug}/reports`;
+    const attack = `window['fe'+'tch']('${endpoint}', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reason:'unsafe'})}).catch(()=>{});navigator['send'+'Beacon']('${endpoint}',new Blob([JSON.stringify({reason:'unsafe'})],{type:'application/json'}));this.textContent='Attempted'`;
+    const state = await open(source.replace("this.textContent='Checked'", attack));
+    try {
+      const frame = activity(state.page);
+      await frame.evaluate(`(() => {
+        document.body.dataset.blocked = "0";
+        document.addEventListener("securitypolicyviolation", (event) => {
+          if (event.effectiveDirective === "connect-src") {
+            document.body.dataset.blocked = String(Number(document.body.dataset.blocked) + 1);
+          }
+        });
+      })()`);
+      await frame.getByRole("button", { name: "Check", exact: true }).click();
+      expect(await frame.getByRole("button", { name: "Attempted", exact: true }).count()).toBe(1);
+      await state.page.waitForTimeout(150);
+      expect(state.reports).toEqual([]);
+      await expect.poll(() => frame.evaluate("Number(document.body.dataset.blocked)")).toBeGreaterThanOrEqual(2);
+      state.page.once("dialog", (dialog) => { void dialog.accept("accessibility"); });
+      const report = state.page.getByRole("button", { name: "Report this activity", exact: true });
+      await report.click();
+      await expect.poll(() => report.textContent()).toBe("Report sent");
+      expect(state.reports).toEqual([{ reason: "accessibility" }]);
     } finally { await state.context.close(); }
   });
 
