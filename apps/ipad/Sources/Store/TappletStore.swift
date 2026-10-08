@@ -34,6 +34,15 @@ private enum RestoreFetch: Sendable {
     private let projectDirectory: URL
     private let isUITesting: Bool
     private var uploadedSnapshotRevisionIDs: Set<String> = []
+    // UI-test-only handshake: the test explicitly releases a successful response.
+    var uiTestingRefinementIsWaiting = false
+    private var uiTestingRefinementContinuation: CheckedContinuation<Void, Never>?
+
+    func completeUITestingRefinement() {
+        guard isUITesting, ProcessInfo.processInfo.arguments.contains("--ui-testing-held-refinement") else { return }
+        uiTestingRefinementContinuation?.resume()
+        uiTestingRefinementContinuation = nil
+    }
 
     init(api: any TappletAPI = TappletAPIClient.live(), storageDirectory: URL? = nil, bundle: Bundle = .main) {
         self.api = api
@@ -127,6 +136,13 @@ private enum RestoreFetch: Sendable {
         if isUITesting {
             var project = Self.testingProject(brief: brief, creationBrief: text)
             let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("--ui-testing-history-images") {
+                // No current HTML references; these files belong to older history only.
+                let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=")!
+                project.localAssets = try (1...3).map {
+                    try LocalAppletAssetStorage.store(DownloadedAppletAsset(data: png, mediaType: "image/png"), id: "ui-test-history-\($0)")
+                }
+            }
             if arguments.contains("--ui-testing-published") || arguments.contains("--ui-testing-expired-publication") {
                 project.artifact.publication = ArtifactPublication(
                     slug: "class",
@@ -196,6 +212,24 @@ private enum RestoreFetch: Sendable {
     @discardableResult
     func refine(_ instruction: String, projectID: String, requiredAssetID: String? = nil) async throws -> [AdvisoryWarning] {
         let current = try project(projectID)
+        if isUITesting, ProcessInfo.processInfo.arguments.contains("--ui-testing-held-refinement") {
+            await withCheckedContinuation { continuation in
+                uiTestingRefinementContinuation = continuation
+                uiTestingRefinementIsWaiting = true
+            }
+            uiTestingRefinementIsWaiting = false
+            var revised = current
+            revised.source.revision.id = "ui-test-revision-2"
+            revised.source.revision.parentRevisionId = current.source.revision.id
+            revised.source.revision.instruction = instruction
+            revised.source.html = "<!doctype html><html><body><h1>UI test refinement complete</h1></body></html>"
+            revised.artifact.headRevisionId = revised.source.revision.id
+            revised.artifact.headRevision = revised.source.revision
+            revised.artifact.html = revised.source.html
+            revised.revisions.append(revised.source.revision)
+            upsert(revised)
+            return []
+        }
         let result = try await api.revise(
             id: projectID,
             instruction: instruction,
@@ -215,20 +249,48 @@ private enum RestoreFetch: Sendable {
         upsert(try await api.setHead(id: projectID, revisionId: parent, expectedHeadRevisionId: current.artifact.headRevisionId))
     }
     func updateDetails(_ artifact: Artifact) async throws {
-        var current = try project(artifact.id)
         let result = try await api.updateArtifact(artifact)
-        current.artifact = result.value
+        var current = try project(artifact.id)
+        // Metadata responses may predate a concurrent revision or publication.
+        // Merge only the fields owned by this operation into the latest project.
+        current.artifact.title = result.value.title
+        current.artifact.summary = result.value.summary
+        current.artifact.subject = result.value.subject
+        current.artifact.level = result.value.level
+        current.artifact.locale = result.value.locale
+        current.artifact.learningObjective = result.value.learningObjective
+        current.artifact.tags = result.value.tags
+        current.artifact.creationBrief = result.value.creationBrief
+        current.artifact.updatedAt = max(current.artifact.updatedAt, result.value.updatedAt)
         presentAdvisories(result.warnings)
         upsert(current)
     }
     func publish(projectID: String) async throws -> ArtifactPublication {
-        let result = try await api.publish(id: projectID, revisionId: try project(projectID).artifact.headRevisionId)
-        var current = try project(projectID); current.artifact.publication = result.value; current.artifact.publicationStale = false; upsert(current)
+        let revisionID = try project(projectID).artifact.headRevisionId
+        let result = try await api.publish(id: projectID, revisionId: revisionID)
+        var current = try project(projectID)
+        current.artifact.publication = result.value
+        current.artifact.publicationStale = current.artifact.headRevisionId != revisionID
+        upsert(current)
         presentAdvisories(result.warnings)
         return result.value
     }
-    func unpublish(projectID: String) async throws { var current = try project(projectID); if let slug = current.artifact.publication?.slug { try await api.revoke(slug: slug) }; current.artifact.publication = nil; upsert(current) }
-    func extendPublication(projectID: String) async throws { var current = try project(projectID); guard let slug = current.artifact.publication?.slug else { return }; current.artifact.publication = try await api.extend(slug: slug, days: 90); upsert(current) }
+    func unpublish(projectID: String) async throws {
+        guard let slug = try project(projectID).artifact.publication?.slug else { return }
+        try await api.revoke(slug: slug)
+        var current = try project(projectID)
+        guard current.artifact.publication?.slug == slug else { return }
+        current.artifact.publication = nil
+        upsert(current)
+    }
+    func extendPublication(projectID: String) async throws {
+        guard let slug = try project(projectID).artifact.publication?.slug else { return }
+        let publication = try await api.extend(slug: slug, days: 90)
+        var current = try project(projectID)
+        guard current.artifact.publication?.slug == slug else { return }
+        current.artifact.publication = publication
+        upsert(current)
+    }
     func deleteProject(projectID: String) async throws {
         let current = try project(projectID)
         do {
@@ -312,7 +374,7 @@ private enum RestoreFetch: Sendable {
     func addImage(_ data: Data, description: String, decorative: Bool, projectID: String) async throws {
         guard decorative || !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppletImageError.descriptionRequired }
         let current = try project(projectID)
-        guard current.localAssets.count < 3 else { throw AppletImageError.limitReached }
+        guard Self.referencedAssetIDs(in: current.source.html).count < 3 else { throw AppletImageError.limitReached }
         let image = try await Task.detached(priority: .userInitiated) {
             try AppletImageProcessor.prepare(data)
         }.value
@@ -337,17 +399,12 @@ private enum RestoreFetch: Sendable {
         }
     }
     func removeImage(assetID: String, projectID: String) async throws {
-        let current = try project(projectID)
+        // History and Undo can still reference this image. Retain the offline
+        // cache; current image rows and limits are derived from the head HTML.
         try await refine(
             "Remove the image at relative URL assets/\(assetID), including its surrounding caption or empty layout container.",
             projectID: projectID
         )
-        guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return }
-        if let local = current.localAssets.first(where: { $0.id == assetID }) {
-            LocalAppletAssetStorage.remove(local)
-        }
-        projects[index].localAssets.removeAll { $0.id == assetID }
-        persist(projects[index])
     }
     private func project(_ id: String) throws -> ArtifactProject { guard let result = projects.first(where: { $0.id == id }) else { throw TappletAPIError.invalidResponse }; return result }
     private func presentAdvisories(_ warnings: [AdvisoryWarning]) {
