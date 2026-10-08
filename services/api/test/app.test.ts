@@ -271,9 +271,10 @@ describe("Tapplet API registration and public HTML", () => {
     const source =
       '<!doctype html><html><head></head><body><img src="assets/image-1"></body></html>';
     const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
-    expect(served.match(/<base /g)).toHaveLength(1);
+    expect(served.match(/&lt;base /g)).toHaveLength(1);
     expect(served.match(/data-studio-report/g)).toHaveLength(1);
-    expect(served).toContain('<base href="/ABCDEFGHIJKLMNOPQRST/">');
+    expect(served).toContain('&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;');
+    expect(served).toContain('sandbox="allow-scripts allow-modals"');
     expect(source).not.toContain("<base");
   });
 
@@ -286,14 +287,14 @@ describe("Tapplet API registration and public HTML", () => {
     expect(source).not.toContain("rel=");
   });
 
-  it("injects the report control at the closing body rather than script text", () => {
+  it("keeps report code outside sandboxed script text", () => {
     const source =
       '<!doctype html><html><head></head><body><script>const closing = "</body>";</script></body></html>';
     const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
 
-    expect(served).toContain('const closing = "</body>";');
+    expect(served).toContain('const closing = &quot;&lt;/body&gt;&quot;;');
     expect(served.indexOf("data-studio-report")).toBeGreaterThan(
-      served.indexOf("</script>"),
+      served.indexOf("</iframe>"),
     );
   });
 
@@ -305,7 +306,7 @@ describe("Tapplet API registration and public HTML", () => {
     expect(served.indexOf("data-studio-report")).toBeLessThan(
       served.indexOf("</body>"),
     );
-    expect(served).toContain("<!-- </body> -->");
+    expect(served).toContain("&lt;!-- &lt;/body&gt; --&gt;");
   });
 
   it("imports reviewed seeds into retrieval and uses a selected seed as generation context", async () => {

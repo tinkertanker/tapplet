@@ -80,6 +80,7 @@ Useful commands are `api:dev`, `api:build`, `api:test`, `api:typecheck`, `api:db
 Run all offline repository verification with:
 
 ```bash
+npx playwright install --with-deps chromium webkit # once, for browser tests
 npm run verify
 npm run api:build
 ```
