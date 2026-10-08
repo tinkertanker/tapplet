@@ -1,6 +1,16 @@
-import vm from 'node:vm';
+import { parse as parseJavaScript } from 'acorn';
+import { parse as parseHtml } from 'parse5';
 
 export const MAX_HTML_BYTES = 200_000;
+
+const JAVASCRIPT_TYPES = new Set([
+  '', 'application/ecmascript', 'application/javascript',
+  'application/x-ecmascript', 'application/x-javascript',
+  'text/ecmascript', 'text/javascript', 'text/javascript1.0',
+  'text/javascript1.1', 'text/javascript1.2', 'text/javascript1.3',
+  'text/javascript1.4', 'text/javascript1.5', 'text/jscript',
+  'text/livescript', 'text/x-ecmascript', 'text/x-javascript',
+]);
 
 const REQUIRED_MANIFEST_FIELDS = [
   'id',
@@ -57,14 +67,38 @@ export function validateHtmlArtifact(html, options = {}) {
     }
   }
 
-  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-    if (/\bsrc\s*=/.test(match[1])) continue;
+  const document = parseHtml(html, { sourceCodeLocationInfo: true });
+  function validateJavaScript(source, sourceType) {
     try {
-      new vm.Script(match[2]);
+      parseJavaScript(source, { ecmaVersion: 'latest', sourceType });
     } catch (error) {
       add('javascript-syntax', `Inline JavaScript does not parse: ${error.message}`);
     }
   }
+  function visit(node) {
+    if ('tagName' in node) {
+      const attributes = new Map(node.attrs.map(({ name, value }) => [name, value]));
+      if (node.tagName === 'meta' && attributes.get('http-equiv')?.trim().toLowerCase() === 'refresh') {
+        add('external-resource', 'Redirecting URLs are not allowed.');
+      }
+      for (const [name, value] of attributes) {
+        if (/^on[a-z]+$/.test(name)) validateJavaScript(`function eventHandler(event) {\n${value}\n}`, 'script');
+      }
+      if (node.tagName === 'script') {
+        const type = (attributes.get('type') ?? '').trim().toLowerCase();
+        if (attributes.has('src')) add('external-script', 'External script sources are not allowed.');
+        else if (!node.sourceCodeLocation?.endTag) add('document', 'Script elements must have a closing tag.');
+        else if (type === 'importmap' || type === 'speculationrules') add('external-resource', 'Import maps and speculation rules are not allowed.');
+        else if (type === 'module' || JAVASCRIPT_TYPES.has(type)) {
+          const source = node.childNodes.filter((child) => child.nodeName === '#text').map((child) => child.value).join('');
+          validateJavaScript(source, type === 'module' ? 'module' : 'script');
+        }
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(document);
 
   return { valid: issues.length === 0, bytes, issues };
 }

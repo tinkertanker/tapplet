@@ -4,6 +4,16 @@ import { assessArtifact, parseProviderArtifact } from './artifact-eval.mjs';
 
 const html = '<!doctype html><html lang="ms-SG"><head><meta name="viewport" content="width=device-width"><title>Kosa kata</title><style>button{min-height:44px}</style></head><body><p>buku dan meja</p><select><option>Padan</option></select><button id="reset">Tetapkan semula</button><script>reset.onclick=()=>{}</script></body></html>';
 
+test('drops malformed optional cards but still rejects malformed HTML', () => {
+  for (const designCard of [null, [], 'card', { title: '' }, { description: 1 }, { tags: [''] }]) {
+    assert.deepEqual(parseProviderArtifact({ html, designCard }), { html });
+    assert.equal(assessArtifact({ html, designCard }).valid, true);
+    assert.equal(assessArtifact({ html: 'bad', designCard }).valid, false);
+  }
+  const designCard = { title: 'Words', layout: 'cards', future: { accent: 'blue' } };
+  assert.deepEqual(parseProviderArtifact({ html, designCard }), { html, designCard });
+});
+
 test('parses plain and fenced provider JSON', () => {
   assert.equal(parseProviderArtifact(JSON.stringify({ html })).html, html);
   assert.deepEqual(parseProviderArtifact(`\`\`\`json\n${JSON.stringify({ html, designCard: { layout: 'cards' } })}\n\`\`\``).designCard, { layout: 'cards' });

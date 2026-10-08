@@ -30,6 +30,46 @@ const requiredImage = {
   decorative: false,
 };
 describe("HTML generation contract", () => {
+  it.each(["&#114;efresh", " REFRESH "])("rejects decoded meta refresh %s", (directive) => {
+    const candidate = html.replace("</head>", `<meta http-equiv="${directive}" content="0;url=https://outside.invalid/"></head>`);
+    expect(() => validateHtmlOutput({ html: candidate })).toThrow(InvalidModelOutputError);
+  });
+
+  it("normalizes surrounding ASCII whitespace in managed URL references", () => {
+    const candidate = html.replace("assets/asset-one", " \t\nassets/asset-one\r\f ")
+      .replace("</style>", '.image{background:url(" \tassets/css-image\n ")}</style>');
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(referencedAssetIds(candidate)).toEqual(["asset-one", "css-image"]);
+  });
+
+  it("recognizes whitespace-normalized required images without inserting duplicates", async () => {
+    const candidate = html.replace("assets/asset-one", " \tassets/required-image\n ");
+    const provider = {
+      name: "fixed", generate: vi.fn(), moderate: vi.fn(), repair: vi.fn(),
+      revise: vi.fn().mockResolvedValue({ html: candidate }),
+    } as unknown as ModelProvider;
+    await expect(reviseArtifact(provider, html, undefined, "Keep image", brief, [requiredImage]))
+      .resolves.toEqual({ html: candidate });
+    expect(provider.repair).not.toHaveBeenCalled();
+  });
+
+  it.each([null, [], "card", { title: "" }, { description: 1 }, { tags: [""] }])(
+    "drops invalid optional metadata without spending repairs: %j", async (designCard) => {
+      const provider = {
+        name: "fixed", generate: vi.fn().mockResolvedValue({ html, designCard }),
+        moderate: vi.fn(), revise: vi.fn(), repair: vi.fn().mockRejectedValue(new Error("must not repair")),
+      } as unknown as ModelProvider;
+      await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
+      expect(provider.repair).not.toHaveBeenCalled();
+      expect(() => validateHtmlOutput({ html: "bad", designCard })).toThrow();
+    },
+  );
+
+  it("preserves valid cards including unknown optional metadata fields", () => {
+    const designCard = { title: "Fractions", tags: ["math"], layout: "cards", future: { color: "blue" } };
+    expect(validateHtmlOutput({ html, designCard })).toEqual({ html, designCard });
+  });
+
   it("accepts complete self-contained HTML and extracts managed assets", () => {
     expect(validateHtmlOutput({ html })).toEqual({ html });
     expect(referencedAssetIds(html)).toEqual(["asset-one"]);
@@ -370,7 +410,7 @@ describe("HTML generation contract", () => {
     expect(provider.repair).not.toHaveBeenCalled();
   });
 
-  it("keeps an invalid designCard after splicing a required image", async () => {
+  it("drops an invalid designCard after splicing a required image without repair", async () => {
     const provider = {
       name: "fixed",
       generate: vi.fn(),
@@ -389,11 +429,8 @@ describe("HTML generation contract", () => {
     );
 
     expect(revised.html).toContain('src="assets/required-image"');
-    expect(provider.repair).toHaveBeenCalledOnce();
-    const [candidate, issues] = (provider.repair as ReturnType<typeof vi.fn>)
-      .mock.calls[0] as [unknown, string[]];
-    expect(issues).toContain("designCard must be an object.");
-    expect(JSON.stringify(candidate)).toContain("assets/required-image");
+    expect(revised).not.toHaveProperty("designCard");
+    expect(provider.repair).not.toHaveBeenCalled();
   });
 
   it("repairs leftover defects on the spliced candidate", async () => {
@@ -557,10 +594,10 @@ describe("HTML generation contract", () => {
     ).toThrow();
   });
 
-  it("rejects malformed design cards and extracts exact quoted managed assets", () => {
-    expect(() =>
+  it("drops malformed design cards and extracts exact quoted managed assets", () => {
+    expect(
       validateHtmlOutput({ html, designCard: { title: "", tags: [""] } }),
-    ).toThrow();
+    ).toEqual({ html });
     expect(
       referencedAssetIds(
         '<img src="assets/one"><a href=\'assets/two\'></a><img src="assets/one?x">',
@@ -738,7 +775,68 @@ describe("HTML generation contract", () => {
     });
   });
 
-  it("does not treat a filtered Responses completion as truncation", async () => {
+  it.each(["failed", "cancelled", "queued", "in_progress", "incomplete"])(
+    "rejects Responses status %s even with usable output and traces an error", async (status) => {
+      const trace = new MemoryOperationalTraceSink();
+      const fetch = vi.fn(async () => Response.json({
+        status,
+        ...(status === "failed" ? { error: { code: "server_error" } } : {}),
+        output: [{ content: [{ type: "output_text", text: JSON.stringify({ html }) }] }],
+      }));
+      const provider = new OpenAiCompatibleProvider({
+        baseUrl: "https://models.example.test/v1",
+        apiKey: "secret",
+        model: "model",
+        api: "responses",
+        fetch,
+      });
+
+      await expect(generateArtifact(provider, brief, [], {
+        trace: { requestId: "protocol-failure", sink: trace },
+      })).rejects.toMatchObject({ message: "Model response not completed", retryable: true });
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(trace.events).toEqual([expect.objectContaining({
+        kind: "model_call", status: "error", finishReason: status,
+      })]);
+    },
+  );
+
+  it.each(["completed", undefined])("rejects explicit Responses errors with status %s", async (status) => {
+    const trace = new MemoryOperationalTraceSink();
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "secret",
+      model: "model",
+      api: "responses",
+      fetch: vi.fn(async () => Response.json({
+        status,
+        error: { code: "server_error" },
+        output: [{ content: [{ type: "output_text", text: JSON.stringify({ html }) }] }],
+      })),
+    });
+    await expect(provider.generate(brief, [], { requestId: "error", sink: trace }))
+      .rejects.toMatchObject({ message: "Model response not completed", retryable: true });
+    expect(trace.events).toEqual([expect.objectContaining({ status: "error" })]);
+  });
+
+  it.each(["completed", undefined])("accepts compatible Responses status %s", async (status) => {
+    const trace = new MemoryOperationalTraceSink();
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "secret",
+      model: "model",
+      api: "responses",
+      fetch: vi.fn(async () => Response.json({
+        status,
+        output: [{ content: [{ type: "output_text", text: JSON.stringify({ html }) }] }],
+      })),
+    });
+    await expect(provider.generate(brief, [], { requestId: "complete", sink: trace }))
+      .resolves.toEqual({ html });
+    expect(trace.events).toEqual([expect.objectContaining({ status: "success" })]);
+  });
+
+  it("rejects a filtered incomplete Responses completion without calling it truncation", async () => {
     const provider = new OpenAiCompatibleProvider({
       baseUrl: "https://models.example.test/v1",
       apiKey: "secret",
@@ -759,7 +857,10 @@ describe("HTML generation contract", () => {
       ),
     });
 
-    await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
+    await expect(generateArtifact(provider, brief)).rejects.toMatchObject({
+      message: "Model response not completed",
+      retryable: true,
+    });
   });
 
   it("does not send provider-specific thinking options to generic endpoints", async () => {

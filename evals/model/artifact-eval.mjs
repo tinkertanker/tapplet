@@ -28,10 +28,14 @@ export function parseProviderArtifact(output) {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate) || typeof candidate.html !== 'string') {
     throw new Error('Provider output must be an object containing an html string.');
   }
-  if (candidate.designCard !== undefined && (!candidate.designCard || typeof candidate.designCard !== 'object' || Array.isArray(candidate.designCard))) {
-    throw new Error('designCard must be an object when provided.');
-  }
-  return { html: candidate.html, ...(candidate.designCard ? { designCard: candidate.designCard } : {}) };
+  const card = candidate.designCard;
+  // Match production: malformed optional metadata cannot invalidate valid HTML.
+  const validCard = card && typeof card === 'object' && !Array.isArray(card)
+    && (card.title === undefined || (typeof card.title === 'string' && card.title.trim() && card.title.length <= 200))
+    && (card.description === undefined || (typeof card.description === 'string' && card.description.length <= 1000))
+    && (card.tags === undefined || (Array.isArray(card.tags) && card.tags.length <= 20
+      && card.tags.every((tag) => typeof tag === 'string' && tag.trim() && tag.length <= 50)));
+  return { html: candidate.html, ...(validCard ? { designCard: card } : {}) };
 }
 
 export function assessArtifact(output, request = {}) {

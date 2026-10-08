@@ -13,6 +13,38 @@ import {
 
 const validHtml = '<!doctype html><html lang="en-SG"><head><meta name="viewport" content="width=device-width"><title>Test</title><style>button{min-height:44px}</style></head><body><button>Try</button><script>document.querySelector("button").onclick=()=>{}</script></body></html>';
 
+test('rejects decoded meta refresh directives', () => {
+  for (const directive of ['&#114;efresh', ' REFRESH ']) {
+    const html = validHtml.replace('</head>', `<meta http-equiv="${directive}" content="0;url=https://outside.invalid/"></head>`);
+    assert.equal(validateHtmlArtifact(html).valid, false, directive);
+  }
+});
+
+test('parses executable modules and skips inert script data using actual attributes', () => {
+  for (const script of [
+    '<script type=" MODULE ">export const fraction = 0.5;</script>',
+    '<script type="application/json">{"enabled":true}</script>',
+    '<script type="text/plain">not JavaScript at all</script>',
+    '<script type="text/javascript; charset=utf-8">const value = ;</script>',
+    '<script data-note="type=module">const value = 1;</script>',
+  ]) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace(/<script>[\s\S]*?<\/script>/, script)).issues, [], script);
+  }
+});
+
+test('rejects syntax-invalid executable scripts and inline handlers', () => {
+  for (const snippet of [
+    '<script type="module">export const fraction = ;</script>',
+    '<script>const fraction = ;</script>',
+    '<script type="text/javascript1.5">const fraction = ;</script>',
+    '<button onclick="const fraction = ;">Try</button>',
+  ]) {
+    assert.ok(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues
+      .some((issue) => issue.code === 'javascript-syntax'), snippet);
+  }
+  assert.equal(validateHtmlArtifact(validHtml.replace('<button>', '<button onclick="return false">')).valid, true);
+});
+
 test('validates a complete self-contained artifact', () => {
   assert.deepEqual(validateHtmlArtifact(validHtml).issues, []);
   assert.deepEqual(
