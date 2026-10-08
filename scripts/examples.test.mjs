@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { chromium } from 'playwright';
 import {
   productionSeedParityIssues,
   seedApiRecord,
@@ -130,6 +131,33 @@ test('all curated seeds initialise without browser errors', async () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     dom.window.close();
     assert.deepEqual(errors, [], file);
+  }
+});
+
+test('seven curated sliders have independently specified accessible label names', async () => {
+  const expected = {
+    'catchment-under-pressure': { rain: 'Rainfall: mm/h', hard: 'Paved ground: %', drain: 'Drainage: mm/h' },
+    'linear-function-explorer': { m: 'Gradient m:', c: 'Vertical intercept c:' },
+    'line-golf': { m: 'Gradient m:', c: 'Vertical intercept c:' },
+  };
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const [example, names] of Object.entries(expected)) {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(`apps/ipad/Resources/Examples/${example}.html`, 'utf8'));
+      assert.equal(await page.getByRole('slider').count(), Object.keys(names).length);
+      for (const [id, name] of Object.entries(names)) {
+        const slider = page.getByRole('slider', { name, exact: true });
+        assert.equal(await slider.count(), 1, `${example} #${id} accessible name: ${name}`);
+        assert.equal(await slider.getAttribute('id'), id);
+        assert.equal(await slider.evaluate((input) => input.labels.length), 1);
+        assert.equal(await slider.evaluate((input) => input.labels[0].control.id), id);
+      }
+      await page.close();
+    }
+  } finally {
+    await browser.close();
   }
 });
 
