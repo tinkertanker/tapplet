@@ -63,10 +63,17 @@ export class MemoryStudioRepository implements StudioRepository {
   async countArtifacts(o: string) {
     return [...this.artifacts.values()].filter((a) => a.ownerHash === o).length;
   }
-  async createArtifact(i: CreateArtifactInput) {
+  async createArtifact(i: CreateArtifactInput, maximum = 100) {
+    if (
+      [...this.artifacts.values()].filter(
+        (a) => a.ownerHash === i.artifact.ownerHash,
+      ).length >= maximum
+    )
+      return false;
     this.artifacts.set(i.artifact.id, structuredClone(i.artifact));
     this.revisions.set(i.revision.id, structuredClone(i.revision));
     this.revisionAssets.set(i.revision.id, new Set(i.assetIds));
+    return true;
   }
   async upsertCuratedSeed(i: CuratedSeedInput) {
     if (i.artifact.ownerHash !== CURATED_SEED_OWNER || i.assetIds.length)

@@ -140,12 +140,12 @@ export class D1StudioRepository implements StudioRepository {
       )?.n ?? 0
     );
   }
-  async createArtifact(i: CreateArtifactInput) {
+  async createArtifact(i: CreateArtifactInput, maximum = 100) {
     const a = i.artifact,
       r = i.revision;
-    await this.db.batch([
+    const results = await this.db.batch([
       this.p(
-        "INSERT INTO artifacts(id,owner_hash,title,creation_brief,head_revision_id,remixed_from_revision_id,created_at,updated_at,summary,subject,level,locale,learning_objective,tags_json,generation_brief_json) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+        "INSERT INTO artifacts(id,owner_hash,title,creation_brief,head_revision_id,remixed_from_revision_id,created_at,updated_at,summary,subject,level,locale,learning_objective,tags_json,generation_brief_json) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15 WHERE (SELECT count(*) FROM artifacts WHERE owner_hash=?2)<?16 RETURNING id",
         a.id,
         a.ownerHash,
         a.title,
@@ -161,12 +161,18 @@ export class D1StudioRepository implements StudioRepository {
         a.learningObjective,
         JSON.stringify(a.tags),
         a.generationBrief,
+        maximum,
       ),
       this.revInsert(r),
       ...i.assetIds.map((x) =>
-        this.p("INSERT INTO revision_assets VALUES(?1,?2)", r.id, x),
+        this.p(
+          "INSERT INTO revision_assets SELECT ?1,?2 WHERE EXISTS(SELECT 1 FROM revisions WHERE id=?1)",
+          r.id,
+          x,
+        ),
       ),
     ]);
+    return results[0]?.results.length === 1;
   }
   async upsertCuratedSeed(i: CuratedSeedInput) {
     if (i.artifact.ownerHash !== CURATED_SEED_OWNER || i.assetIds.length)
@@ -223,7 +229,7 @@ ON CONFLICT(artifact_id) DO UPDATE SET revision_id=?2,descriptor=?3,curated=1,up
   }
   private revInsert(r: RevisionRecord) {
     return this.p(
-      "INSERT INTO revisions VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+      "INSERT INTO revisions SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13 WHERE EXISTS(SELECT 1 FROM artifacts WHERE id=?2)",
       r.id,
       r.artifactId,
       r.parentRevisionId,
@@ -356,7 +362,7 @@ FROM candidates c JOIN revisions r ON r.artifact_id=c.id`,
     const results = await this.db.batch(
       entries.map(([id, candidate]) =>
         this.p(
-          "DELETE FROM artifacts WHERE id=?1 AND owner_hash=?2 AND updated_at<?3 AND NOT EXISTS(SELECT 1 FROM publications p WHERE p.artifact_id=artifacts.id AND p.revoked_at IS NULL AND p.expires_at>?4)",
+          "DELETE FROM artifacts WHERE id=?1 AND owner_hash=?2 AND updated_at<?3 AND NOT EXISTS(SELECT 1 FROM publications p WHERE p.artifact_id=artifacts.id AND p.revoked_at IS NULL AND p.expires_at>?4) RETURNING id",
           id,
           candidate.ownerHash,
           b,
@@ -365,7 +371,7 @@ FROM candidates c JOIN revisions r ON r.artifact_id=c.id`,
       ),
     );
     return entries.flatMap(([, candidate], index) =>
-      (results[index]?.meta.changes ?? 0) === 1 ? [candidate.references] : [],
+      results[index]?.results.length === 1 ? [candidate.references] : [],
     );
   }
   async getRevision(id: string) {

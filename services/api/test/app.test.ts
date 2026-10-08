@@ -1319,6 +1319,65 @@ describe("Tapplet API registration and public HTML", () => {
     expect(put).toHaveBeenCalledOnce();
   });
 
+  it.each(["generate", "remix"])(
+    "maps concurrent %s capacity losers to the storage-limit error and spends both attempt quotas",
+    async (operation) => {
+      const initial = await app.fetch(
+        authenticated("/v1/artifacts/generate", "POST", creationBrief),
+      );
+      const first = (await initial.json()) as { headRevision: RevisionRecord };
+      const countArtifacts = repository.countArtifacts.bind(repository);
+      let checks = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(repository, "countArtifacts").mockImplementation(
+        async (owner) => {
+          const count = await countArtifacts(owner);
+          if (++checks === 2) release();
+          await gate;
+          return count;
+        },
+      );
+      app = createStudioApp({
+        repository,
+        provider: new FixtureModelProvider(),
+        config: { ...config, maximumDraftsPerOwner: 2 },
+        sources,
+        now: () => new Date("2026-08-02T00:00:00Z"),
+      });
+      const request = () =>
+        operation === "generate"
+          ? authenticated("/v1/artifacts/generate", "POST", creationBrief)
+          : authenticated(
+              `/v1/revisions/${first.headRevision.id}/remix`,
+              "POST",
+              {},
+            );
+      const quota = vi.spyOn(repository, "consumeGeneration");
+      const responses = await Promise.all([
+        app.fetch(request()),
+        app.fetch(request()),
+      ]);
+      expect(responses.map((response) => response.status).sort()).toEqual([
+        201, 429,
+      ]);
+      const denied = responses.find((response) => response.status === 429)!;
+      await expect(denied.json()).resolves.toMatchObject({
+        error: { code: "ARTIFACT_STORAGE_LIMIT_REACHED" },
+      });
+      expect(repository.artifacts.size).toBe(2);
+      expect(repository.revisions.size).toBe(2);
+      expect(
+        quota.mock.calls.filter(([subject]) => subject.startsWith("artifact:")),
+      ).toHaveLength(2);
+      expect(
+        quota.mock.calls.filter(([subject]) => subject.startsWith("network-artifact:")),
+      ).toHaveLength(2);
+    },
+  );
+
   it("enforces the saved-artifact cap for remixes", async () => {
     app = createStudioApp({
       repository,
