@@ -192,10 +192,11 @@ them.
    workshop code in App Review notes. Verify it immediately before submission
    and keep it valid until review has completed; never put it in source control
    or public metadata.
-7. Install the Release build on a physical A16 iPad. Complete the full flow for
-   at least three representative tapplets, including a simulation: generate,
-   revise, add a classroom image where appropriate, publish, and open each
-   resulting URL on a separate device in Safari. Exercise one advisory warning
+7. Recommended workshop rehearsal, not a TestFlight release prerequisite:
+   exercise the full flow for three representative tapplets, including a
+   simulation: generate, revise, add a classroom image where appropriate,
+   publish, and open each resulting URL on a separate device in Safari.
+   Exercise one advisory warning
    and verify that the work remains available to edit, re-prompt, remove or
    continue. Across the three flows, test VoiceOver, portrait and landscape.
    Revoke every link and verify that the student sees the unavailable state.
@@ -227,10 +228,14 @@ The unsigned CI build is not a distribution check. Before distribution:
    actual API behavior, complete Apple's current age-rating questionnaire, and
    provide beta review contact details, concise testing instructions, and a
    still-valid review class code. Do not put the code in public metadata.
-5. Install the archived build on a physical iPad and repeat the workshop flow
-   on the venue Wi-Fi. Keep the preinstalled, preactivated offline-example path
-   as the class-day fallback; TestFlight review timing is not a workshop
-   dependency.
+
+Physical-iPad testing is recommended for workshop readiness, not required for
+TestFlight submission or distribution. Simulator checks, including Devin's iPad
+simulator, can be used for beta validation; record their limits rather than
+claiming physical-device coverage. Before a workshop, consider rehearsing on an
+iPad using the venue Wi-Fi. Keep the preinstalled, preactivated offline-example
+path as the class-day fallback; TestFlight review timing is not a workshop
+dependency.
 
 If a class code must be replaced, preserve its protected provisioning file, or
 the protected record made when it was minted in the panel, as the audit and
