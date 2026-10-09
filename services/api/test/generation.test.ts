@@ -228,12 +228,16 @@ describe("HTML generation contract", () => {
       { html: "bad" },
       ["HTML must be a complete document with head and body elements."],
       { brief },
+      undefined,
+      expect.any(String),
     );
     expect(provider.repair).toHaveBeenNthCalledWith(
       2,
       { html: invalidJs },
       ["Inline JavaScript must use valid syntax."],
       { brief, final: true },
+      undefined,
+      expect.any(String),
     );
   });
 
@@ -280,6 +284,8 @@ describe("HTML generation contract", () => {
       { html: "bad" },
       ["HTML must be a complete document with head and body elements."],
       { brief, final: true },
+      undefined,
+      expect.any(String),
     );
   });
 
@@ -301,6 +307,8 @@ describe("HTML generation contract", () => {
       { html: invalidHtml },
       ["Inline JavaScript must use valid syntax."],
       { brief },
+      undefined,
+      expect.any(String),
     );
   });
 

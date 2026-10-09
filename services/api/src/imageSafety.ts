@@ -35,6 +35,8 @@ export class OpenCodeGoImageSafetyInspector implements ImageSafetyInspector {
         headers: {
           authorization: `Bearer ${this.options.apiKey}`,
           'content-type': 'application/json',
+          'x-opencode-session': crypto.randomUUID(),
+          'user-agent': 'tapplet-studio/0.1',
         },
         body: JSON.stringify({
           model: this.options.model,
