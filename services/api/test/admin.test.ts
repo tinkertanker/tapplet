@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createModelProvider } from "../src/ai/createProvider";
 import {
@@ -91,6 +93,23 @@ function settingsDatabase() {
 describe("web operations panel", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("migrates existing settings unchanged and permits Anthropic without weakening key constraints", () => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec(readFileSync(new URL("../migrations/0011_admin_settings.sql", import.meta.url), "utf8"));
+      db.prepare("INSERT INTO admin_model_settings VALUES(1,?,?,?,?,?,?)").run(
+        "openai-compatible", "gpt-4.1", "https://api.openai.com/v1", "encrypted", "iv", "original-date",
+      );
+      const saved = db.prepare("SELECT * FROM admin_model_settings").get();
+      db.exec(readFileSync(new URL("../migrations/0012_anthropic_provider.sql", import.meta.url), "utf8"));
+      expect(db.prepare("SELECT * FROM admin_model_settings").get()).toEqual(saved);
+      db.exec("UPDATE admin_model_settings SET provider='anthropic',model='claude-haiku-5-5'");
+      expect(db.prepare("SELECT provider FROM admin_model_settings").get()?.provider).toBe("anthropic");
+      expect(() => db.exec("UPDATE admin_model_settings SET api_key_iv=NULL")).toThrow();
+      expect(() => db.exec("UPDATE admin_model_settings SET provider='unknown'")).toThrow();
+    } finally { db.close(); }
+  });
+
   it("encrypts provider keys with authenticated encryption", async () => {
     const first = await encryptAdminApiKey(
       "provider-secret",
@@ -163,7 +182,7 @@ describe("web operations panel", () => {
     expect(denied?.status).toBe(401);
   });
 
-  it("stores only an encrypted API key and uses the selected model", async () => {
+  it.each(["openai-compatible", "anthropic"])("stores only an encrypted API key and preserves the selected %s model", async (provider) => {
     const { database, row } = settingsDatabase();
     const env = environment(database);
     const response = await handleAdminRequest(
@@ -174,7 +193,7 @@ describe("web operations panel", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          provider: "openai-compatible",
+          provider,
           model: "test-model",
           baseUrl: "https://models.example.test/v1/",
           apiKey: "provider-secret",
@@ -188,7 +207,24 @@ describe("web operations panel", () => {
     expect(row()?.api_key_ciphertext).not.toContain("provider-secret");
     expect(row()?.base_url).toBe("https://models.example.test/v1");
     await expect(loadConfiguredModelProvider(env)).resolves.toMatchObject({
-      name: "openai-compatible:test-model",
+      name: `${provider}:test-model`,
+    });
+  });
+
+  it("gets public catalogue options without forwarding admin, managed, or provider credentials", async () => {
+    const entry = { id: "catalogue-model", provider: "anthropic", display_name: "Catalogue model", tier: "balanced", is_default: true };
+    const fetcher = vi.fn(async () => Response.json({ object: "list", version: 1, data: [entry] }));
+    vi.stubGlobal("fetch", fetcher);
+    const { database, settingsReads } = settingsDatabase();
+    const env = { ...environment(database), TKSLOPPER_GATEWAY_URL: "https://gateway.test", TKSLOPPER_SERVICE_CREDENTIAL: "managed-secret", ANTHROPIC_API_KEY: "provider-secret" };
+    const response = await handleAdminRequest(new Request("https://api.test/v1/admin/model-catalogue", {
+      headers: { authorization: `Bearer ${adminToken}`, cookie: "private=session" },
+    }), env);
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ source: "tkslopper", data: [entry] });
+    expect(settingsReads()).toBe(0);
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL("https://gateway.test/v1/model-catalogue"), {
+      method: "GET", headers: { accept: "application/json" }, credentials: "omit", redirect: "manual", signal: expect.any(AbortSignal),
     });
   });
 

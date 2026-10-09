@@ -1,4 +1,7 @@
 import type { StudioEnv } from "../env";
+import { readBodyBytes } from "../http";
+import { MODEL_PROVIDERS } from "./modelCatalogue";
+import type { CatalogueModel } from "./modelCatalogue";
 import type { ImageSafetyInspector, ImageSafetyReview } from "../imageSafety";
 import {
   IMAGE_SAFETY_QUESTION,
@@ -12,7 +15,9 @@ import type {
 import { emitOperationalTrace } from "../operationalTrace";
 import { UnavailableModelProvider } from "./createProvider";
 import {
+  ARTIFACT_OUTPUT_SCHEMA,
   generationPrompt,
+  MODERATION_OUTPUT_SCHEMA,
   MODERATION_SYSTEM_PROMPT,
   repairPrompt,
   revisionPrompt,
@@ -303,6 +308,13 @@ export interface TkslopperGatewayResult {
   gatewayRequestId?: string;
 }
 
+export interface ManagedModelMetadata {
+  id: string;
+  display_name?: string;
+  provider?: string;
+  tier?: CatalogueModel["tier"];
+}
+
 export interface TkslopperClientOptions {
   fetch?: typeof fetch;
   grantCache?: TkslopperGrantCache;
@@ -369,6 +381,61 @@ export class TkslopperClient {
       CREDENTIAL_PATTERN.exec(config.serviceCredential)?.[1] ?? "",
       this.capabilities,
     ]);
+  }
+
+  /** Optional, read-only labels. No listing cache and no effect on inference IDs. */
+  async listModelMetadata(): Promise<ManagedModelMetadata[]> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("Model metadata timed out"));
+      }, 3_000);
+    });
+    try {
+      return await Promise.race([
+        (async () => {
+          const grant = await this.grant();
+          // A shared exchange can finish after this display read times out.
+          controller.signal.throwIfAborted();
+          const response = await this.dispatch(this.config.gateway, "/v1/models", {
+            method: "GET",
+            headers: { authorization: `Bearer ${grant.accessToken}`, accept: "application/json" },
+            cache: "no-store",
+            credentials: "omit",
+            redirect: "manual",
+            signal: controller.signal,
+          });
+          if (response.status === 401 || response.status === 403) this.invalidate(grant);
+          if (!response.ok) {
+            await response.body?.cancel();
+            return [];
+          }
+          const bytes = await readBodyBytes(response, 256_000);
+          const body: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+          if (!isRecord(body) || body.object !== "list" || !Array.isArray(body.data) || body.data.length > 500)
+            return [];
+          const seen = new Set<string>();
+          const models: ManagedModelMetadata[] = [];
+          for (const item of body.data) {
+            if (!isRecord(item) || typeof item.id !== "string" || !this.capabilities.includes(item.id)) continue;
+            if (seen.has(item.id)) return [];
+            seen.add(item.id);
+            const metadata: ManagedModelMetadata = { id: item.id };
+            if (typeof item.display_name === "string" && item.display_name.trim() &&
+              item.display_name.length <= 200 && !/[\x00-\x1f\x7f]/.test(item.display_name))
+              metadata.display_name = item.display_name;
+            if (typeof item.provider === "string" && MODEL_PROVIDERS.has(item.provider)) metadata.provider = item.provider;
+            if (item.tier === "economy" || item.tier === "balanced" || item.tier === "premium") metadata.tier = item.tier;
+            models.push(metadata);
+          }
+          return models;
+        })(),
+        deadline,
+      ]);
+    } catch { return []; }
+    finally { clearTimeout(timer); controller.abort(); }
   }
 
   /**
@@ -804,7 +871,7 @@ export class TkslopperModelProvider implements ModelProvider {
         model: this.config.reviewAlias,
         instructions: MODERATION_SYSTEM_PROMPT,
         input: html,
-        text: { format: { type: "json_object" } },
+        text: { format: { type: "json_schema", name: "moderation", strict: true, schema: MODERATION_OUTPUT_SCHEMA } },
         max_output_tokens: REVIEW_MAX_OUTPUT_TOKENS,
         ...effortField("responses", this.config.reviewEffort),
         stream: false,
@@ -839,9 +906,8 @@ export class TkslopperModelProvider implements ModelProvider {
               { role: "system", content: SYSTEM_PROMPT },
               { role: "user", content: prompt },
             ],
-            response_format: { type: "json_object" },
+            response_format: { type: "json_schema", json_schema: { name: "artifact", strict: true, schema: ARTIFACT_OUTPUT_SCHEMA } },
             max_tokens: ARTIFACT_MAX_OUTPUT_TOKENS,
-            temperature: 0.2,
             ...effortField("chat", this.config.artifactEffort),
             stream: false,
           }
@@ -849,7 +915,7 @@ export class TkslopperModelProvider implements ModelProvider {
             model: this.config.artifactAlias,
             instructions: SYSTEM_PROMPT,
             input: prompt,
-            text: { format: { type: "json_object" } },
+            text: { format: { type: "json_schema", name: "artifact", strict: true, schema: ARTIFACT_OUTPUT_SCHEMA } },
             max_output_tokens: ARTIFACT_MAX_OUTPUT_TOKENS,
             ...effortField("responses", this.config.artifactEffort),
             stream: false,

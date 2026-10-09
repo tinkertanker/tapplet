@@ -45,7 +45,13 @@ function environment(html: string): StudioEnv {
 
 describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published activity containment (%s)", (_name, engine) => {
   let browser: Browser;
-  beforeAll(async () => { browser = await engine.launch(); });
+  beforeAll(async () => {
+    browser = await engine.launch();
+    // Include cold-page initialization in suite setup, not the containment test's budget.
+    const context = await browser.newContext();
+    try { await context.newPage(); }
+    finally { await context.close(); }
+  });
   afterAll(async () => { await browser.close(); });
 
   async function open(html: string, width = 1024, height = 768) {

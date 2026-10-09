@@ -54,10 +54,40 @@ providers are:
 | `AI_PROVIDER` | Credential | Endpoint |
 | --- | --- | --- |
 | `openai-compatible` | `AI_API_KEY` | `AI_BASE_URL` |
+| `anthropic` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com/v1/messages` |
 | `opencode` | `OPENCODE_API_KEY` | OpenCode Zen |
 | `opencode-go` | `OPENCODE_API_KEY` | OpenCode Go |
 | `openrouter` | `OPENROUTER_API_KEY` | OpenRouter |
 | `fixture` | none | deterministic local fixture |
+
+For direct OpenAI, set `AI_BASE_URL=https://api.openai.com/v1` and
+`AI_MODEL=gpt-6-luna` (cost-effective), `gpt-6.1-sol` (balanced), or
+`gpt-6-astra` (flagship). GPT-5/6 models use Responses with medium reasoning
+for artifacts and low for moderation, without sampling parameters. Older
+OpenAI models and third-party compatible endpoints retain chat completions.
+
+For native Claude, set `AI_PROVIDER=anthropic` and
+`AI_MODEL=claude-haiku-5-5` (cost-effective), `claude-sonnet-5-5` (balanced),
+or `claude-opus-5-5` (higher tier), and configure `ANTHROPIC_API_KEY`.
+Tapplet uses Messages with strict JSON schemas and adaptive thinking: medium
+for artifacts, low for moderation. Thinking blocks are ignored; refusals and
+truncated output are errors. Keys stay on the Worker; Anthropic never falls
+back to another provider's key or the managed service credential.
+
+The operations panel gets provider-key/BYOK model suggestions from the public
+tkslopper catalogue at `TKSLOPPER_GATEWAY_URL`, including when inference uses
+the direct transport. No provider key or managed credential is needed to fetch
+options. A failed/unconfigured catalogue leaves two bundled defaults (GPT-6
+Luna and Claude Haiku 5.5); saved/custom model IDs are always retained. See the
+[catalogue contract and provider mapping](docs/TKSLOPPER_TRANSPORT.md#model-suggestions).
+Apply migration `0012_anthropic_provider.sql` before saving an
+Anthropic admin override; it preserves existing settings and encrypted keys.
+No deployment default or managed alias is changed by these suggestions.
+For a Claude evaluation use `EVAL_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`
+(or explicit `EVAL_API_KEY`), and optionally `EVAL_MODEL` / `EVAL_BASE_URL`.
+Custom Claude endpoints require an explicit `EVAL_API_KEY`; the Anthropic key
+is used only at its official endpoint. Likewise, generic `AI_API_KEY` fallback
+requires the evaluation endpoint to match its configured `AI_BASE_URL`.
 
 For OpenCode Zen or Go, use a model ID listed in the provider's endpoint table;
 Tapplet supports OpenAI-compatible chat completions and the Responses API used

@@ -58,7 +58,7 @@ export async function readJson<T>(request: Request, maximumBytes = 256_000): Pro
 }
 
 export async function readBodyBytes(
-  request: Request,
+  request: Request | Response,
   maximumBytes: number,
   tooLarge: () => HttpError = () =>
     new HttpError(413, 'REQUEST_TOO_LARGE', 'The request is too large.'),
