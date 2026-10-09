@@ -19,7 +19,7 @@ export class MemoryStudioRepository implements StudioRepository {
   readonly contentReports: ContentReportInput[] = [];
   readonly classCodes = new Map<
     string,
-    { maximumUses: number; uses: number; expiresAt: string }
+    { maximumUses: number; uses: number; expiresAt: string; shortCodeHash?: string }
   >();
   private usage = new Map<string, number>();
   private revisionAssets = new Map<string, Set<string>>();
@@ -42,7 +42,8 @@ export class MemoryStudioRepository implements StudioRepository {
     d: string,
     l: number,
   ): Promise<RegistrationResult> {
-    const c = this.classCodes.get(h);
+    const c = this.classCodes.get(h) ??
+      [...this.classCodes.values()].find((code) => code.shortCodeHash === h);
     if (!c || c.expiresAt <= n || c.uses >= c.maximumUses)
       return "invalid-class-code";
     const k = `${s}:${d}`,

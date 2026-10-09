@@ -1,7 +1,5 @@
 import { randomInt } from 'node:crypto';
 
-const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-
 export function parseClassNumber(value, usage = 'Expected a four-digit class number.') {
   if (typeof value !== 'string' || !/^\d{4}$/.test(value)) {
     throw new Error(usage);
@@ -20,16 +18,12 @@ export function parseMaximumUses(value, usage = 'Expected maximum uses from 1 to
   return parsed;
 }
 
-export function createClassCode(classNumber, selectIndex = (length) => randomInt(length)) {
-  const prefix = parseClassNumber(classNumber);
-  // Eight letters (~37 bits) keeps codes unguessable even when the four-digit
-  // class number is known to students.
-  const suffix = Array.from({ length: 8 }, () => LETTERS[selectIndex(LETTERS.length)]).join('');
-  return `${prefix}${suffix}`;
+export function createClassCode(selectNumber = randomInt) {
+  return String(selectNumber(1_000_000)).padStart(6, '0');
 }
 
 export function normaliseClassCode(value) {
   if (typeof value !== 'string') return null;
   const compact = value.trim().toUpperCase().replaceAll('-', '');
-  return /^\d{4}[A-Z]{8}$/.test(compact) ? compact : null;
+  return /^(?:\d{6}|[A-Z]{6}|\d{4}[A-Z]{8})$/.test(compact) ? compact : null;
 }

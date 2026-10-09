@@ -50,10 +50,11 @@ export function readProvisioningFile(path, expected) {
   } finally {
     closeSync(descriptor);
   }
-  const code = contents.match(/\n(\d{4}[A-Z]{8})\n?$/)?.[1];
+  const code = contents.match(/\n(\d{6}|\d{4}[A-Z]{8})\n?$/)?.[1];
   if (!code || !contents.includes(`# Class: ${expected.classNumber}\n`) ||
       !contents.includes(`# Maximum activations: ${expected.maximumUses}\n`) ||
-      !contents.includes(`# Expires: ${expected.expiresAt}\n`) || !code.startsWith(expected.classNumber)) {
+      !contents.includes(`# Expires: ${expected.expiresAt}\n`) ||
+      (code.length === 12 && !code.startsWith(expected.classNumber))) {
     throw new Error(`${path} does not match this request. Preserve it and use its recorded arguments to retry, or move it to the Trash before rotating the code.`);
   }
   return code;
@@ -105,42 +106,65 @@ function main() {
   const expiresAt = parseFutureIsoExpiry(process.argv[4]);
   const outputPath = resolve(outputDirectory, `${classNumber}.txt`);
   ensureProtectedDirectory(outputDirectory);
-  const code = existsSync(outputPath)
+  const existingCodeFile = existsSync(outputPath);
+  let code = existingCodeFile
     ? readProvisioningFile(outputPath, { classNumber, maximumUses, expiresAt })
-    : createClassCode(classNumber);
+    : createClassCode();
   const expected = { label: `Class ${classNumber}`, maximumUses, expiresAt };
-  const statement = provisioningStatement({
-    hash: codeHash(code),
-    ...expected,
-    createdAt: new Date().toISOString(),
-  });
-  const contents = [
-    '# Tapplet class code',
-    `# Class: ${classNumber}`,
-    `# Maximum activations: ${maximumUses}`,
-    `# Expires: ${expiresAt}`,
-    '# Share only with this class. Each iPad activation consumes one use.',
-    '',
-    code,
-    '',
-  ].join('\n');
-
-  if (!existsSync(outputPath)) {
-    writeFileSync(outputPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-  }
-
-  const result = spawnSync(
-    'npx',
-    ['wrangler', 'd1', 'execute', 'DB', '--remote', '--profile', 'tinkertanker', '--json', '--command', statement],
-    { cwd: serviceDirectory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  if (result.status !== 0 || !provisioningResultMatches(result.stdout, expected)) {
-    throw new Error(
-      `Could not confirm matching remote provisioning. The code remains protected at ${outputPath}; retry this identical command after checking Wrangler authentication and connectivity.`,
+  let replaceConfirmedCollision = false;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const statement = provisioningStatement({
+      hash: codeHash(code),
+      ...expected,
+      createdAt: new Date().toISOString(),
+    });
+    const contents = [
+      '# Tapplet class code',
+      `# Class: ${classNumber}`,
+      `# Maximum activations: ${maximumUses}`,
+      `# Expires: ${expiresAt}`,
+      '# Share only with this class. Each iPad activation consumes one use.',
+      '',
+      code,
+      '',
+    ].join('\n');
+    if (replaceConfirmedCollision) {
+      const descriptor = openSync(outputPath, constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_TRUNC);
+      try {
+        fchmodSync(descriptor, 0o600);
+        writeFileSync(descriptor, contents, 'utf8');
+      } finally {
+        closeSync(descriptor);
+      }
+    } else if (!existsSync(outputPath)) {
+      writeFileSync(outputPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    }
+    const result = spawnSync(
+      'npx',
+      ['wrangler', 'd1', 'execute', 'DB', '--remote', '--profile', 'tinkertanker', '--json', '--command', statement],
+      { cwd: serviceDirectory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
     );
+    if (result.status === 0 && provisioningResultMatches(result.stdout, expected)) {
+      console.log(`Provisioned class ${classNumber} with a maximum of ${maximumUses} activations.`);
+      console.log(`The code was written with owner-only permissions to ${outputPath}`);
+      return;
+    }
+    let collision = false;
+    if (!existingCodeFile && result.status === 0 && /^\d{6}$/.test(code)) {
+      try {
+        const responses = JSON.parse(result.stdout);
+        collision = responses.length === 1 && responses[0].success === true && responses[0].results?.length === 0;
+      } catch { /* An uncertain result must preserve the file for an identical retry. */ }
+    }
+    if (!collision) break;
+    // Retry only a new allocation with a confirmed hash conflict. A saved
+    // credential's metadata may have changed remotely; preserve it for review.
+    code = createClassCode();
+    replaceConfirmedCollision = true;
   }
-  console.log(`Provisioned class ${classNumber} with a maximum of ${maximumUses} activations.`);
-  console.log(`The code was written with owner-only permissions to ${outputPath}`);
+  throw new Error(
+    `Could not confirm matching remote provisioning. The code remains protected at ${outputPath}; retry this identical command after checking Wrangler authentication and connectivity.`,
+  );
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

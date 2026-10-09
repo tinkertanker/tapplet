@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import {
   createModelProvider,
   UnavailableModelProvider,
@@ -420,15 +421,8 @@ async function resetModel(env: StudioEnv): Promise<Response> {
   return json({ model: modelSummary(env, null) });
 }
 
-const CLASS_CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-
-function createClassCode(classNumber: string): string {
-  const random = crypto.getRandomValues(new Uint8Array(8));
-  const suffix = Array.from(
-    random,
-    (value) => CLASS_CODE_LETTERS[value % CLASS_CODE_LETTERS.length],
-  ).join("");
-  return `${classNumber}${suffix}`;
+function createClassCode(): string {
+  return String(randomInt(1_000_000)).padStart(6, "0");
 }
 
 async function mintClassCode(request: Request, env: StudioEnv): Promise<Response> {
@@ -453,30 +447,28 @@ async function mintClassCode(request: Request, env: StudioEnv): Promise<Response
   )
     return apiError(422, "INVALID_EXPIRY", "Choose a future expiry date and time.");
 
-  const code = createClassCode(classNumber);
   const createdAt = new Date().toISOString();
-  await env.DB.prepare(
-    `INSERT INTO class_codes(code_hash,label,maximum_uses,expires_at,created_at)
-     VALUES(?1,?2,?3,?4,?5)`,
-  )
-    .bind(
-      await sha256(`class-code:${code}`),
-      `Class ${classNumber}`,
-      maximumUses,
-      expiresAt,
-      createdAt,
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const code = createClassCode();
+    const result = await env.DB.prepare(
+      `INSERT INTO class_codes(code_hash,label,maximum_uses,expires_at,created_at)
+       VALUES(?1,?2,?3,?4,?5) ON CONFLICT(code_hash) DO NOTHING`,
     )
-    .run();
-  return json(
-    {
-      code: `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`,
-      classNumber,
-      maximumUses,
-      expiresAt,
-      createdAt,
-    },
-    { status: 201 },
-  );
+      .bind(
+        await sha256(`class-code:${code}`),
+        `Class ${classNumber}`,
+        maximumUses,
+        expiresAt,
+        createdAt,
+      )
+      .run();
+    if (result.meta.changes === 1)
+      return json(
+        { code, classNumber, maximumUses, expiresAt, createdAt },
+        { status: 201 },
+      );
+  }
+  return apiError(503, "CLASS_CODE_ALLOCATION_FAILED", "Could not allocate a class code. Try again.");
 }
 
 export async function handleAdminRequest(

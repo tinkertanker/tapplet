@@ -170,8 +170,9 @@ them.
    replacing every example argument (including the expiry) with workshop
    values and having a second operator review the UTC expiry. Keep it valid only
    through setup, the workshop and a short contingency period. The activation
-   limit must be 1 to 100. The generated code contains those four numbers followed by eight
-   random letters. Its ignored `.studio-class-codes/1234.txt` file has
+   limit must be 1 to 100. The generated code is six random digits, including
+   any leading zeroes; the four-digit class number is only an operator label.
+   Its ignored `.studio-class-codes/1234.txt` file has
    owner-only permissions. Each successful iPad activation consumes one use;
    the code remains valid until it reaches the configured limit or expires. If
    Wrangler fails, retry the **identical command**: provisioning reuses the
@@ -244,6 +245,38 @@ the exact row's label, limit, expiry and use count, and disable only that hash
 before securely archiving the record and provisioning a replacement. Never
 identify a row only by the non-unique label, and never paste class codes or
 hashes into issues, commits, chat logs or screenshots.
+
+## Short-code rollout and legacy codes
+
+Apply migration `0013_short_class_codes.sql` before deploying the updated API.
+For each existing twelve-character code whose original file is available, run
+from the repository root:
+
+```sh
+npm run class-access:shorten -- 1234 --remote
+```
+
+This reads `.studio-class-codes/1234.txt` and adds a hash of its last six letters
+to the exact existing row. It does not rewrite the original file, reset usage,
+change limits or extend expiry. Re-running is safe. Missing rows or conflicting
+aliases fail rather than enabling the wrong class. Originals cannot be recovered
+from one-way hashes; retain the files. Use `--local` for local verification.
+
+Deploy the API before distributing the updated iPad app. The updated app accepts
+six-digit codes and the last six letters of older codes. Original full codes
+remain valid for older clients, sharing the same activation budget and expiry.
+Older installed apps cannot enter either short form until updated. Do not rotate
+device-token secrets as part of this rollout.
+
+Six-digit codes have one million possibilities. The existing
+`DAILY_NETWORK_CLASS_CODE_FAILURE_LIMIT` now bounds **all format-valid attempts**
+before checking the credential, including successful guesses; its configured
+500-attempt budget remains separate from the 100 successful registrations per
+network. A locked network cannot bypass this budget with a correct guess.
+Use workshop-appropriate expiries. Numeric allocation retries confirmed hash
+collisions; uncertain CLI results preserve the protected file for an identical
+retry. The unique legacy-alias index rejects shared suffixes; a conflicting
+legacy class needs a replacement code, not a shared alias.
 
 ## Review public content reports
 

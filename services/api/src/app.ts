@@ -607,7 +607,7 @@ export function createStudioApp(d: Deps) {
         code = str(b.accessCode, "Class code", 80)
           .toUpperCase()
           .replaceAll("-", "");
-      if (!/^\d{4}[A-Z]{8}$/.test(code))
+      if (!/^(?:\d{6}|[A-Z]{6}|\d{4}[A-Z]{8})$/.test(code))
         throw new HttpError(
           403,
           "INVALID_ACCESS_CODE",
@@ -616,8 +616,22 @@ export function createStudioApp(d: Deps) {
       const timestamp = now(),
         date = timestamp.toISOString().slice(0, 10),
         classCodeHash = await sha256(`class-code:${code}`),
-        networkHash = await networkHashFrom(r),
-        registration = await d.repository.consumeRegistration(
+        networkHash = await networkHashFrom(r);
+      // Reserve every attempt before testing the credential: a successful guess
+      // must not bypass a network that has already exhausted its search budget.
+      if (
+        !(await d.repository.consumeGeneration(
+          `class-code-fail-network:${networkHash}`,
+          date,
+          d.config.dailyNetworkClassCodeFailureLimit,
+        ))
+      )
+        throw new HttpError(
+          429,
+          "CLASS_CODE_NETWORK_LOCKED",
+          "This network has had too many class-code attempts today. Ask your facilitator for help.",
+        );
+      const registration = await d.repository.consumeRegistration(
           classCodeHash,
           timestamp.toISOString(),
           `registration:${networkHash}`,
@@ -631,18 +645,6 @@ export function createStudioApp(d: Deps) {
           "This class code cannot be used. Check it or ask your facilitator for help.",
         );
       if (registration === "invalid-class-code") {
-        if (
-          !(await d.repository.consumeGeneration(
-            `class-code-fail-network:${networkHash}`,
-            date,
-            d.config.dailyNetworkClassCodeFailureLimit,
-          ))
-        )
-          throw new HttpError(
-            429,
-            "CLASS_CODE_NETWORK_LOCKED",
-            "This network has had too many unsuccessful class-code attempts today. Ask your facilitator for help.",
-          );
         if (
           !(await d.repository.consumeGeneration(
             `class-code-fail:${classCodeHash}`,

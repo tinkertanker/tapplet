@@ -76,7 +76,7 @@ function settingsDatabase() {
           } else if (query.startsWith("INSERT INTO class_codes")) {
             classCodeValues = values;
           }
-          return { success: true };
+          return { success: true, meta: { changes: 1 } };
         },
       };
       return statement;
@@ -295,7 +295,7 @@ describe("web operations panel", () => {
     expect(response?.status).toBe(201);
     expect(response?.headers.get("cache-control")).toContain("no-store");
     const body = (await response?.json()) as { code: string };
-    expect(body.code).toMatch(/^0042-[A-HJ-NP-Z]{4}-[A-HJ-NP-Z]{4}$/);
+    expect(body.code).toMatch(/^\d{6}$/);
     const compactCode = body.code.replaceAll("-", "");
     expect(classCodeValues()).toEqual([
       createHash("sha256").update(`class-code:${compactCode}`).digest("hex"),
@@ -305,6 +305,43 @@ describe("web operations panel", () => {
       expect.any(String),
     ]);
     expect(JSON.stringify(classCodeValues())).not.toContain(compactCode);
+  });
+
+  it("allocates another code after a collision without changing the existing class", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec("CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT,maximum_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at TEXT,created_at TEXT)");
+    let occupyFirstCandidate = true;
+    const database = {
+      prepare(query: string) {
+        return {
+          bind(...values: (string | number)[]) {
+            return {
+              async run() {
+                if (occupyFirstCandidate) {
+                  sqlite.prepare("INSERT INTO class_codes VALUES(?,?,?,?,?,?)").run(values[0]!, "Existing class", 9, 7, "2090-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+                  occupyFirstCandidate = false;
+                }
+                return { success: true, meta: { changes: Number(sqlite.prepare(query).run(...values).changes) } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    try {
+      const response = await handleAdminRequest(new Request("https://api.test/v1/admin/class-codes", {
+        method: "POST",
+        headers: { authorization: `Bearer ${adminToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ classNumber: "0042", maximumUses: 30, expiresAt: "2099-08-24T00:00:00.000Z" }),
+      }), environment(database));
+      expect(response?.status).toBe(201);
+      const body = await response!.json() as { code: string };
+      expect(sqlite.prepare("SELECT label,maximum_uses,use_count,expires_at FROM class_codes WHERE label='Existing class'").get()).toEqual({ label: "Existing class", maximum_uses: 9, use_count: 7, expires_at: "2090-01-01T00:00:00.000Z" });
+      expect(sqlite.prepare("SELECT label FROM class_codes WHERE code_hash=?").get(createHash("sha256").update(`class-code:${body.code}`).digest("hex"))).toEqual({ label: "Class 0042" });
+      expect(sqlite.prepare("SELECT COUNT(*) AS count FROM class_codes").get()).toEqual({ count: 2 });
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("uses all fields from a generic admin provider override", async () => {

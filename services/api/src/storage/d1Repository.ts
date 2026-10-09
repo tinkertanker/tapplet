@@ -85,13 +85,13 @@ export class D1StudioRepository implements StudioRepository {
     const marker = `registration:${crypto.randomUUID()}`;
     const results = await this.db.batch([
       this.p(
-        "UPDATE class_codes SET use_count=use_count+1,last_used_at=?1||COALESCE(last_used_at,'') WHERE code_hash=?2 AND use_count<maximum_uses AND expires_at>?3",
+        "UPDATE class_codes SET use_count=use_count+1,last_used_at=?1||COALESCE(last_used_at,'') WHERE (code_hash=?2 OR short_code_hash=?2) AND use_count<maximum_uses AND expires_at>?3",
         marker,
         h,
         n,
       ),
       this.p(
-        "INSERT INTO generation_usage(owner_hash,usage_date,request_count) SELECT ?1,?2,1 WHERE EXISTS(SELECT 1 FROM class_codes WHERE code_hash=?3 AND substr(last_used_at,1,length(?4))=?4) ON CONFLICT(owner_hash,usage_date) DO UPDATE SET request_count=request_count+1 WHERE request_count<?5",
+        "INSERT INTO generation_usage(owner_hash,usage_date,request_count) SELECT ?1,?2,1 WHERE EXISTS(SELECT 1 FROM class_codes WHERE (code_hash=?3 OR short_code_hash=?3) AND substr(last_used_at,1,length(?4))=?4) ON CONFLICT(owner_hash,usage_date) DO UPDATE SET request_count=request_count+1 WHERE request_count<?5",
         s,
         d,
         h,
@@ -99,12 +99,12 @@ export class D1StudioRepository implements StudioRepository {
         l,
       ),
       this.p(
-        "UPDATE class_codes SET use_count=use_count-1,last_used_at=NULLIF(substr(last_used_at,length(?2)+1),'') WHERE code_hash=?1 AND substr(last_used_at,1,length(?2))=?2 AND changes()=0",
+        "UPDATE class_codes SET use_count=use_count-1,last_used_at=NULLIF(substr(last_used_at,length(?2)+1),'') WHERE (code_hash=?1 OR short_code_hash=?1) AND substr(last_used_at,1,length(?2))=?2 AND changes()=0",
         h,
         marker,
       ),
       this.p(
-        "UPDATE class_codes SET last_used_at=?1 WHERE code_hash=?2 AND substr(last_used_at,1,length(?3))=?3",
+        "UPDATE class_codes SET last_used_at=?1 WHERE (code_hash=?2 OR short_code_hash=?2) AND substr(last_used_at,1,length(?3))=?3",
         n,
         h,
         marker,
