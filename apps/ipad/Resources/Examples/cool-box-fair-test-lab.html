@@ -10,6 +10,11 @@ const opts='<option value="">Choose…</option><option value="changed">Changed o
 varsBox.innerHTML=data.map(x=>`<label class="var">${x[0]}<select data-answer="${x[1]}">${opts}</select></label>`).join('');
 document.getElementById('checkVars').onclick=()=>{
   const a=[...varsBox.querySelectorAll('select')];
+  if(a.some(x=>!x.value)){
+    a.forEach(x=>{x.classList.remove('correct','incorrect');clearMark(x)});
+    document.getElementById('vm').textContent='Choose an answer for every item first.';
+    return;
+  }
   let allCorrect=true;
   a.forEach(x=>{
     x.classList.remove('correct','incorrect');
