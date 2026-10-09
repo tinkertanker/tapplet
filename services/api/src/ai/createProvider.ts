@@ -1,4 +1,5 @@
 import type { StudioEnv } from "../env";
+import { AnthropicProvider } from "./anthropicProvider";
 import { FixtureModelProvider } from "./fixtureProvider";
 import { OpenAiCompatibleProvider } from "./openAiCompatibleProvider";
 import type { PromptBoundaryMode } from "./prompts";
@@ -59,18 +60,38 @@ export function createModelProvider(
     model = override?.model ?? env.AI_MODEL;
   if (provider === "fixture") return new FixtureModelProvider();
 
+  if (provider === "anthropic") {
+    const apiKey = override ? override.apiKey : env.ANTHROPIC_API_KEY;
+    if (!apiKey) return new UnavailableModelProvider("The configured model provider has no ANTHROPIC_API_KEY.");
+    const effort = override?.reasoningEffort;
+    if (effort && !["low", "medium", "high"].includes(effort))
+      return new UnavailableModelProvider("Anthropic reasoning effort must be low, medium or high.");
+    return new AnthropicProvider({
+      apiKey,
+      model: model || "claude-haiku-5-5",
+      baseUrl: override?.baseUrl ?? "https://api.anthropic.com/v1",
+      effort: effort as "low" | "medium" | "high" | undefined,
+      promptBoundaryMode: override?.promptBoundaryMode,
+    });
+  }
+
   if (provider === "openai-compatible") {
     const baseUrl = override?.baseUrl ?? env.AI_BASE_URL;
+    // Keep older models and third-party compatible endpoints on their existing dialect.
+    const openAi = new URL(baseUrl).hostname === "api.openai.com"
+      && (!model || /^gpt-[56](?:[.-]|$)/.test(model));
     return openAiCompatibleProvider(
-      model,
+      model || (openAi ? "gpt-6-luna" : model),
       baseUrl,
       override ? override.apiKey : env.AI_API_KEY,
       "openai-compatible",
       "AI_API_KEY",
       undefined,
-      openAiCompatibleReasoningOptions(baseUrl, override?.reasoningEffort),
-      undefined,
-      undefined,
+      openAi
+        ? { reasoning: { effort: override?.reasoningEffort ?? "medium" } }
+        : openAiCompatibleReasoningOptions(baseUrl, override?.reasoningEffort),
+      openAi ? "responses" : undefined,
+      openAi ? { reasoning: { effort: "low" } } : undefined,
       override?.promptBoundaryMode,
     );
   }

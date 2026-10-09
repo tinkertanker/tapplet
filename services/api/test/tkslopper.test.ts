@@ -356,7 +356,13 @@ describe("tkslopper request shape", () => {
         "text",
       ]);
       expect(call.body.stream).toBe(false);
-      expect(call.body.text).toEqual({ format: { type: "json_object" } });
+      expect(call.body.text).toMatchObject({ format: {
+        type: "json_schema", strict: true,
+        schema: { type: "object", additionalProperties: false,
+          required: index === 3 ? ["safe", "categories", "reason"] : ["html", "designCard"] },
+      } });
+      for (const field of ["temperature", "top_p", "seed", "thinking", "tools"])
+        expect(call.body).not.toHaveProperty(field);
     }
     expect(g.calls[0]?.body).toMatchObject({
       model: ARTIFACT,
@@ -403,7 +409,6 @@ describe("tkslopper request shape", () => {
       "reasoning_effort",
       "response_format",
       "stream",
-      "temperature",
     ]);
     expect(body).toEqual({
       model: ARTIFACT,
@@ -411,9 +416,10 @@ describe("tkslopper request shape", () => {
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: generationPrompt(brief, []) },
       ],
-      response_format: { type: "json_object" },
+      response_format: { type: "json_schema", json_schema: {
+        name: "artifact", strict: true, schema: expect.objectContaining({ required: ["html", "designCard"], additionalProperties: false }),
+      } },
       max_tokens: 32000,
-      temperature: 0.2,
       reasoning_effort: "high",
       stream: false,
     });
@@ -1214,6 +1220,93 @@ describe("tkslopper traces and secrets", () => {
   });
 });
 
+describe("managed model display metadata", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it("uses a grant for a non-cached GET and projects metadata only for configured aliases", async () => {
+    const calls: Request[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      calls.push(request);
+      if (request.url === `${CONTROL}/v1/token`) return grantResponse(1);
+      return Response.json({ object: "list", data: [
+        { id: ARTIFACT, display_name: "Lesson builder", provider: "anthropic", tier: "economy", model: "must-not-remap", api_key: "not-for-browser" },
+        { id: REVIEW, display_name: "Safety review", provider: "unknown", tier: "invalid" },
+        { id: IMAGE },
+        { id: "unconfigured.v1", display_name: "Do not expose" },
+      ] });
+    });
+    const client = new TkslopperClient(config(), { fetch: fetcher, grantCache: new TkslopperGrantCache() });
+    expect(await client.listModelMetadata()).toEqual([
+      { id: ARTIFACT, display_name: "Lesson builder", provider: "anthropic", tier: "economy" },
+      { id: REVIEW, display_name: "Safety review" },
+      { id: IMAGE },
+    ]);
+    expect(calls[0]?.headers.get("authorization")).toBe(`Bearer ${CREDENTIAL}`);
+    expect(calls[1]?.url).toBe(`${GATEWAY}/v1/models`);
+    expect(calls[1]?.method).toBe("GET");
+    expect(calls[1]?.cache).toBe("no-store");
+    expect(calls[1]?.credentials).toBe("omit");
+    expect(calls[1]?.redirect).toBe("manual");
+    const headers: Record<string, string> = {};
+    calls[1]!.headers.forEach((value, key) => { headers[key] = value; });
+    expect(headers).toEqual({ accept: "application/json", authorization: `Bearer ${ACCESS_TOKEN_PREFIX}1` });
+  });
+
+  it("never reuses listings after metadata removal or across credentials", async () => {
+    const cache = new TkslopperGrantCache();
+    const authorizations: string[] = [];
+    let reads = 0, exchanges = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.url === `${CONTROL}/v1/token`) return grantResponse(++exchanges);
+      authorizations.push(request.headers.get("authorization")!);
+      return Response.json({ object: "list", data: [{ id: ARTIFACT, ...(++reads === 1 ? { display_name: "Old label" } : {}) }] });
+    });
+    const first = new TkslopperClient(config(), { fetch: fetcher, grantCache: cache });
+    expect(await first.listModelMetadata()).toEqual([{ id: ARTIFACT, display_name: "Old label" }]);
+    expect(await first.listModelMetadata()).toEqual([{ id: ARTIFACT }]);
+    const second = new TkslopperClient(config({ TKSLOPPER_SERVICE_CREDENTIAL: `tksvc_other001_${CREDENTIAL_SECRET}` }), { fetch: fetcher, grantCache: cache });
+    expect(await second.listModelMetadata()).toEqual([{ id: ARTIFACT }]);
+    expect(authorizations).toEqual([`Bearer ${ACCESS_TOKEN_PREFIX}1`, `Bearer ${ACCESS_TOKEN_PREFIX}1`, `Bearer ${ACCESS_TOKEN_PREFIX}2`]);
+  });
+
+  it.each(["denied-grant", "denied-list", "malformed", "duplicate", "oversize"])("falls back to IDs for %s", async failure => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/v1/token")) return failure === "denied-grant" ? new Response(null, { status: 403 }) : grantResponse(1);
+      if (failure === "denied-list") return new Response(null, { status: 403 });
+      if (failure === "oversize") return new Response(" ".repeat(256_001), { headers: { "content-type": "application/json" } });
+      return Response.json(failure === "duplicate" ? { object: "list", data: [{ id: ARTIFACT }, { id: ARTIFACT }] } : { data: "bad" });
+    });
+    const client = new TkslopperClient(config(), { fetch: fetcher, grantCache: new TkslopperGrantCache() });
+    expect(await client.listModelMetadata()).toEqual([]);
+  });
+
+  it.each(["grant", "headers", "body"])("bounds the entire %s wait without a late gateway read", async stage => {
+    vi.useFakeTimers();
+    let resolveGrant: ((response: Response) => void) | undefined;
+    let closeBody: (() => void) | undefined;
+    let reads = 0;
+    let signal: AbortSignal | null | undefined;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/v1/token")) return stage === "grant" ? new Promise<Response>(resolve => { resolveGrant = resolve; }) : grantResponse(1);
+      reads++;
+      signal = init?.signal;
+      if (stage === "headers") return new Promise<Response>(() => {});
+      return new Response(new ReadableStream({ start(controller) { closeBody = () => controller.close(); } }), { headers: { "content-type": "application/json" } });
+    });
+    const client = new TkslopperClient(config(), { fetch: fetcher, grantCache: new TkslopperGrantCache() });
+    const pending = client.listModelMetadata();
+    await vi.advanceTimersByTimeAsync(3_001);
+    expect(await pending).toEqual([]);
+    if (stage !== "grant") expect(signal?.aborted).toBe(true);
+    resolveGrant?.(grantResponse(1));
+    closeBody?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reads).toBe(stage === "grant" ? 0 : 1);
+  });
+});
+
 describe("tkslopper wiring", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -1348,6 +1441,11 @@ describe("tkslopper wiring", () => {
   });
 
   it("reports the transport and aliases in the admin overview", async () => {
+    const metadata = { id: ARTIFACT, display_name: "Lesson builder", provider: "anthropic", tier: "economy" };
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/v1/token")
+      ? grantResponse(1)
+      : Response.json({ object: "list", data: [metadata] }));
+    vi.stubGlobal("fetch", fetcher);
     const database = {
       prepare: () => ({ first: async () => null }),
       batch: async () => [{ results: [] }, { results: [] }, { results: [] }],
@@ -1367,7 +1465,10 @@ describe("tkslopper wiring", () => {
       transport: "tkslopper",
       transportProblem: null,
       aliases: { artifact: ARTIFACT, review: REVIEW, image: IMAGE },
+      aliasMetadata: [metadata],
     });
+    expect(tkslopper?.headers.get("cache-control")).toBe("private, no-store");
+    const callsBeforeInvalidConfig = fetcher.mock.calls.length;
     const broken = await handleAdminRequest(
       request(),
       tkEnv({ ...admin, TKSLOPPER_REVIEW_ALIAS: "" }),
@@ -1383,6 +1484,15 @@ describe("tkslopper wiring", () => {
       transport: "direct",
       transportProblem: null,
       aliases: null,
+      aliasMetadata: [],
+    });
+    expect(fetcher.mock.calls).toHaveLength(callsBeforeInvalidConfig);
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 403 })));
+    const denied = await handleAdminRequest(request(), tkEnv(admin));
+    expect(await denied?.json()).toMatchObject({
+      aliases: { artifact: ARTIFACT, review: REVIEW, image: IMAGE },
+      aliasMetadata: [],
     });
 
     const page = await handleAdminRequest(new Request("https://api.test/admin"), tkEnv(admin));

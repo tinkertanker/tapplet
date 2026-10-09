@@ -5,7 +5,31 @@ import {
   createEvaluationProvider,
   parseEvaluationPlan,
   productionEvaluationEnvironment,
+  providerSettings,
 } from "./run";
+
+test("Claude evaluation uses its own defaults and credential, not another production provider", () => {
+  const settings = providerSettings({
+    AI_PROVIDER: "opencode-go", AI_MODEL: "muse-spark-1.2-contributor",
+    AI_BASE_URL: "https://api.deepseek.com", AI_API_KEY: "wrong-test-key",
+    EVAL_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "claude-test-key",
+  });
+  assert.deepEqual(settings, { provider: "anthropic", model: "claude-haiku-5-5",
+    baseUrl: "https://api.anthropic.com/v1", apiKey: "claude-test-key" });
+  assert.throws(() => providerSettings({ EVAL_PROVIDER: "anthropic", AI_API_KEY: "wrong-test-key" }), /API key/);
+  assert.equal(providerSettings({ EVAL_API_KEY: "test-key" }).model, "gpt-6-luna");
+  const custom = { EVAL_PROVIDER: "anthropic", EVAL_BASE_URL: "https://custom-claude.example/v1", ANTHROPIC_API_KEY: "claude-test-key" };
+  assert.throws(() => providerSettings(custom), /API key/);
+  assert.equal(providerSettings({ ...custom, EVAL_API_KEY: "explicit-custom-key" }).apiKey, "explicit-custom-key");
+});
+
+test("evaluation never carries a generic production key to a different endpoint", () => {
+  const production = { AI_PROVIDER: "opencode-go", AI_BASE_URL: "https://api.deepseek.com", AI_API_KEY: "paired-test-key" };
+  assert.throws(() => providerSettings({ ...production, EVAL_PROVIDER: "openai-compatible" }), /API key/);
+  assert.equal(providerSettings({ ...production, EVAL_PROVIDER: "openai-compatible", EVAL_API_KEY: "explicit-test-key" }).apiKey, "explicit-test-key");
+  assert.equal(providerSettings({ ...production, AI_PROVIDER: "openai-compatible" }).apiKey, "paired-test-key");
+  assert.throws(() => providerSettings({ ...production, AI_PROVIDER: "openai-compatible", EVAL_BASE_URL: "https://api.openai.com/v1" }), /API key/);
+});
 
 test("evaluation plan expands explicit controlled ablation dimensions", () => {
   const plan = parseEvaluationPlan({

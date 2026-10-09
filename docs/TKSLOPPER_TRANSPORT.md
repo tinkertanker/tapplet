@@ -8,6 +8,54 @@ described in the [README](../README.md) remains the rollback path until a
 canary has been accepted; a follow-up change can then remove the direct dialect
 code and provider keys.
 
+## Model suggestions
+
+The operations panel's direct-provider settings use tkslopper as the source of
+model suggestions for provider-key/BYOK configuration, independent of
+`INFERENCE_TRANSPORT`. Set `TKSLOPPER_GATEWAY_URL` to the gateway's HTTPS origin.
+The panel calls its own authenticated `/v1/admin/model-catalogue` route; the
+Worker fetches **public, credential-free** `GET <origin>/v1/model-catalogue`
+with no cookies, admin/provider keys, service credential or grant exchange.
+This keeps the admin page's `connect-src 'self'` policy unchanged. The source
+is never a provider base URL or inferred from a key. Service bindings used for
+inference do not replace this public catalogue origin.
+
+Version 1 must be `{object:"list",version:1,data:[{id,provider,display_name,tier,is_default}]}`.
+Tapplet validates the provider vocabulary, tier (`economy|balanced|premium`),
+string lengths, unique IDs per provider and at most one default per provider.
+It rejects redirects and bounds the entire fetch to three seconds, 256 KB and
+500 entries. Unavailable/invalid responses use two bundled suggestions:
+GPT-6 Luna and Claude Haiku 5.5. A successful catalogue without entries for a
+provider uses that provider's bundled suggestion, if any. The panel fetches once
+per page load without blocking settings access and labels catalogue/fallback
+suggestions. Reload the page to refresh options.
+
+Catalogue IDs stay provider-native, including OpenRouter slugs. Tapplet maps
+`opencode` to catalogue `opencode-zen`, and maps `openai-compatible` to `openai`
+only at `https://api.openai.com/v1`, or to `deepseek` at
+`https://api.deepseek.com` (optionally `/v1`). Other compatible endpoints keep
+free-text model entry. `anthropic`, `openrouter` and `opencode-go` map directly.
+Gemini entries are recognized but not offered: Tapplet has no Gemini adapter.
+
+Suggestions **never authorize models, change endpoints/keys/transports, or
+overwrite saved/custom choices**, even when an ID disappears from the catalogue.
+Defaults only initialize a newly selected provider with no in-tab draft. There
+is no managed-alias picker: the panel continues to show the configured aliases
+read-only. The public catalogue is not authenticated `/v1/models`; it does not
+replace authorization-scoped alias discovery or supply a deployed Claude alias.
+
+When managed configuration is valid, the admin overview also reads authenticated
+`GET /v1/models` using the existing server-side service-credential/grant helpers
+and configured gateway target (including service bindings). Only configured
+alias IDs and validated optional `display_name`, `provider`, and `tier` reach
+the browser. Labels appear alongside, never instead of, the configured IDs.
+The complete metadata read, including waiting for authorization, has a
+three-second budget and a 256 KB/500-entry response limit. Missing metadata,
+invalid configuration, denial or timeout leaves the ID-only display intact.
+Listings are fetched on each overview request with `cache: no-store`; they
+are not shared across credentials. The admin response remains private/no-store.
+This does not change inference authorization, routing, or configured aliases.
+
 ## How it works
 
 - The Worker holds a tkslopper **service credential** (`tksvc_<id>_<secret>`)
@@ -25,6 +73,14 @@ code and provider keys.
   for artifacts when configured) with the alias as `model`, an explicit output
   limit, `stream: false` and a fresh `idempotency-key` of the form
   `tapplet:<operation>:<uuid>`. Each call keeps Tapplet's 45-second abort.
+- Artifact and moderation requests use strict JSON schemas on both endpoints,
+  never `json_object`. Requests omit sampling parameters and seed; system text
+  leads the conversation, which starts and ends with a user turn. Image review
+  sends images only in the user turn and omits image detail. These requests
+  work with Claude-backed capabilities without sending provider-specific fields.
+  Choose an authorized versioned alias from `/v1/models` and configure it
+  explicitly; a physical Claude/OpenAI model ID is not a managed alias. Tapplet
+  does not invent or replace aliases, and never calls a managed `/v1/messages`.
 - Only portable reasoning efforts are sent. `xhigh` and `max` become `high`,
   `minimal` becomes `low`, and `none` omits reasoning. `thinking`,
   `reasoning.exclude` and provider attribution headers are never sent. Until

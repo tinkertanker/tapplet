@@ -154,17 +154,22 @@ export async function productionEvaluationEnvironment(
 
 export function providerSettings(env: NodeJS.ProcessEnv): ProviderSettings {
   const provider = env.EVAL_PROVIDER ?? env.AI_PROVIDER ?? "openai-compatible";
-  const model = env.EVAL_MODEL ?? env.AI_MODEL ?? "deepseek-v4-flash";
+  const sameProvider = !env.EVAL_PROVIDER || env.EVAL_PROVIDER === env.AI_PROVIDER;
+  const model = env.EVAL_MODEL ?? (sameProvider ? env.AI_MODEL : undefined)
+    ?? (provider === "anthropic" ? "claude-haiku-5-5"
+      : provider === "openai-compatible" ? "gpt-6-luna" : "deepseek-v4-flash");
   const baseUrl = (
     env.EVAL_BASE_URL
-    ?? (provider === "openai-compatible" ? env.AI_BASE_URL : undefined)
+    ?? (sameProvider && provider === "openai-compatible" ? env.AI_BASE_URL : undefined)
     ?? defaultBaseUrl(provider)
   ).replace(/\/$/, "");
-  const apiKey = env.EVAL_API_KEY
+  const apiKey = provider === "anthropic"
+    ? env.EVAL_API_KEY ?? (baseUrl === "https://api.anthropic.com/v1" ? env.ANTHROPIC_API_KEY : undefined)
+    : env.EVAL_API_KEY
     ?? (provider.startsWith("opencode") ? env.OPENCODE_API_KEY : undefined)
     ?? (provider === "openrouter" ? env.OPENROUTER_API_KEY : undefined)
-    ?? env.AI_API_KEY
-    ?? env.DEEPSEEK_API_KEY;
+    ?? (baseUrl === env.AI_BASE_URL?.replace(/\/$/, "") ? env.AI_API_KEY : undefined)
+    ?? (/^https:\/\/api\.deepseek\.com(?:\/|$)/.test(baseUrl) ? env.DEEPSEEK_API_KEY : undefined);
   if (provider !== "fixture" && !apiKey)
     throw new Error(
       "Set EVAL_API_KEY or the configured provider's production API key to run the live eval.",
@@ -485,10 +490,11 @@ function parseBoolean(value: string, label: string): boolean {
 }
 
 function defaultBaseUrl(provider: string): string {
+  if (provider === "anthropic") return "https://api.anthropic.com/v1";
   if (provider === "openrouter") return "https://openrouter.ai/api/v1";
   if (provider === "opencode") return "https://opencode.ai/zen/v1";
   if (provider === "opencode-go") return "https://opencode.ai/zen/go/v1";
-  return "https://api.deepseek.com";
+  return "https://api.openai.com/v1";
 }
 
 function providerEnvironment(settings: ProviderSettings): StudioEnv {

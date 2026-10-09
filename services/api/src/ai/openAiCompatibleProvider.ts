@@ -90,7 +90,10 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     const r = await this.complete(
       MODERATION_SYSTEM_PROMPT,
       html,
-      500,
+      // Reasoning shares the output budget with the moderation JSON.
+      this.o.api === "responses" && new URL(this.o.baseUrl).hostname === "api.openai.com"
+        ? 4096
+        : 500,
       true,
       this.o.moderationReasoningOptions,
       "moderate",
@@ -140,6 +143,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
                   input: user,
                   text: { format: { type: "json_object" } },
                   max_output_tokens: max_tokens,
+                  ...(new URL(this.o.baseUrl).hostname === "api.openai.com" ? { store: false } : {}),
                   ...reasoningOptions,
                 }
               : {

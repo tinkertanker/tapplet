@@ -48,7 +48,8 @@
     // the URLs when present.
     "INFERENCE_TRANSPORT": "direct",
     "TKSLOPPER_CONTROL_PLANE_URL": "",
-    "TKSLOPPER_GATEWAY_URL": "",
+    // Public catalogue source; this does not enable managed inference.
+    "TKSLOPPER_GATEWAY_URL": "https://api.slopper.tk.sg",
     "TKSLOPPER_ARTIFACT_ALIAS": "",
     "TKSLOPPER_REVIEW_ALIAS": "",
     "TKSLOPPER_IMAGE_ALIAS": "",
