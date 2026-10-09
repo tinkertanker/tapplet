@@ -792,11 +792,21 @@ export function createStudioApp(d: Deps) {
         createdAt: timestamp,
         updatedAt: timestamp,
       };
-      await d.repository.createArtifact({
-        artifact: a,
-        revision: rv,
-        assetIds,
-      });
+      if (
+        !(await d.repository.createArtifact(
+          {
+            artifact: a,
+            revision: rv,
+            assetIds,
+          },
+          d.config.maximumDraftsPerOwner,
+        ))
+      )
+        throw new HttpError(
+          429,
+          "ARTIFACT_STORAGE_LIMIT_REACHED",
+          "Saved tapplet limit reached.",
+        );
       if (trace) {
         emitOperationalTrace(trace.sink, {
           kind: "artifact_commit",
@@ -1283,11 +1293,21 @@ export function createStudioApp(d: Deps) {
             createdAt: timestamp,
             updatedAt: timestamp,
           };
-        await d.repository.createArtifact({
-          artifact,
-          revision: copy,
-          assetIds: await assets(html, o, !ownedArtifact),
-        });
+        if (
+          !(await d.repository.createArtifact(
+            {
+              artifact,
+              revision: copy,
+              assetIds: await assets(html, o, !ownedArtifact),
+            },
+            d.config.maximumDraftsPerOwner,
+          ))
+        )
+          throw new HttpError(
+            429,
+            "ARTIFACT_STORAGE_LIMIT_REACHED",
+            "Saved tapplet limit reached.",
+          );
         return json(
           {
             ...(await projectResponse(artifact, o, u.origin, {

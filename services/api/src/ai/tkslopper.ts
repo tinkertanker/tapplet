@@ -318,9 +318,11 @@ function retryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-/** Console detail for a transport failure; never part of a thrown error. */
+/** Only fixed transport categories are safe to log, never error text. */
 function failureDetail(error: unknown): string {
-  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+    ? error.name
+    : "transport failure";
 }
 
 function describeFailure(error: unknown): string {
@@ -1022,8 +1024,9 @@ export class TkslopperImageSafetyInspector implements ImageSafetyInspector {
     } catch (error) {
       const requestId =
         error instanceof TkslopperError ? error.gatewayRequestId : undefined;
+      const status = error instanceof TkslopperError ? error.status : undefined;
       console.error(
-        `Image safety review failed: ${error instanceof Error ? error.message : "unknown error"}${requestId ? ` (request ${requestId})` : ""}`,
+        `Image safety review failed${status === undefined ? "" : `: HTTP ${status}`}${requestId ? ` (request ${requestId})` : ""}`,
       );
       return { status: "unavailable" };
     }

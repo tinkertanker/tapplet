@@ -2,6 +2,42 @@ import { describe, expect, it, vi } from 'vitest';
 import { OpenCodeGoImageSafetyInspector } from '../src/imageSafety';
 
 describe('image safety review', () => {
+  it.each(['network', 'http', 'empty', 'invalid'] as const)(
+    'keeps pupil content out of %s diagnostics', async (path) => {
+      const marker = 'SYNTHETIC_PUPIL_MARKER';
+      const fetch = vi.fn();
+      if (path === 'network') {
+        const error = new Error(marker);
+        error.name = marker;
+        fetch.mockRejectedValue(error);
+      } else {
+        fetch.mockResolvedValue(Response.json({
+          id: marker,
+          error: { message: marker, code: marker },
+          output: [{ content: [{
+            type: path === 'empty' ? 'refusal' : 'output_text',
+            text: marker,
+          }] }],
+        }, { status: path === 'http' ? 503 : 200 }));
+      }
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await expect(createInspector(fetch).inspect(new Uint8Array([1]), 'image/png'))
+          .resolves.toEqual({ status: 'unavailable' });
+        expect(log).toHaveBeenCalledOnce();
+        expect(JSON.stringify(log.mock.calls)).not.toContain(marker);
+        expect(log.mock.calls[0]).toEqual([{
+          network: 'Image safety review failed: network',
+          http: 'Image safety review failed: HTTP 503',
+          empty: 'Image safety review returned no answer',
+          invalid: 'Image safety review returned an invalid answer',
+        }[path]]);
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
   it('accepts an explicitly safe classroom image classification', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({
       output: [{ content: [{ type: 'output_text', text: 'SAFE\nA labelled force diagram.' }] }],

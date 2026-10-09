@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import UIKit
 @testable import Tapplet
 
 final class TappletStoreTests: XCTestCase {
@@ -601,6 +602,187 @@ final class TappletStoreTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testRemovedImageIsUsableAfterUndoAndPersistedReload() async throws {
+        try await assertRemovedImageRestoration(useUndo: true)
+    }
+
+    @MainActor
+    func testRemovedImageIsUsableAfterHistoryRestoreAndPersistedReload() async throws {
+        try await assertRemovedImageRestoration(useUndo: false)
+    }
+
+    @MainActor
+    private func assertRemovedImageRestoration(useUndo: Bool) async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assetID = "restore-\(UUID().uuidString)"
+        let image = try syntheticImage()
+        let local = try LocalAppletAssetStorage.store(image, id: assetID)
+        defer { LocalAppletAssetStorage.remove(local) }
+        var original = makeProject(revisionID: "r1", html: "<html><img src=\"assets/\(assetID)\"></html>")
+        original.localAssets = [local]
+        var removed = makeProject(revisionID: "r2", parentRevisionID: "r1", html: "<html>No image</html>")
+        removed.revisions = original.revisions + removed.revisions
+        let api = ArtifactAPIStub(generated: original, revised: removed)
+        await api.configureRestoredProject(original, image: image)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        store.projects = [original]
+        XCTAssertNotNil(LocalAppletAssetStorage.url(for: local))
+
+        try await store.removeImage(assetID: assetID, projectID: original.id)
+        XCTAssertTrue(TappletStore.referencedAssetIDs(in: try XCTUnwrap(store.projects.first).source.html).isEmpty)
+        if useUndo { try await store.undo(projectID: original.id) }
+        else { try await store.restore(revision: original.source.revision, projectID: original.id) }
+
+        for candidate in [store, TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))] {
+            let restored = try XCTUnwrap(candidate.projects.first)
+            XCTAssertEqual(restored.source.html, original.source.html)
+            let cached = restored.localAssets.first { $0.id == assetID }
+            let url = cached.flatMap { LocalAppletAssetStorage.url(for: $0) }
+            XCTAssertNotNil(url, "Restored HTML must have a usable local preview image, including after reload")
+            if let url { XCTAssertNotNil(UIImage(data: try Data(contentsOf: url))) }
+        }
+    }
+
+    @MainActor
+    func testHistoricalImageCacheDoesNotConsumeCurrentImageLimit() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = try syntheticImage()
+        var current = makeProject(revisionID: "r1", html: "<html>No current images</html>")
+        current.localAssets = try (0..<3).map {
+            try LocalAppletAssetStorage.store(image, id: "history-\(UUID().uuidString)-\($0)")
+        }
+        defer { current.localAssets.forEach { LocalAppletAssetStorage.remove($0) } }
+        let revised = makeProject(revisionID: "r2", parentRevisionID: "r1", html: "<html><img src=\"assets/asset-1\"></html>")
+        let api = ArtifactAPIStub(generated: current, revised: revised)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        store.projects = [current]
+        defer { store.projects.flatMap(\.localAssets).filter { $0.id == "asset-1" }.forEach { LocalAppletAssetStorage.remove($0) } }
+        do {
+            try await store.addImage(image.data, description: "A blue square", decorative: false, projectID: current.id)
+        } catch {
+            XCTFail("Three unreferenced history images must not block a current upload: \(error)")
+        }
+        let request = await api.lastRevisionRequest
+        XCTAssertEqual(request?.requiredAssetID, "asset-1")
+        XCTAssertEqual(TappletStore.referencedAssetIDs(in: try XCTUnwrap(store.projects.first).source.html), ["asset-1"])
+    }
+
+    @MainActor
+    func testCurrentImageLimitCountsReferencesWithoutCachedFiles() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let current = makeProject(revisionID: "r1", html: """
+        <html><img src="assets/one"><img src="assets/two"><img src="assets/three"></html>
+        """)
+        let api = ArtifactAPIStub(generated: current, revised: current)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        store.projects = [current]
+        defer { store.projects.flatMap(\.localAssets).forEach { LocalAppletAssetStorage.remove($0) } }
+        do {
+            try await store.addImage(syntheticImage().data, description: "A blue square", decorative: false, projectID: current.id)
+            XCTFail("Three current references must block another upload even when the offline cache is empty")
+        } catch let error as AppletImageError {
+            XCTAssertEqual(error, .limitReached)
+        }
+        let request = await api.lastRevisionRequest
+        XCTAssertNil(request, "The limit must be checked before uploading and revising")
+    }
+
+    @MainActor
+    func testLateMetadataResponsePreservesNewHeadAndSavedDetails() async throws {
+        try await assertLateMutationPreservesRevision(operation: "metadata")
+    }
+
+    @MainActor
+    func testLateRevokeResponsePreservesNewHeadAndRevocation() async throws {
+        try await assertLateMutationPreservesRevision(operation: "revoke")
+    }
+
+    @MainActor
+    func testLateExtendResponsePreservesNewHeadAndExtension() async throws {
+        try await assertLateMutationPreservesRevision(operation: "extend")
+    }
+
+    @MainActor
+    private func assertLateMutationPreservesRevision(operation: String) async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var original = makeProject(revisionID: "r1", html: "<html>R1</html>")
+        original.artifact.publication = regressionPublication()
+        var revised = makeProject(revisionID: "r2", parentRevisionID: "r1", html: "<html>R2</html>")
+        revised.revisions = original.revisions + revised.revisions
+        revised.artifact.publication = original.artifact.publication
+        revised.artifact.publicationStale = true
+        let api = ArtifactAPIStub(generated: original, revised: revised)
+        await api.hold(operation)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        store.projects = [original]
+        var details = original.artifact
+        details.title = "Saved details"
+        let submittedDetails = details
+        let task = Task { @MainActor in
+            switch operation {
+            case "metadata": try await store.updateDetails(submittedDetails)
+            case "revoke": try await store.unpublish(projectID: original.id)
+            default: try await store.extendPublication(projectID: original.id)
+            }
+        }
+        await api.waitUntilHeld()
+        try await store.refine("Advance to R2", projectID: original.id)
+        XCTAssertEqual(store.projects.first?.source.revision.id, "r2")
+        await api.release()
+        try await task.value
+        for candidate in [store, TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))] {
+            let project = try XCTUnwrap(candidate.projects.first)
+            XCTAssertEqual(project.source, revised.source, "Late \(operation) must not roll source back to R1")
+            XCTAssertEqual(project.artifact.headRevisionId, "r2")
+            XCTAssertEqual(project.revisions, revised.revisions)
+            switch operation {
+            case "metadata": XCTAssertEqual(project.artifact.title, "Saved details")
+            case "revoke": XCTAssertNil(project.artifact.publication)
+            default: XCTAssertEqual(project.artifact.publication?.expiresAt, "2100-01-01T00:00:00Z")
+            }
+        }
+    }
+
+    @MainActor
+    func testLatePublishOfR1KeepsR2PublicationStale() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = makeProject(revisionID: "r1", html: "<html>R1</html>")
+        var revised = makeProject(revisionID: "r2", parentRevisionID: "r1", html: "<html>R2</html>")
+        revised.artifact.publicationStale = true
+        let api = ArtifactAPIStub(generated: original, revised: revised)
+        await api.hold("publish")
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        store.projects = [original]
+        let task = Task { @MainActor in try await store.publish(projectID: original.id) }
+        await api.waitUntilHeld()
+        let publishedRevision = await api.lastPublishedRevisionID
+        XCTAssertEqual(publishedRevision, "r1")
+        try await store.refine("Advance to R2", projectID: original.id)
+        await api.release()
+        _ = try await task.value
+        for candidate in [store, TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))] {
+            XCTAssertEqual(candidate.projects.first?.source.revision.id, "r2")
+            XCTAssertNotNil(candidate.projects.first?.artifact.publication)
+            XCTAssertEqual(candidate.projects.first?.artifact.publicationStale, true, "The link still serves R1")
+        }
+    }
+
+    @MainActor
+    private func syntheticImage() throws -> PreparedAppletImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16))
+        let data = renderer.pngData { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
+        }
+        return try AppletImageProcessor.prepare(data)
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: "TappletStoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -632,6 +814,36 @@ private actor ArtifactAPIStub: TappletAPI {
     private(set) var lastRevisionRequest: RevisionRequest?
     private(set) var lastRemixRequest: RemixRequest?
     private(set) var lastPublishedRevisionID: String?
+    private var heldOperation: String?
+    private var responseContinuation: CheckedContinuation<Void, Never>?
+    private var arrivalContinuation: CheckedContinuation<Void, Never>?
+    private var restoredProject: ArtifactProject?
+    private var downloadedImage: PreparedAppletImage?
+
+    func configureRestoredProject(_ project: ArtifactProject, image: PreparedAppletImage) {
+        var project = project
+        project.localAssets = [] // Server responses never contain local file records.
+        restoredProject = project
+        downloadedImage = image
+    }
+    func hold(_ operation: String) { heldOperation = operation }
+    func waitUntilHeld() async {
+        if responseContinuation != nil { return }
+        await withCheckedContinuation { arrivalContinuation = $0 }
+    }
+    func release() {
+        responseContinuation?.resume()
+        responseContinuation = nil
+        heldOperation = nil
+    }
+    private func suspendIfHeld(_ operation: String) async {
+        guard heldOperation == operation else { return }
+        await withCheckedContinuation { continuation in
+            responseContinuation = continuation
+            arrivalContinuation?.resume()
+            arrivalContinuation = nil
+        }
+    }
 
     init(
         generated: ArtifactProject,
@@ -670,7 +882,8 @@ private actor ArtifactAPIStub: TappletAPI {
         return projectsByID[id] ?? generated
     }
     func updateArtifact(_ artifact: Artifact) async throws -> AdvisoryResult<Artifact> {
-        AdvisoryResult(value: artifact, warnings: warnings)
+        await suspendIfHeld("metadata")
+        return AdvisoryResult(value: artifact, warnings: warnings)
     }
     func deleteArtifact(id: String) async throws {
         if let deleteError { throw deleteError }
@@ -686,18 +899,20 @@ private actor ArtifactAPIStub: TappletAPI {
     }
     func revisions(id: String) async throws -> [ArtifactRevision] { generated.revisions }
     func source(revision: ArtifactRevision) async throws -> ArtifactSource { generated.source }
-    func setHead(id: String, revisionId: String, expectedHeadRevisionId: String) async throws -> ArtifactProject { revised }
+    func setHead(id: String, revisionId: String, expectedHeadRevisionId: String) async throws -> ArtifactProject { restoredProject ?? revised }
     func remix(id: String, revisionId: String?) async throws -> AdvisoryResult<ArtifactProject> {
         lastRemixRequest = RemixRequest(artifactID: id, revisionID: revisionId)
         return AdvisoryResult(value: revised, warnings: warnings)
     }
     func downloadAsset(id: String) async throws -> DownloadedAppletAsset {
         if let error = assetErrors[id] { throw error }
+        if let downloadedImage { return DownloadedAppletAsset(data: downloadedImage.data, mediaType: downloadedImage.mediaType) }
         return DownloadedAppletAsset(data: Data([1, 2, 3]), mediaType: "image/jpeg")
     }
     func uploadScreenshot(revisionId: String, jpeg: Data) async throws {}
     func publish(id: String, revisionId: String) async throws -> AdvisoryResult<ArtifactPublication> {
         lastPublishedRevisionID = revisionId
+        await suspendIfHeld("publish")
         return AdvisoryResult(value: ArtifactPublication(
             slug: "class",
             url: URL(string: "https://example.test/class")!,
@@ -706,9 +921,13 @@ private actor ArtifactAPIStub: TappletAPI {
             expiresAt: "2026-11-02T00:00:00Z"
         ), warnings: warnings)
     }
-    func revoke(slug: String) async throws {}
+    func revoke(slug: String) async throws { await suspendIfHeld("revoke") }
     func extend(slug: String, days: Int) async throws -> ArtifactPublication {
-        (try await publish(id: generated.id, revisionId: "r1")).value
+        if heldOperation == "extend" {
+            await suspendIfHeld("extend")
+            return regressionPublication(expiresAt: "2100-01-01T00:00:00Z")
+        }
+        return (try await publish(id: generated.id, revisionId: "r1")).value
     }
     func uploadImage(
         _ image: PreparedAppletImage,
@@ -728,6 +947,10 @@ private actor ArtifactAPIStub: TappletAPI {
             accessibility: .init(alternativeText: alternativeText, decorative: decorative)
         ), warnings: warnings)
     }
+}
+
+private func regressionPublication(expiresAt: String = "2099-01-01T00:00:00Z") -> ArtifactPublication {
+    ArtifactPublication(slug: "class", url: URL(string: "https://example.test/class")!, title: "Forces", createdAt: "2026-08-02T00:00:00Z", expiresAt: expiresAt)
 }
 
 private func makeProject(

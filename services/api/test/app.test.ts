@@ -271,9 +271,10 @@ describe("Tapplet API registration and public HTML", () => {
     const source =
       '<!doctype html><html><head></head><body><img src="assets/image-1"></body></html>';
     const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
-    expect(served.match(/<base /g)).toHaveLength(1);
+    expect(served.match(/&lt;base /g)).toHaveLength(1);
     expect(served.match(/data-studio-report/g)).toHaveLength(1);
-    expect(served).toContain('<base href="/ABCDEFGHIJKLMNOPQRST/">');
+    expect(served).toContain('&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;');
+    expect(served).toContain('sandbox="allow-scripts allow-modals"');
     expect(source).not.toContain("<base");
   });
 
@@ -286,14 +287,14 @@ describe("Tapplet API registration and public HTML", () => {
     expect(source).not.toContain("rel=");
   });
 
-  it("injects the report control at the closing body rather than script text", () => {
+  it("keeps report code outside sandboxed script text", () => {
     const source =
       '<!doctype html><html><head></head><body><script>const closing = "</body>";</script></body></html>';
     const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
 
-    expect(served).toContain('const closing = "</body>";');
+    expect(served).toContain('const closing = &quot;&lt;/body&gt;&quot;;');
     expect(served.indexOf("data-studio-report")).toBeGreaterThan(
-      served.indexOf("</script>"),
+      served.indexOf("</iframe>"),
     );
   });
 
@@ -305,7 +306,7 @@ describe("Tapplet API registration and public HTML", () => {
     expect(served.indexOf("data-studio-report")).toBeLessThan(
       served.indexOf("</body>"),
     );
-    expect(served).toContain("<!-- </body> -->");
+    expect(served).toContain("&lt;!-- &lt;/body&gt; --&gt;");
   });
 
   it("imports reviewed seeds into retrieval and uses a selected seed as generation context", async () => {
@@ -1107,7 +1108,7 @@ describe("Tapplet API registration and public HTML", () => {
     expect(queries).toBe(1);
   });
 
-  it("allows sandboxed player origins to preflight anonymous content reports", async () => {
+  it("does not allow opaque activity origins to preflight content reports", async () => {
     const preflight = await app.fetch(
       new Request(
         "https://api.test/v1/publications/ABCDEFGHIJKLMNOPQRSTUV/reports",
@@ -1121,8 +1122,8 @@ describe("Tapplet API registration and public HTML", () => {
         },
       ),
     );
-    expect(preflight.status).toBe(204);
-    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.status).toBe(403);
+    expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("stops expired publications from authorising search, preferred context, or remix", async () => {
@@ -1318,6 +1319,65 @@ describe("Tapplet API registration and public HTML", () => {
     });
     expect(put).toHaveBeenCalledOnce();
   });
+
+  it.each(["generate", "remix"])(
+    "maps concurrent %s capacity losers to the storage-limit error and spends both attempt quotas",
+    async (operation) => {
+      const initial = await app.fetch(
+        authenticated("/v1/artifacts/generate", "POST", creationBrief),
+      );
+      const first = (await initial.json()) as { headRevision: RevisionRecord };
+      const countArtifacts = repository.countArtifacts.bind(repository);
+      let checks = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(repository, "countArtifacts").mockImplementation(
+        async (owner) => {
+          const count = await countArtifacts(owner);
+          if (++checks === 2) release();
+          await gate;
+          return count;
+        },
+      );
+      app = createStudioApp({
+        repository,
+        provider: new FixtureModelProvider(),
+        config: { ...config, maximumDraftsPerOwner: 2 },
+        sources,
+        now: () => new Date("2026-08-02T00:00:00Z"),
+      });
+      const request = () =>
+        operation === "generate"
+          ? authenticated("/v1/artifacts/generate", "POST", creationBrief)
+          : authenticated(
+              `/v1/revisions/${first.headRevision.id}/remix`,
+              "POST",
+              {},
+            );
+      const quota = vi.spyOn(repository, "consumeGeneration");
+      const responses = await Promise.all([
+        app.fetch(request()),
+        app.fetch(request()),
+      ]);
+      expect(responses.map((response) => response.status).sort()).toEqual([
+        201, 429,
+      ]);
+      const denied = responses.find((response) => response.status === 429)!;
+      await expect(denied.json()).resolves.toMatchObject({
+        error: { code: "ARTIFACT_STORAGE_LIMIT_REACHED" },
+      });
+      expect(repository.artifacts.size).toBe(2);
+      expect(repository.revisions.size).toBe(2);
+      expect(
+        quota.mock.calls.filter(([subject]) => subject.startsWith("artifact:")),
+      ).toHaveLength(2);
+      expect(
+        quota.mock.calls.filter(([subject]) => subject.startsWith("network-artifact:")),
+      ).toHaveLength(2);
+    },
+  );
 
   it("enforces the saved-artifact cap for remixes", async () => {
     app = createStudioApp({

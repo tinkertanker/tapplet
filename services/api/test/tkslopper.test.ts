@@ -1025,6 +1025,25 @@ describe("tkslopper pre-flight size guard", () => {
 describe("tkslopper image safety inspector", () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it.each(["gateway", "network"])("does not log %s image-review error text", async (failure) => {
+    const marker = "SYNTHETIC_PUPIL_IMAGE_DESCRIPTION";
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const g = gateway([failure === "gateway"
+      ? Response.json({ error: { code: "provider_error", message: marker } }, {
+        status: 503, headers: { "x-tkslopper-request-id": "req_private_review" },
+      })
+      : Object.assign(new Error(marker), { name: marker })]);
+    await expect(inspector(g).inspect(new Uint8Array([1]), "image/jpeg"))
+      .resolves.toEqual({ status: "unavailable" });
+    expect(errors).toHaveBeenCalled();
+    const logged = JSON.stringify(errors.mock.calls);
+    expect(logged).not.toContain(marker);
+    if (failure === "gateway") {
+      expect(logged).toContain("503");
+      expect(logged).toContain("req_private_review");
+    }
+  });
+
   it("sends a strict image review body without detail", async () => {
     const g = gateway([
       responsesResponse({ model: IMAGE, output: [message(text("SAFE\nA labelled diagram."))] }),
