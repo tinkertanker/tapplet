@@ -45,23 +45,24 @@ function environment(html: string): StudioEnv {
 
 describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published activity containment (%s)", (_name, engine) => {
   let browser: Browser;
-  const trace = (stage: string) => console.info(`player timing ${_name} ${performance.now().toFixed(0)}ms ${stage}`);
-  beforeAll(async () => { trace("launch:start"); browser = await engine.launch(); trace("launch:done"); });
+  beforeAll(async () => {
+    browser = await engine.launch();
+    // Include cold-page initialization in suite setup, not the containment test's budget.
+    const context = await browser.newContext();
+    try { await context.newPage(); }
+    finally { await context.close(); }
+  });
   afterAll(async () => { await browser.close(); });
 
   async function open(html: string, width = 1024, height = 768) {
-    trace("context:start");
     const context = await browser.newContext({ viewport: { width, height } });
-    trace("context:done page:start");
     const page = await context.newPage();
-    trace("page:done");
     const external: string[] = [];
     const assets: string[] = [];
     const reports: unknown[] = [];
     const env = environment(html);
     await context.route("**/*", async (route) => {
       const request = route.request(), url = new URL(request.url());
-      trace(`route:${url.pathname}`);
       if (url.origin !== origin) {
         external.push(url.href);
         await route.abort();
@@ -92,9 +93,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
         body: Buffer.from(await response.arrayBuffer()),
       });
     });
-    trace("goto:start");
     await page.goto(`${origin}/${slug}`, { waitUntil: "load" });
-    trace("goto:done");
     return { context, page, external, assets, reports };
   }
 
@@ -107,12 +106,9 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
   it("rejects a missing sandboxed activity instead of testing the parent", async () => {
     const state = await open(source);
     try {
-      trace("remove:start");
       await state.page.evaluate("document.querySelector('iframe').remove()");
-      trace("remove:done assertion:start");
       expect(() => activity(state.page)).toThrow("Sandboxed activity frame not found");
-      trace("assertion:done");
-    } finally { trace("close:start"); await state.context.close(); trace("close:done"); }
+    } finally { await state.context.close(); }
   });
 
   it("places the scoped base in the real head, not a preceding comment", async () => {
