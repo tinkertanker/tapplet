@@ -29,11 +29,17 @@ const statement = `UPDATE class_codes SET short_code_hash='${shortHash}' ` +
 const result = spawnSync('npx', [
   'wrangler', 'd1', 'execute', 'DB', target, '--profile', 'tinkertanker', '--json', '--command', statement,
 ], { cwd: resolve(repositoryRoot, 'services/api'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-if (result.status !== 0) {
-  throw new Error(`Could not enable the shortened class code.\n${result.stderr || result.stdout}`);
+let responses;
+try {
+  if (result.status !== 0) throw new Error();
+  responses = JSON.parse(result.stdout);
+} catch {
+  // Wrangler output can include SQL containing both credential hashes.
+  throw new Error('Could not confirm the shortened class code. Check Wrangler authentication and connectivity, then retry the same command.');
 }
-const responses = JSON.parse(result.stdout);
-const rows = responses.flatMap((response) => response.results ?? []);
+const rows = Array.isArray(responses) && responses.length === 1 &&
+  responses[0]?.success === true && Array.isArray(responses[0].results)
+  ? responses[0].results : [];
 if (rows.length !== 1) {
   throw new Error(`No matching class code was updated for class ${classNumber}. Check the target database and original code file.`);
 }

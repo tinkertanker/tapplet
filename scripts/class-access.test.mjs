@@ -171,3 +171,28 @@ db.close();
     sqlite.close();
   }
 });
+
+test('shortening reports backend failures without exposing credential hashes', (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'tapplet-class-shortening-')));
+  t.after(() => process.platform === 'darwin' ? spawnSync('trash', [root]) : rmSync(root, { recursive: true, force: true }));
+  for (const directory of ['scripts', 'services/api', 'bin', '.studio-class-codes']) {
+    mkdirSync(join(root, directory), { recursive: true });
+  }
+  for (const name of ['class-access.mjs', 'shorten-class-access.mjs']) {
+    copyFileSync(new URL(name, import.meta.url), join(root, 'scripts', name));
+  }
+  writeFileSync(join(root, '.studio-class-codes/0042.txt'), '0042ABCDEFGH\n', { mode: 0o600 });
+  writeFileSync(join(root, 'bin/npx'), `#!/usr/bin/env node
+const message = 'SECRET ' + process.argv.at(-1);
+if (process.env.BAD_JSON === '1') { console.log(message); } else { console.error(message); process.exitCode = 1; }
+`, { mode: 0o700 });
+  for (const badJson of ['0', '1']) {
+    const result = spawnSync(process.execPath, [join(root, 'scripts/shorten-class-access.mjs'), '0042', '--local'], {
+      env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, BAD_JSON: badJson },
+      encoding: 'utf8',
+    });
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stdout + result.stderr, /SECRET|short_code_hash|UPDATE class_codes/);
+    assert.equal(readFileSync(join(root, '.studio-class-codes/0042.txt'), 'utf8'), '0042ABCDEFGH\n');
+  }
+});
