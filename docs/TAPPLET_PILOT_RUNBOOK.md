@@ -192,25 +192,32 @@ them.
    workshop code in App Review notes. Verify it immediately before submission
    and keep it valid until review has completed; never put it in source control
    or public metadata.
-7. Install the Release build on a physical A16 iPad. Complete the full flow for
-   at least three representative tapplets, including a simulation: generate,
-   revise, add a classroom image where appropriate, publish, and open each
-   resulting URL on a separate device in Safari. Exercise one advisory warning
+7. Recommended workshop rehearsal, not a TestFlight release prerequisite:
+   exercise the full flow for three representative tapplets, including a
+   simulation: generate, revise, add a classroom image where appropriate,
+   publish, and open each resulting URL on a separate device in Safari.
+   Exercise one advisory warning
    and verify that the work remains available to edit, re-prompt, remove or
    continue. Across the three flows, test VoiceOver, portrait and landscape.
    Revoke every link and verify that the student sees the unavailable state.
 
 ## TestFlight release gate
 
-The unsigned CI build is not a distribution check. Before uploading:
+The unsigned CI build is not a distribution check. Before distribution:
 
 1. Confirm App Store Connect ownership for `sg.tinkertanker.Tapplet`, active
-   agreements, the `PQ6U5ESLN2` team, and an automatic-distribution signing
-   identity/profile on the release Mac.
-2. Generate the project with XcodeGen 2.44.1, create a signed Release archive
-   with Xcode 26, export with `ExportOptions.plist`, and run Xcode's Validate App
-   action. Increment `CURRENT_PROJECT_VERSION` before any upload after build 1;
-   automatic build-number management is intentionally disabled.
+   agreements, and the configured development team. Local exports also require
+   an automatic-distribution signing identity/profile on the release Mac;
+   Xcode Cloud manages its own signing.
+2. For local uploads, generate the project with XcodeGen 2.44.1, create a signed
+   Release archive with Xcode 26, export with `ExportOptions.plist`, and run
+   Xcode's Validate App action. Increment `CURRENT_PROJECT_VERSION` before any
+   upload after build 1; automatic build-number management is disabled for local
+   exports. Alternatively, use the manual **TestFlight** Xcode Cloud archive
+   workflow described in the
+   [iPad README](../apps/ipad/README.md#xcode-cloud-and-testflight), starting its
+   build counter above the existing build number. After upload, verify the exact
+   run's uploaded build has finished processing with `processingState: VALID`.
 3. Have the release owner confirm the export-compliance determination behind
    `ITSAppUsesNonExemptEncryption = NO`: native first-party use is limited to
    Apple-provided HTTPS/Keychain and SHA-256 hashing, and no bundled code adds
@@ -221,10 +228,14 @@ The unsigned CI build is not a distribution check. Before uploading:
    actual API behavior, complete Apple's current age-rating questionnaire, and
    provide beta review contact details, concise testing instructions, and a
    still-valid review class code. Do not put the code in public metadata.
-5. Install the archived build on a physical iPad and repeat the workshop flow
-   on the venue Wi-Fi. Keep the preinstalled, preactivated offline-example path
-   as the class-day fallback; TestFlight review timing is not a workshop
-   dependency.
+
+Physical-iPad testing is recommended for workshop readiness, not required for
+TestFlight submission or distribution. Simulator checks, including Devin's iPad
+simulator, can be used for beta validation; record their limits rather than
+claiming physical-device coverage. Before a workshop, consider rehearsing on an
+iPad using the venue Wi-Fi. Keep the preinstalled, preactivated offline-example
+path as the class-day fallback; TestFlight review timing is not a workshop
+dependency.
 
 If a class code must be replaced, preserve its protected provisioning file, or
 the protected record made when it was minted in the panel, as the audit and

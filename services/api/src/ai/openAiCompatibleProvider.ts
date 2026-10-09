@@ -197,6 +197,29 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         response.status === 429 || response.status >= 500,
       );
     }
+    const truncated = responsesApi
+      ? body?.incomplete_details?.reason === "max_output_tokens"
+      : body?.choices?.[0]?.finish_reason === "length";
+    // Some compatible providers omit status. An explicit non-completed state
+    // or error is a protocol failure, never a usable content advisory.
+    const protocolFailure = responsesApi && (
+      (body?.status !== undefined && body.status !== "completed")
+      || body?.error != null
+    );
+    if (truncated || protocolFailure) {
+      this.emitTrace(trace, this.traceEvent(
+        operation,
+        "error",
+        started,
+        systemBytes,
+        inputBytes,
+        body,
+      ));
+      throw new ModelProviderError(
+        truncated ? "Model output truncated" : "Model response not completed",
+        true,
+      );
+    }
     const text = responsesApi
       ? body?.output
           ?.flatMap((item) => item.content ?? [])
@@ -214,20 +237,6 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         body,
       ));
       throw new ModelProviderError("No model output", true);
-    }
-    const truncated = responsesApi
-      ? body?.incomplete_details?.reason === "max_output_tokens"
-      : body?.choices?.[0]?.finish_reason === "length";
-    if (truncated) {
-      this.emitTrace(trace, this.traceEvent(
-        operation,
-        "error",
-        started,
-        systemBytes,
-        inputBytes,
-        body,
-      ));
-      throw new ModelProviderError("Model output truncated", true);
     }
     try {
       const result: unknown = JSON.parse(text);

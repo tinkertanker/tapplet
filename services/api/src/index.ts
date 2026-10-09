@@ -14,6 +14,7 @@ import { consoleOperationalTraceSink } from "./operationalTrace";
 import { D1StudioRepository } from "./storage/d1Repository";
 import { cleanupArtifactStorage, R2SourceStore } from "./sourceStore";
 import { PUBLIC_REPORT_MARKER } from "./generation";
+import { parse as parseHtml, type DefaultTreeAdapterTypes } from "parse5";
 
 export default {
   async fetch(request: Request, env: StudioEnv): Promise<Response> {
@@ -99,20 +100,32 @@ export function createImageSafetyInspector(
 
 export function injectPublicHtml(source: string, slug: string): string {
   const report = `<script ${PUBLIC_REPORT_MARKER}>window.addEventListener('DOMContentLoaded',()=>{const b=document.createElement('button');b.textContent='Report this activity';b.setAttribute('aria-label','Report this activity');Object.assign(b.style,{position:'fixed',right:'12px',bottom:'12px',zIndex:'2147483647'});b.onclick=()=>{const reasons=['inappropriate','personal-data','copyright','accessibility','other'];const reason=prompt('Reason: inappropriate, personal-data, copyright, accessibility, or other','other');if(!reason||!reasons.includes(reason))return;fetch('/v1/publications/${slug}/reports',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reason})}).then(response=>{if(!response.ok)throw new Error();b.textContent='Report sent'}).catch(()=>{b.textContent='Report failed — try again'})};document.body.append(b)})</script>`;
-  const withBase = source.replace(
-    /<head(\s[^>]*)?>/i,
-    (head) =>
-      `${head}<base href="/${slug}/"><link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
+  const document = parseHtml(source, { sourceCodeLocationInfo: true });
+  const root = document.childNodes.find(
+    (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "html",
   );
-  const structure = withBase.replace(
-    /<!--[\s\S]*?-->|<(script|style|textarea|title)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
-    (content) => " ".repeat(content.length),
+  const head = root?.childNodes.find(
+    (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "head",
   );
-  const bodyClosings = [...structure.matchAll(/<\/body\s*>/gi)];
-  const bodyClosing = bodyClosings.at(-1);
-  if (bodyClosing?.index === undefined || withBase === source)
+  const body = root?.childNodes.find(
+    (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "body",
+  );
+  const headEnd = head?.sourceCodeLocation?.startTag?.endOffset;
+  if (headEnd === undefined || body?.sourceCodeLocation?.endTag === undefined)
     throw new Error("Stored tapplet source is not a complete HTML document.");
-  return `${withBase.slice(0, bodyClosing.index)}${report}${bodyClosing[0]}${withBase.slice(bodyClosing.index + bodyClosing[0].length)}`;
+  const title = head?.childNodes.find(
+    (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "title",
+  );
+  const titleText = title?.childNodes
+    .filter((node): node is DefaultTreeAdapterTypes.TextNode => node.nodeName === "#text")
+    .map((node) => node.value).join("") || "Tapplet";
+  const language = root?.attrs.find((attribute) => attribute.name === "lang")?.value || "en";
+  const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  const activity = `${source.slice(0, headEnd)}<base href="/${slug}/"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'">${source.slice(headEnd)}`;
+  // An opaque top-level sandbox can still navigate itself. Keep untrusted HTML
+  // in srcdoc: the parent's frame-src 'none' blocks its document navigations,
+  // while sandbox prevents it from navigating or accessing the trusted parent.
+  return `<!doctype html><html lang="${escape(language)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(titleText)}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>html,body{margin:0;width:100%;height:100%}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title="Tapplet activity" sandbox="allow-scripts allow-modals" srcdoc="${escape(activity)}"></iframe>${report}</body></html>`;
 }
 
 async function servePublic(
@@ -184,11 +197,9 @@ async function servePublic(
   const playerOrigin = new URL(env.PUBLIC_PLAYER_ORIGIN).origin;
   headers.set(
     "content-security-policy",
-    // No allow-same-origin: published tapplets run in an opaque origin so a
-    // compromised tapplet cannot act against API endpoints with same-origin
-    // privilege. Every 'self' source must become the explicit player origin
-    // because an opaque origin never matches 'self'.
-    `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src ${playerOrigin} data:; connect-src ${playerOrigin}; base-uri ${playerOrigin}; form-action 'none'; frame-ancestors 'none'; object-src 'none'; sandbox allow-scripts allow-modals`,
+    // srcdoc inherits this policy, but not same-origin privilege. Only the
+    // trusted parent can submit reports; the activity adds connect-src 'none'.
+    `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src ${playerOrigin} data:; connect-src ${playerOrigin}; base-uri ${playerOrigin}; form-action 'none'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'`,
   );
   headers.set(
     "permissions-policy",

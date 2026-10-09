@@ -88,14 +88,18 @@ function attributeValue(match: RegExpMatchArray): string {
   return match[2] ?? match[3] ?? match[4] ?? "";
 }
 
+function normalizeAssetUrl(value: string): string {
+  return value.trim();
+}
+
 export function referencedAssetIds(html: string): string[] {
   const ids: string[] = [];
   for (const match of html.matchAll(URL_ATTRIBUTE)) {
-    const asset = MANAGED_ASSET.exec(attributeValue(match));
+    const asset = MANAGED_ASSET.exec(normalizeAssetUrl(attributeValue(match)));
     if (asset?.[1]) ids.push(asset[1]);
   }
   for (const match of html.matchAll(CSS_URL)) {
-    const asset = MANAGED_ASSET.exec(match[1] ?? match[2] ?? match[3] ?? "");
+    const asset = MANAGED_ASSET.exec(normalizeAssetUrl(match[1] ?? match[2] ?? match[3] ?? ""));
     if (asset?.[1]) ids.push(asset[1]);
   }
   return [...new Set(ids)];
@@ -108,7 +112,7 @@ function referencedImageAssetIdsFrom(
   function visit(node: DefaultTreeAdapterTypes.Node) {
     if ("tagName" in node && node.tagName === "img") {
       const source = node.attrs.find((attribute) => attribute.name === "src")?.value,
-        asset = source && MANAGED_ASSET.exec(source);
+        asset = source && MANAGED_ASSET.exec(normalizeAssetUrl(source));
       if (asset?.[1]) ids.add(asset[1]);
     }
     if ("childNodes" in node) node.childNodes.forEach(visit);
@@ -153,6 +157,9 @@ function validateScripts(
       const attributes = new Map(
         node.attrs.map((attribute) => [attribute.name, attribute.value]),
       );
+      if (node.tagName === "meta" && attributes.get("http-equiv")?.trim().toLowerCase() === "refresh") {
+        issues.push({ kind: "policy", message: "Redirecting URLs are not allowed." });
+      }
       for (const [name, value] of attributes) {
         if (/^on[a-z]+$/.test(name))
           validateJavaScript(`function eventHandler(event) {\n${value}\n}`, "script");
@@ -253,14 +260,14 @@ function inspect(
         kind: "policy",
         message: "Embedded documents and base URLs are not allowed.",
       });
-    if (/\b(?:srcset|poster)\s*=/i.test(html) || /<meta\b[^>]*http-equiv\s*=\s*["']?refresh/i.test(html))
+    if (/\b(?:srcset|poster)\s*=/i.test(html))
       issues.push({
         kind: "policy",
         message: "Redirecting and multi-source URLs are not allowed.",
       });
     for (const match of html.matchAll(URL_ATTRIBUTE)) {
       const attribute = (match[1] ?? "").toLowerCase(),
-        value = attributeValue(match).trim();
+        value = normalizeAssetUrl(attributeValue(match));
       const allowed =
         MANAGED_ASSET.test(value) ||
         (attribute === "href" && value.startsWith("#")) ||
@@ -280,7 +287,7 @@ function inspect(
         });
     }
     for (const match of html.matchAll(CSS_URL)) {
-      const value = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+      const value = normalizeAssetUrl(match[1] ?? match[2] ?? match[3] ?? "");
       if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value))
         issues.push({
           kind: "policy",
@@ -331,8 +338,9 @@ function inspect(
       });
   }
   if (card !== undefined) {
+    const cardIssues: Issue[] = [];
     if (card === null || typeof card !== "object" || Array.isArray(card))
-      issues.push({ kind: "shape", message: "designCard must be an object." });
+      cardIssues.push({ kind: "shape", message: "designCard must be an object." });
     else {
       const value = card as Record<string, unknown>;
       if (
@@ -341,7 +349,7 @@ function inspect(
           !value.title.trim() ||
           value.title.length > 200)
       )
-        issues.push({
+        cardIssues.push({
           kind: "shape",
           message:
             "designCard.title must be a nonempty string up to 200 characters.",
@@ -351,7 +359,7 @@ function inspect(
         (typeof value.description !== "string" ||
           value.description.length > 1000)
       )
-        issues.push({
+        cardIssues.push({
           kind: "shape",
           message:
             "designCard.description must be a string up to 1000 characters.",
@@ -364,11 +372,13 @@ function inspect(
             (tag) => typeof tag !== "string" || !tag.trim() || tag.length > 50,
           ))
       )
-        issues.push({
+        cardIssues.push({
           kind: "shape",
           message: "designCard.tags must contain up to 20 short strings.",
         });
     }
+    // Optional metadata must never discard valid HTML or spend a model repair.
+    if (cardIssues.length && parsed) delete parsed.designCard;
   }
   if (issues.length) return rejected(candidate, issues, parsed);
   if (!parsed) return rejected(candidate, [{ kind: "shape", message: "html must be nonempty." }]);

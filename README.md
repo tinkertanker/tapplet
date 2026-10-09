@@ -5,6 +5,7 @@
 ## Architecture
 
 - `apps/ipad`: native SwiftUI app and the canonical bundled example corpus at `Resources/Examples`
+- `apps/website`: static public preview site and privacy notice ([`apps/website/README.md`](apps/website/README.md))
 - `services/api`: Cloudflare Worker API, D1 migrations and tests
 - `scripts` and `evals`: repository, publication and model-quality tooling
 - `docs`: product contract and pilot operations
@@ -79,6 +80,7 @@ Useful commands are `api:dev`, `api:build`, `api:test`, `api:typecheck`, `api:db
 Run all offline repository verification with:
 
 ```bash
+npx playwright install --with-deps chromium webkit # once, for browser tests
 npm run verify
 npm run api:build
 ```

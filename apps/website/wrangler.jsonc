@@ -1,0 +1,26 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Static assets-only Worker for the public preview site. It deliberately has
+  // no Worker script, bindings, D1/R2 resources or secrets, and its only route
+  // is the tapplet.tk.sg custom domain. workers.dev remains a fallback.
+  "name": "tapplet-preview",
+  "account_id": "b8b1032c61d9475cd00229c74db7ec72",
+  "compatibility_date": "2026-07-18",
+  "workers_dev": true,
+  "preview_urls": false,
+  // The custom domain is attached separately through Cloudflare's API without
+  // reuploading assets; keeping it here retains it on future deployments.
+  "routes": [
+    {
+      "pattern": "tapplet.tk.sg",
+      "custom_domain": true,
+      "zone_id": "ea01004f470a0e8078f1b9fdef547273"
+    }
+  ],
+  "assets": {
+    "directory": "./public",
+    // Serve privacy/index.html at /privacy rather than redirecting to /privacy/.
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}
