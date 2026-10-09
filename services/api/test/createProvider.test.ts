@@ -22,6 +22,28 @@ function env(values: Partial<StudioEnv>): StudioEnv {
 describe("model provider selection", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each([
+    ["https://opencode.ai/zen/go/v1/", true],
+    ["https://opencode.ai/zen/v1", false],
+    ["https://opencode.ai.example.test/zen/go/v1", false],
+    ["https://models.example.test/v1", false],
+  ])("scopes OpenCode session headers to the native Go endpoint: %s", async (baseUrl, nativeGo) => {
+    const fetch = successfulFetch();
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(env({}), {
+      provider: "opencode-go", model: "kimi-k3", baseUrl, apiKey: "test-key",
+    });
+    await provider.generate(brief, []);
+    const headers = new Headers(fetch.mock.calls[0]?.[1]?.headers);
+    if (nativeGo) {
+      expect(headers.get("x-opencode-session")).toMatch(/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/);
+      expect(headers.get("user-agent")).toBe("tapplet-studio/0.1");
+    } else {
+      expect(headers.has("x-opencode-session")).toBe(false);
+      expect(headers.has("user-agent")).toBe(false);
+    }
+  });
+
   it("uses native Anthropic Messages with an isolated credential and ignores thinking blocks", async () => {
     const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({
       stop_reason: "end_turn",

@@ -39,7 +39,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     this.name = `${o.providerName ?? "openai-compatible"}:${o.model}`;
     this.f = o.fetch ?? globalThis.fetch.bind(globalThis);
   }
-  generate(b: TeacherBrief, e: Exemplar[], trace?: OperationalTraceContext) {
+  generate(b: TeacherBrief, e: Exemplar[], trace?: OperationalTraceContext, sessionId?: string) {
     return this.complete(
       SYSTEM_PROMPT,
       generationPrompt(b, e, this.o.promptBoundaryMode),
@@ -48,6 +48,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.reasoningOptions,
       "generate",
       trace,
+      sessionId,
     );
   }
   revise(
@@ -56,6 +57,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     i: string,
     b: TeacherBrief,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ) {
     return this.complete(
       SYSTEM_PROMPT,
@@ -65,6 +67,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.reasoningOptions,
       "revise",
       trace,
+      sessionId,
     );
   }
   repair(
@@ -72,6 +75,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     i: string[],
     context?: RepairContext,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ) {
     return this.complete(
       SYSTEM_PROMPT,
@@ -81,11 +85,13 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.reasoningOptions,
       "repair",
       trace,
+      sessionId,
     );
   }
   async moderate(
     html: string,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<ModerationDecision> {
     const r = await this.complete(
       MODERATION_SYSTEM_PROMPT,
@@ -98,6 +104,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.moderationReasoningOptions,
       "moderate",
       trace,
+      sessionId,
     );
     if (
       !r ||
@@ -119,8 +126,12 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     reasoningOptions?: Readonly<Record<string, unknown>>,
     operation: ModelOperation = "generate",
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<unknown> {
     const responsesApi = this.o.api === "responses";
+    const endpoint = new URL(this.o.baseUrl);
+    const openCodeGo = endpoint.origin === "https://opencode.ai"
+      && endpoint.pathname.replace(/\/$/, "") === "/zen/go/v1";
     const started = performance.now();
     const systemBytes = new TextEncoder().encode(system).byteLength;
     const inputBytes = new TextEncoder().encode(user).byteLength;
@@ -134,6 +145,10 @@ export class OpenAiCompatibleProvider implements ModelProvider {
             authorization: `Bearer ${this.o.apiKey}`,
             "content-type": "application/json",
             ...this.o.headers,
+            ...(openCodeGo ? {
+              "x-opencode-session": sessionId ?? crypto.randomUUID(),
+              "user-agent": "tapplet-studio/0.1",
+            } : {}),
           },
           body: JSON.stringify(
             responsesApi

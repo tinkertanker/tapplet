@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FixtureModelProvider } from "../src/ai/fixtureProvider";
+import { OpenAiCompatibleProvider } from "../src/ai/openAiCompatibleProvider";
+import { MODERATION_SYSTEM_PROMPT } from "../src/ai/prompts";
 import type { AssetStore, StoredAsset } from "../src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../src/auth";
 import { createStudioApp } from "../src/app";
@@ -582,6 +584,59 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(generated.status).toBe(422);
   });
+
+  it.each(["chat-completions", "responses"] as const)(
+    "keeps OpenCode %s sessions stable across a tapplet's repairs, revisions and review",
+    async (api) => {
+      const sessions: (string | null)[] = [];
+      const html = "<!doctype html><html><head><title>Fractions</title></head><body>Compare fractions</body></html>";
+      const fetch: typeof globalThis.fetch = async (_input, init) => {
+        const headers = new Headers(init?.headers);
+        sessions.push(headers.get("x-opencode-session"));
+        if (!sessions.at(-1)) return Response.json({ error: { message: "MissingSessionID" } }, { status: 400 });
+        const body = JSON.parse(String(init?.body)) as { instructions?: string; messages?: { content: string }[] };
+        const system = body.instructions ?? body.messages?.[0]?.content;
+        const text = JSON.stringify(system === MODERATION_SYSTEM_PROMPT
+          ? { safe: true, categories: [] }
+          : { html: sessions.length === 1 ? "incomplete" : html });
+        return Response.json(api === "responses"
+          ? { output: [{ content: [{ type: "output_text", text }] }] }
+          : { choices: [{ message: { content: text } }] });
+      };
+      // Production constructs a provider per HTTP request, not per conversation.
+      const request = (path: string, body: unknown) => createStudioApp({
+        repository, config, sources,
+        provider: new OpenAiCompatibleProvider({
+          baseUrl: "https://opencode.ai/zen/go/v1", apiKey: "test-key", model: "test-model", api, fetch,
+        }),
+        now: () => new Date("2026-08-02T00:00:00Z"),
+      }).fetch(authenticated(path, "POST", body));
+
+      const generated = await request("/v1/artifacts/generate", creationBrief);
+      expect(generated.status).toBe(201);
+      const first = await generated.json() as { artifact: { id: string }; headRevision: RevisionRecord; html: string };
+      expect(first.html).toBe(html);
+      expect(sessions).toEqual([first.artifact.id, first.artifact.id]);
+
+      const revised = await request(`/v1/artifacts/${first.artifact.id}/revisions`, {
+        instruction: "Add a number line", expectedHeadRevisionId: first.headRevision.id,
+      });
+      expect(revised.status).toBe(201);
+      const revision = await revised.json() as { headRevision: RevisionRecord };
+      const published = await request(`/v1/artifacts/${first.artifact.id}/publish`, {
+        expectedHeadRevisionId: revision.headRevision.id,
+      });
+      expect(published.status).toBe(201);
+      expect(await published.json()).not.toHaveProperty("warnings");
+      expect(sessions).toEqual(Array(4).fill(first.artifact.id));
+
+      const another = await request("/v1/artifacts/generate", creationBrief);
+      expect(another.status).toBe(201);
+      const second = await another.json() as { artifact: { id: string } };
+      expect(second.artifact.id).not.toBe(first.artifact.id);
+      expect(sessions.at(-1)).toBe(second.artifact.id);
+    },
+  );
 
   it("creates immutable revisions, moves the head, and records remix lineage", async () => {
     const generated = await app.fetch(

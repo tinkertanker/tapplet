@@ -745,9 +745,11 @@ export function createStudioApp(d: Deps) {
           durationMs: Math.round(performance.now() - retrievalStarted),
         });
       }
+      const aid = id();
       const out = await generateArtifact(d.provider, b, ex, {
         ...d.generationPolicy,
         ...(trace ? { trace } : {}),
+        sessionId: aid,
       });
       warnings.push(
         ...advisoryWarnings("generated_content", [
@@ -755,8 +757,7 @@ export function createStudioApp(d: Deps) {
           ...inspectUnknownText(out.designCard),
         ]),
       );
-      const aid = id(),
-        rid = id(),
+      const rid = id(),
         timestamp = now().toISOString(),
         assetIds = await assets(out.html, o),
         hash = await persist(out.html);
@@ -1055,6 +1056,7 @@ export function createStudioApp(d: Deps) {
             {
               ...d.generationPolicy,
               ...(trace ? { trace } : {}),
+              sessionId: a.id,
             },
           ),
           rid = id(),
@@ -1147,7 +1149,7 @@ export function createStudioApp(d: Deps) {
         await assets(html, o);
         await quota(r, o, "safety");
         try {
-          const m = await d.provider.moderate(html, trace);
+          const m = await d.provider.moderate(html, trace, a.id);
           if (!m.safe) warnings.push(publicationReviewWarning(m.categories));
         } catch (error) {
           const diagnostic = error instanceof Error

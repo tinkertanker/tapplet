@@ -82,6 +82,7 @@ type RepairIntent =
 export interface GenerationOptions {
   maxModelRepairs?: number;
   trace?: OperationalTraceContext;
+  sessionId?: string;
 }
 
 function attributeValue(match: RegExpMatchArray): string {
@@ -510,14 +511,13 @@ async function accept(
       throw new InvalidModelOutputError(inspection.issues);
     const issues = [...new Set(inspection.issues.map((issue) => issue.message))];
     const context = repairContext(intent, repairs === maxRepairs - 1);
-    current = options.trace
-      ? await provider.repair(
-          inspection.candidate,
-          issues,
-          context,
-          options.trace,
-        )
-      : await provider.repair(inspection.candidate, issues, context);
+    current = await provider.repair(
+      inspection.candidate,
+      issues,
+      context,
+      options.trace,
+      options.sessionId,
+    );
   }
 }
 
@@ -533,12 +533,13 @@ export async function generateArtifact(
   exemplars: Exemplar[] = [],
   options: GenerationOptions = {},
 ) {
+  const sessionId = options.sessionId ?? crypto.randomUUID();
   return accept(
     provider,
-    await provider.generate(brief, exemplars.slice(0, 2), options.trace),
+    await provider.generate(brief, exemplars.slice(0, 2), options.trace, sessionId),
     { action: "generate", brief },
     [],
-    options,
+    { ...options, sessionId },
   );
 }
 
@@ -551,11 +552,12 @@ export async function reviseArtifact(
   requiredAssets: RequiredManagedAsset[] = [],
   options: GenerationOptions = {},
 ) {
+  const sessionId = options.sessionId ?? crypto.randomUUID();
   return accept(
     provider,
-    await provider.revise(html, card, instruction, brief, options.trace),
+    await provider.revise(html, card, instruction, brief, options.trace, sessionId),
     { action: "revise", brief, instruction },
     requiredAssets,
-    options,
+    { ...options, sessionId },
   );
 }
