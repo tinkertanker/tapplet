@@ -356,10 +356,12 @@ describe("class-scoped API requests", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const fleet = Object.assign(new FixtureModelProvider(), { name: "fleet" });
     const fleetModerate = vi.spyOn(fleet, "moderate");
+    const fleetRevise = vi.spyOn(fleet, "revise");
     const classProvider = Object.assign(new FixtureModelProvider(), {
       name: "tkslopper:class",
       moderate: () => Promise.reject(new ClassAccessError("allowance", 402)),
     });
+    const classRevise = vi.spyOn(classProvider, "revise");
     const put = vi.fn().mockResolvedValue({
       id: "asset-1",
       ownerHash: "owner",
@@ -391,6 +393,8 @@ describe("class-scoped API requests", () => {
     expect(revised.status).toBe(201);
     const second = (await revised.json()) as { headRevision: { id: string } };
     expect(repository.revisions.get(second.headRevision.id)?.modelVersion).toBe("tkslopper:class");
+    expect(classRevise).toHaveBeenCalledOnce();
+    expect(fleetRevise).not.toHaveBeenCalled();
 
     const published = await send(token, `/v1/artifacts/${first.artifact.id}/publish`, {
       expectedHeadRevisionId: second.headRevision.id,
