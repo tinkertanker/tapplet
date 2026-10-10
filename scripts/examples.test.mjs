@@ -176,6 +176,107 @@ test('spelling misses teach the target pattern', async () => {
   dom.window.close();
 });
 
+test('editing a graded answer clears its stale ✓/✗ state', async () => {
+  const directory = path.resolve('apps/ipad/Resources/Examples');
+  const browser = await chromium.launch({ headless: true });
+  const stateOf = (page, selector) =>
+    page.$eval(selector, (el) => ({
+      correct: el.classList.contains('correct'),
+      incorrect: el.classList.contains('incorrect'),
+      mark: el.nextElementSibling?.textContent ?? '',
+      invalid: el.getAttribute('aria-invalid'),
+    }));
+  try {
+    const inputCase = async (file, correct, wrong) => {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, file), 'utf8'));
+      await page.fill('#term', correct);
+      await page.click('#check');
+      assert.deepEqual(await stateOf(page, '#term'), { correct: true, incorrect: false, mark: '✓', invalid: 'false' }, file);
+      await page.fill('#term', wrong);
+      assert.deepEqual(await stateOf(page, '#term'), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} edit clears`);
+      await page.click('#check');
+      assert.deepEqual(await stateOf(page, '#term'), { correct: false, incorrect: true, mark: '✗', invalid: 'true' }, `${file} regraded`);
+      await page.fill('#term', correct);
+      assert.deepEqual(await stateOf(page, '#term'), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} cleared without regrading`);
+      await page.close();
+    };
+    await inputCase('source-reliability-check.html', 'corroboration', 'bias');
+    await inputCase('persuasive-language-lab.html', 'rhetorical question', 'alliteration');
+
+    const selectCase = async (file, selectSelector, checkSelector) => {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, file), 'utf8'));
+      const selects = await page.$$(selectSelector);
+      for (const select of selects) {
+        await select.evaluate((el) => {
+          el.value = el.dataset.a ?? el.dataset.answer;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      }
+      await page.click(checkSelector);
+      const [first, second] = selects;
+      const stateOfEl = (el) =>
+        el.evaluate((e) => ({
+          correct: e.classList.contains('correct'),
+          incorrect: e.classList.contains('incorrect'),
+          mark: e.nextElementSibling?.textContent ?? '',
+          invalid: e.getAttribute('aria-invalid'),
+        }));
+      const wrong = await first.evaluate((el) =>
+        [...el.options].map((o) => o.value).find((v) => v && v !== (el.dataset.a ?? el.dataset.answer)),
+      );
+      assert.ok(wrong, `${file} has a wrong option`);
+      await first.evaluate((el, v) => {
+        el.value = v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, wrong);
+      assert.deepEqual(await stateOfEl(first), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} edit clears`);
+      const other = await stateOfEl(second);
+      assert.equal(other.correct, true, `${file} sibling keeps its grade`);
+      assert.equal(other.mark, '✓');
+      await page.click(checkSelector);
+      assert.deepEqual(await stateOfEl(first), { correct: false, incorrect: true, mark: '✗', invalid: 'true' }, `${file} regraded wrong`);
+      const right = await first.evaluate((el) => el.dataset.a ?? el.dataset.answer);
+      await first.evaluate((el, v) => {
+        el.value = v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, right);
+      assert.deepEqual(await stateOfEl(first), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} correct edit only clears`);
+      await page.close();
+    };
+    await selectCase('cool-box-fair-test-lab.html', '#vars select', '#checkVars');
+    await selectCase('paragraph-structure-sequencer.html', '#jobs select', '#checkJ');
+    await selectCase('market-street-field-notes.html', '#notes select', '#check');
+
+    // market-street evidence select (single control, group 2)
+    {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, 'market-street-field-notes.html'), 'utf8'));
+      await page.selectOption('#evidence', 'ok');
+      await page.click('#checkE');
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: true, incorrect: false, mark: '✓', invalid: 'false' });
+      const wrong = await page.$eval('#evidence', (el) =>
+        [...el.options].map((o) => o.value).find((v) => v && v !== 'ok'),
+      );
+      await page.selectOption('#evidence', wrong);
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: false, mark: '', invalid: null }, 'evidence edit clears');
+      await page.click('#checkE');
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: true, mark: '✗', invalid: 'true' });
+      await page.selectOption('#evidence', 'ok');
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: false, mark: '', invalid: null }, 'evidence correct edit only clears');
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test('line golf rejects a half-unit miss on a horizontal hole', async () => {
   const html = await readFile(
     path.resolve('apps/ipad/Resources/Examples/line-golf.html'),

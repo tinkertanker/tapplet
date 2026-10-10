@@ -58,9 +58,9 @@
       "summary": "Change width on a fixed perimeter, watch the rectangle and area, and find which pair is largest.",
       "subject": "mathematics", "level": "upper-primary", "locale": "en-SG",
       "learningObjective": "Generate rectangles with the same perimeter and explain why area is largest near a square.",
-      "tags": ["perimeter", "rectangles", "graphs", "area"], "interactionPattern": "stepper-live-graph",
+      "tags": ["perimeter", "rectangles", "graphs", "area"], "interactionPattern": "slider-live-graph",
       "descriptor": "A live rectangle and pair graph showing that a fixed perimeter does not fix the area.",
-      "designCard": {"layout": "controls beside graph", "accent": "amber", "interaction": "step, test, check"}
+      "designCard": {"layout": "controls beside graph", "accent": "amber", "interaction": "slide, test, check"}
     },
     {
       "id": "fraction-equivalence-diagnostic", "filename": "fraction-equivalence-diagnostic.html",
