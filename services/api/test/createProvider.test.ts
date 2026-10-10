@@ -219,6 +219,48 @@ describe("model provider selection", () => {
     });
   });
 
+  it.each([
+    ["muse-spark-1.3-contributor", "xhigh", "minimal"],
+    ["muse-spark-2-contributor", "xhigh", "minimal"],
+    ["gpt-5.6-luna", "medium", "low"],
+  ])("selects the OpenCode Go Responses API by model family: %s", async (model, effort, moderationEffort) => {
+    const fetch = successfulResponsesFetch();
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(
+      env({ AI_PROVIDER: "opencode-go", AI_MODEL: model, OPENCODE_API_KEY: "opencode-secret" }),
+    );
+
+    await provider.generate(brief, []);
+
+    expect(fetch.mock.calls[0]?.[0]).toBe("https://opencode.ai/zen/go/v1/responses");
+    const body = requestBody(fetch);
+    expect(body).toMatchObject({ model, reasoning: { effort } });
+    expect(body).not.toHaveProperty("thinking");
+
+    fetch.mockClear();
+    fetch.mockResolvedValueOnce(Response.json({
+      output: [{ content: [{ type: "output_text", text: JSON.stringify({ safe: true, categories: [] }) }] }],
+    }));
+    await provider.moderate("<html></html>");
+    expect(requestBody(fetch)).toMatchObject({ reasoning: { effort: moderationEffort } });
+  });
+
+  it.each(["kimi-k3", "glm-5.3", "muse-spark", "gpt-4o"])(
+    "keeps other OpenCode Go models on chat completions: %s",
+    async (model) => {
+      const fetch = successfulFetch();
+      vi.stubGlobal("fetch", fetch);
+      const provider = createModelProvider(
+        env({ AI_PROVIDER: "opencode-go", AI_MODEL: model, OPENCODE_API_KEY: "opencode-secret" }),
+      );
+
+      await provider.generate(brief, []);
+
+      expect(fetch.mock.calls[0]?.[0]).toBe("https://opencode.ai/zen/go/v1/chat/completions");
+      expect(requestBody(fetch)).not.toHaveProperty("reasoning");
+    },
+  );
+
   it("uses OpenRouter with its dedicated credential and attribution", async () => {
     const fetch = successfulFetch();
     vi.stubGlobal("fetch", fetch);

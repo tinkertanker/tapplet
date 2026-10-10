@@ -90,8 +90,9 @@ is used only at its official endpoint. Likewise, generic `AI_API_KEY` fallback
 requires the evaluation endpoint to match its configured `AI_BASE_URL`.
 
 For OpenCode Zen or Go, use a model ID listed in the provider's endpoint table;
-Tapplet supports OpenAI-compatible chat completions and the Responses API used
-by the default `muse-spark-1.2-contributor` model. For OpenRouter, use an
+Tapplet supports OpenAI-compatible chat completions and, on OpenCode Go, the
+Responses API used by the Muse Spark (`muse-spark-*`) and GPT-5/6 model
+families; other Go models use chat completions. For OpenRouter, use an
 OpenRouter model slug. Provider credentials are Wrangler secrets in deployed
 environments; never put them in
 `wrangler.jsonc`. Tapplet requests maximum reasoning for generation, revision
