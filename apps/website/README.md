@@ -14,6 +14,8 @@ Public URLs:
 `/admin` and `/v1/admin/*` on the same host are not part of this site: zone
 routes attach them to the API Worker, which serves the operations panel (see
 [`docs/TAPPLET_PILOT_RUNBOOK.md`](../../docs/TAPPLET_PILOT_RUNBOOK.md)).
+Because the panel keeps its admin token in this origin's `sessionStorage`,
+keep this site script-free: no scripts, analytics or third-party embeds.
 
 The Worker's workers.dev URL remains available as a fallback. The custom domain
 is attached separately through Cloudflare's supported API without reuploading

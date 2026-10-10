@@ -397,6 +397,8 @@ describe("web operations panel", () => {
 });
 
 describe("operations panel origin", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("redirects the panel to the canonical admin origin and keeps serving it there", async () => {
     const { database } = settingsDatabase();
     const env = { ...environment(database), ADMIN_ORIGIN: "https://tapplet.tk.sg" };
@@ -411,6 +413,13 @@ describe("operations panel origin", () => {
 
     const unset = await handleAdminRequest(new Request("https://api.workers.dev/admin"), environment(database));
     expect(unset?.status).toBe(200);
+
+    const routedDev = await handleAdminRequest(new Request("http://tapplet.tk.sg/admin"), env);
+    expect(routedDev?.status).toBe(200);
+    const local = await handleAdminRequest(new Request("http://localhost:8787/admin"), env);
+    expect(local?.status).toBe(200);
+    const blank = await handleAdminRequest(new Request("https://api.workers.dev/admin"), { ...env, ADMIN_ORIGIN: "" });
+    expect(blank?.status).toBe(200);
   });
 
   it("prices the requested model from OpenRouter's public list without credentials", async () => {
