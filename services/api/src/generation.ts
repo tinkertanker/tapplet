@@ -8,6 +8,7 @@ import type {
   RepairContext,
   TeacherBrief,
 } from "./ai/provider";
+import { MODEL_CALL_TIMEOUT_MS, ModelProviderError } from "./ai/provider";
 import type {
   ArtifactOperation,
   OperationalTraceContext,
@@ -35,6 +36,9 @@ export interface RequiredManagedAsset {
 }
 const MAX_HTML_BYTES = 200_000;
 export const DEFAULT_MAX_MODEL_REPAIRS = 2;
+// The iPad waits 150 seconds. Start a repair only if a full model call still
+// fits in this budget, leaving time for retrieval, moderation and storage.
+export const MODEL_WORK_BUDGET_MS = 135_000;
 const URL_ATTRIBUTE =
   /\b(src|href|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
 const CSS_URL = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis;
@@ -83,6 +87,7 @@ export interface GenerationOptions {
   maxModelRepairs?: number;
   trace?: OperationalTraceContext;
   sessionId?: string;
+  startedAt?: number;
 }
 
 function attributeValue(match: RegExpMatchArray): string {
@@ -509,6 +514,11 @@ async function accept(
     if (inspection.status === "accepted") return inspection.artifact;
     if (repairs === maxRepairs)
       throw new InvalidModelOutputError(inspection.issues);
+    if (
+      options.startedAt !== undefined &&
+      Date.now() - options.startedAt + MODEL_CALL_TIMEOUT_MS > MODEL_WORK_BUDGET_MS
+    )
+      throw new ModelProviderError("No time left to repair the model output.", true);
     const issues = [...new Set(inspection.issues.map((issue) => issue.message))];
     const context = repairContext(intent, repairs === maxRepairs - 1);
     current = await provider.repair(
@@ -534,12 +544,13 @@ export async function generateArtifact(
   options: GenerationOptions = {},
 ) {
   const sessionId = options.sessionId ?? crypto.randomUUID();
+  const startedAt = Date.now();
   return accept(
     provider,
     await provider.generate(brief, exemplars.slice(0, 2), options.trace, sessionId),
     { action: "generate", brief },
     [],
-    { ...options, sessionId },
+    { ...options, sessionId, startedAt },
   );
 }
 
@@ -553,11 +564,12 @@ export async function reviseArtifact(
   options: GenerationOptions = {},
 ) {
   const sessionId = options.sessionId ?? crypto.randomUUID();
+  const startedAt = Date.now();
   return accept(
     provider,
     await provider.revise(html, card, instruction, brief, options.trace, sessionId),
     { action: "revise", brief, instruction },
     requiredAssets,
-    { ...options, sessionId },
+    { ...options, sessionId, startedAt },
   );
 }

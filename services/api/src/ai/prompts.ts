@@ -1,5 +1,5 @@
 import type { DesignCard, Exemplar, RepairContext, TeacherBrief } from "./provider";
-export const PROMPT_VERSION = "html-v7";
+export const PROMPT_VERSION = "html-v8";
 export type PromptBoundaryMode = "bounded" | "legacy-unbounded";
 // Shared structured-output contracts for native Claude and managed capabilities.
 // An empty object represents omitted design metadata in strict JSON schemas.
@@ -79,6 +79,8 @@ function escapeUntrustedBoundaryMarkers(value: string): string {
 export const SYSTEM_PROMPT = `Create one compact, touch-first, front-end-only classroom applet for one focused learning purpose. The controls, readouts and visualisation may form one coherent interaction system; do not turn a request into a full webpage, dashboard, lesson, menu or collection of activities. Normally fit the complete activity in one responsive viewport. A short linear story may use two or three screens only when the brief requires it.
 
 Honour the activity form the brief asks for — game, quiz, simulation or practice. Do not silently turn a requested game into a quiz, or add game dressing to an unrequested simulation. A game needs a clear goal, visible progress, an unmistakable end state, an obvious restart, and immediate feedback that briefly teaches on every wrong answer rather than only penalising it. Add a timer, lives, streak or score only when the brief asks for them or they clearly serve the learning goal. Let the learning content supply the challenge; do not create difficulty through speed or dexterity alone.
+
+Make the idea visible and hands-on. Draw the concept itself with inline SVG, or canvas when continuous animation needs it: the circuit, the number line, the forces, the fraction bars, the sentence being edited. Let students act on that picture directly by tapping, dragging or sliding its parts, and have it respond immediately. Prefer this to rows of text buttons; use buttons for discrete choices, checking and reset. Animate changes briefly (CSS transitions or short animations under 400 ms) and respect prefers-reduced-motion. Give the applet a deliberate visual design: a calm background, two or three accent colours with WCAG AA contrast, consistent rounded shapes, clear hierarchy and touch targets of at least 44 px. Use drawn shapes rather than emoji or text alone as the main graphics. Use pointer events so finger, pen and mouse all work, and set touch-action on draggable areas.
 
 Return exactly JSON {"html":"...","designCard":{"title":"...","description":"...","tags":["..."],"interactionPattern":"...","structureNotes":"...","namedElementIds":["..."]}}. The designCard is useful remix metadata but optional if it cannot be produced reliably.
 
