@@ -566,21 +566,16 @@ final class TappletUITests: XCTestCase {
     @MainActor
     private func advanceGuidedFlow(in app: XCUIApplication) {
         let keyboardButton = app.buttons["guided-continue-keyboard"]
-        let bottomButton = app.buttons["guided-continue"]
-        // As in selectSidebarItem, avoid a timed-out wait and its slow snapshot.
-        // The bottom button can exist behind the keyboard, so wait until one of
-        // the two is hittable, preferring the keyboard toolbar button.
-        let hittable = { (button: XCUIElement) in button.exists && button.isHittable }
-        let deadline = Date().addingTimeInterval(5)
-        while !hittable(keyboardButton) && !hittable(bottomButton) && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-        if hittable(keyboardButton) {
+        // Keep the full wait here: checking hittability while the keyboard is
+        // still animating in fails with an invalid activation point.
+        if keyboardButton.waitForExistence(timeout: 2), keyboardButton.isHittable {
             keyboardButton.tap()
             return
         }
 
-        XCTAssertTrue(hittable(bottomButton))
+        let bottomButton = app.buttons["guided-continue"]
+        XCTAssertTrue(bottomButton.waitUntilExists(timeout: 3))
+        XCTAssertTrue(bottomButton.isHittable)
         bottomButton.tap()
     }
 
