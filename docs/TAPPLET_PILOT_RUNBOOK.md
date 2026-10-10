@@ -281,10 +281,14 @@ Six-digit codes have one million possibilities. The existing
 `DAILY_NETWORK_CLASS_CODE_FAILURE_LIMIT` now bounds **all format-valid attempts**
 before checking the credential, including successful guesses; its configured
 500-attempt budget remains separate from the 100 successful registrations per
-IP address. Attempt budgets group IPv6 addresses by /64, and IPv4-mapped IPv6
+IP address. Attempt budgets group IPv6 addresses by /48, and IPv4-mapped IPv6
 addresses share their IPv4 address's budget. Other usage quotas keep their existing
-keys. This limits address rotation within one /64, not distributed proxy guessing.
-A locked network cannot bypass this budget with a correct guess.
+keys. One /48 budget also bounds rotation across its /56s and /64s. This trades
+some availability for guess resistance: all networks sharing a /48 share the
+500 attempts, and one abusive client can exhaust that budget until midnight UTC.
+It does not prevent guessing across multiple /48s, larger allocations or proxies.
+A locked network cannot bypass this budget with a correct guess; do not clear a
+live budget without investigating the abuse and approving that production change.
 Use workshop-appropriate expiries. Numeric allocation retries confirmed hash
 collisions; uncertain CLI results preserve the protected file for an identical
 retry. The unique legacy-alias index rejects shared suffixes; a conflicting

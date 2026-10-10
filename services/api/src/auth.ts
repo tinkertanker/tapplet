@@ -171,7 +171,8 @@ export async function networkHashFrom(request: Request): Promise<string> {
   return sha256(`network:${address}`);
 }
 
-// Guess budgets cover IPv6 /64s, while other usage quotas retain their IP keys.
+// A /48 also bounds rotation among the /64s or /56s delegated to one customer.
+// Other usage quotas retain their existing IP keys.
 export async function classCodeAttemptNetworkHashFrom(request: Request): Promise<string> {
   let address = request.headers.get('cf-connecting-ip')?.trim() || 'local-or-unknown';
   if (address.includes(':')) {
@@ -188,7 +189,7 @@ export async function classCodeAttemptNetworkHashFrom(request: Request): Promise
       const words = groups.map(group => parseInt(group, 16));
       address = words.slice(0, 5).every(word => word === 0) && words[5] === 0xffff
         ? [words[6]! >> 8, words[6]! & 255, words[7]! >> 8, words[7]! & 255].join('.')
-        : `${words.slice(0, 4).map(word => word.toString(16)).join(':')}::/64`;
+        : `${words.slice(0, 3).map(word => word.toString(16)).join(':')}::/48`;
     } catch {
       address = 'local-or-unknown';
     }

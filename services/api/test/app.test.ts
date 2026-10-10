@@ -316,9 +316,10 @@ describe("Tapplet API registration and public HTML", () => {
   });
 
   it.each([
-    ["2001:db8:1234:5678::1", "2001:0db8:1234:5678:0000:0000:0000:0002", "2001:db8:1234:5678:ffff:ffff:ffff:ffff", "2001:db8:1234:5679::1"],
+    ["2001:db8:1234:5678::1", "2001:0db8:1234:5678:0000:0000:0000:0002", "2001:db8:1234:5678:ffff:ffff:ffff:ffff", "2001:db8:1235:5678::1"],
+    ["2001:db8:1234:5601::1", "2001:db8:1234:56ab::2", "2001:db8:1234:ffff::3", "2001:db8:1235:ffff::3"],
     ["192.0.2.9", "::ffff:192.0.2.9", "::ffff:c000:209", "192.0.2.10"],
-  ])("shares attempt limits across an IPv6 /64 or mapped IPv4 address: %s", async (first, second, third, other) => {
+  ])("shares attempt limits across an IPv6 /48 or mapped IPv4 address: %s", async (first, second, third, other) => {
     const hash = createHash("sha256").update("class-code:000042").digest("hex");
     repository.classCodes.set(hash, { maximumUses: 1, uses: 0, expiresAt: "2026-08-03T00:00:00Z" });
     app = createStudioApp({
