@@ -27,6 +27,9 @@ export interface StudioEnv {
   TKSLOPPER_CONTROL_PLANE?: Fetcher;
   ADMIN_TOKEN?: string;
   ADMIN_ENCRYPTION_KEY?: string;
+  // Canonical origin for the operations panel, e.g. https://tapplet.tk.sg.
+  // Other hosts redirect /admin there; the API itself stays on every host.
+  ADMIN_ORIGIN?: string;
   DEVICE_TOKEN_SIGNING_SECRET?: string;
   STUDIO_SEED_IMPORT_TOKEN?: string;
   PUBLIC_PLAYER_ORIGIN: string;

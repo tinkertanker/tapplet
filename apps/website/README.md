@@ -11,6 +11,10 @@ Public URLs:
 - <https://tapplet.tk.sg/>: landing page
 - <https://tapplet.tk.sg/privacy>: privacy notice
 
+`/admin` and `/v1/admin/*` on the same host are not part of this site: zone
+routes attach them to the API Worker, which serves the operations panel (see
+[`docs/TAPPLET_PILOT_RUNBOOK.md`](../../docs/TAPPLET_PILOT_RUNBOOK.md)).
+
 The Worker's workers.dev URL remains available as a fallback. The custom domain
 is attached separately through Cloudflare's supported API without reuploading
 assets; `wrangler.jsonc` retains it so future authorised deployments keep it.

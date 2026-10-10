@@ -395,3 +395,45 @@ describe("web operations panel", () => {
     });
   });
 });
+
+describe("operations panel origin", () => {
+  it("redirects the panel to the canonical admin origin and keeps serving it there", async () => {
+    const { database } = settingsDatabase();
+    const env = { ...environment(database), ADMIN_ORIGIN: "https://tapplet.tk.sg" };
+    const moved = await handleAdminRequest(new Request("https://api.workers.dev/admin/"), env);
+    expect(moved?.status).toBe(308);
+    expect(moved?.headers.get("location")).toBe("https://tapplet.tk.sg/admin");
+    expect(moved?.headers.get("cache-control")).toContain("no-store");
+
+    const panel = await handleAdminRequest(new Request("https://tapplet.tk.sg/admin"), env);
+    expect(panel?.status).toBe(200);
+    expect(await panel?.text()).toContain('id="cost-form"');
+
+    const unset = await handleAdminRequest(new Request("https://api.workers.dev/admin"), environment(database));
+    expect(unset?.status).toBe(200);
+  });
+
+  it("prices the requested model from OpenRouter's public list without credentials", async () => {
+    const fetcher = vi.fn(async () => Response.json({ data: [
+      { id: "openai/gpt-6-luna:batch", name: "Batch", pricing: { prompt: "0.00000005", completion: "0.00000025" } },
+      { id: "openai/gpt-6-luna", name: "OpenAI: GPT-6 Luna", pricing: { prompt: "0.0000001", completion: "0.0000005" } },
+    ] }));
+    vi.stubGlobal("fetch", fetcher);
+    const { database } = settingsDatabase();
+    const env = { ...environment(database), OPENROUTER_API_KEY: "provider-secret" };
+    const request = (model: string) => handleAdminRequest(new Request(`https://api.test/v1/admin/model-pricing?model=${encodeURIComponent(model)}`, {
+      headers: { authorization: `Bearer ${adminToken}` },
+    }), env);
+
+    const response = await request("gpt-6-luna");
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ pricing: {
+      source: "openrouter", id: "openai/gpt-6-luna", name: "OpenAI: GPT-6 Luna", inputPerMillion: 0.1, outputPerMillion: 0.5,
+    } });
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith("https://openrouter.ai/api/v1/models", expect.objectContaining({ credentials: "omit" }));
+    expect(JSON.stringify(fetcher.mock.calls)).not.toContain("provider-secret");
+
+    expect(await (await request("unknown-model"))?.json()).toEqual({ pricing: null });
+    expect((await request(" "))?.status).toBe(400);
+  });
+});
