@@ -303,22 +303,25 @@ describe("web operations panel", () => {
       30,
       expiresAt,
       expect.any(String),
+      null,
+      null,
+      null,
     ]);
     expect(JSON.stringify(classCodeValues())).not.toContain(compactCode);
   });
 
   it("allocates another code after a collision without changing the existing class", async () => {
     const sqlite = new DatabaseSync(":memory:");
-    sqlite.exec("CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT,maximum_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at TEXT,created_at TEXT)");
+    sqlite.exec("CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT,maximum_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at TEXT,created_at TEXT,inference_key_ciphertext TEXT,inference_key_iv TEXT,inference_key_hint TEXT)");
     let occupyFirstCandidate = true;
     const database = {
       prepare(query: string) {
         return {
-          bind(...values: (string | number)[]) {
+          bind(...values: (string | number | null)[]) {
             return {
               async run() {
                 if (occupyFirstCandidate) {
-                  sqlite.prepare("INSERT INTO class_codes VALUES(?,?,?,?,?,?)").run(values[0]!, "Existing class", 9, 7, "2090-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+                  sqlite.prepare("INSERT INTO class_codes(code_hash,label,maximum_uses,use_count,expires_at,created_at) VALUES(?,?,?,?,?,?)").run(values[0]!, "Existing class", 9, 7, "2090-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
                   occupyFirstCandidate = false;
                 }
                 return { success: true, meta: { changes: Number(sqlite.prepare(query).run(...values).changes) } };

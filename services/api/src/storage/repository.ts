@@ -107,6 +107,12 @@ export interface ArtifactStorageReferences {
 
 export const CURATED_SEED_OWNER = "studio-curated-seed";
 
+export interface ClassInferenceKey {
+  classCodeHash: string;
+  ciphertext: string;
+  iv: string;
+}
+
 export type RegistrationResult =
   | "success"
   | "invalid-class-code"
@@ -125,7 +131,10 @@ export interface StudioRepository {
     networkSubject: string,
     date: string,
     networkLimit: number,
+    ownerHash?: string,
   ): Promise<RegistrationResult>;
+  /** The encrypted tkslopper key of the class this device joined, if any. */
+  getClassInferenceKey(ownerHash: string): Promise<ClassInferenceKey | null>;
   getOwnerTokenVersion(ownerHash: string): Promise<number>;
   bumpOwnerTokenVersion(ownerHash: string): Promise<number>;
   countArtifacts(owner: string): Promise<number>;

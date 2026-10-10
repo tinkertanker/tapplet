@@ -79,6 +79,7 @@ export class D1StudioRepository implements StudioRepository {
     s: string,
     d: string,
     l: number,
+    o?: string,
   ): Promise<RegistrationResult> {
     // D1 batches are one SQLite transaction. The unique marker lets the final
     // statements undo only this activation when the quota update changes no row.
@@ -103,6 +104,19 @@ export class D1StudioRepository implements StudioRepository {
         h,
         marker,
       ),
+      // The marker survives only a committed activation, so the device joins
+      // the class's canonical row exactly when the activation counts.
+      ...(o
+        ? [
+            this.p(
+              "INSERT INTO device_classes(owner_hash,class_code_hash,created_at) SELECT ?1,code_hash,?2 FROM class_codes WHERE (code_hash=?3 OR short_code_hash=?3) AND substr(last_used_at,1,length(?4))=?4",
+              o,
+              n,
+              h,
+              marker,
+            ),
+          ]
+        : []),
       this.p(
         "UPDATE class_codes SET last_used_at=?1 WHERE (code_hash=?2 OR short_code_hash=?2) AND substr(last_used_at,1,length(?3))=?3",
         n,
@@ -112,6 +126,25 @@ export class D1StudioRepository implements StudioRepository {
     ]);
     if ((results[0]?.meta.changes ?? 0) === 0) return "invalid-class-code";
     return (results[1]?.meta.changes ?? 0) === 1 ? "success" : "network-limit";
+  }
+  async getClassInferenceKey(o: string) {
+    const r = await this.p(
+      "SELECT c.code_hash,c.inference_key_ciphertext,c.inference_key_iv FROM device_classes d JOIN class_codes c ON c.code_hash=d.class_code_hash WHERE d.owner_hash=?1 AND (c.inference_key_ciphertext IS NOT NULL OR c.inference_key_iv IS NOT NULL)",
+      o,
+    ).first<{
+      code_hash: string;
+      inference_key_ciphertext: string | null;
+      inference_key_iv: string | null;
+    }>();
+    // A half-written key must not select fleet access: an empty part fails
+    // decryption, so the class's model calls are unavailable instead.
+    return r
+      ? {
+          classCodeHash: r.code_hash,
+          ciphertext: r.inference_key_ciphertext ?? "",
+          iv: r.inference_key_iv ?? "",
+        }
+      : null;
   }
   async getOwnerTokenVersion(o: string) {
     return (

@@ -8,6 +8,7 @@ import type {
   RetrievalEntry,
   RevisionRecord,
   RegistrationResult,
+  ClassInferenceKey,
   StudioRepository,
 } from "./repository";
 import { CURATED_SEED_OWNER, retrievalDescriptor } from "./repository";
@@ -19,8 +20,15 @@ export class MemoryStudioRepository implements StudioRepository {
   readonly contentReports: ContentReportInput[] = [];
   readonly classCodes = new Map<
     string,
-    { maximumUses: number; uses: number; expiresAt: string; shortCodeHash?: string }
+    {
+      maximumUses: number;
+      uses: number;
+      expiresAt: string;
+      shortCodeHash?: string;
+      inferenceKey?: { ciphertext: string; iv: string };
+    }
   >();
+  readonly deviceClasses = new Map<string, string>();
   private usage = new Map<string, number>();
   private revisionAssets = new Map<string, Set<string>>();
   readonly ownerTokenVersions = new Map<string, number>();
@@ -41,17 +49,26 @@ export class MemoryStudioRepository implements StudioRepository {
     s: string,
     d: string,
     l: number,
+    o?: string,
   ): Promise<RegistrationResult> {
-    const c = this.classCodes.get(h) ??
-      [...this.classCodes.values()].find((code) => code.shortCodeHash === h);
-    if (!c || c.expiresAt <= n || c.uses >= c.maximumUses)
+    const entry = this.classCodes.has(h)
+      ? ([h, this.classCodes.get(h)!] as const)
+      : [...this.classCodes.entries()].find(([, code]) => code.shortCodeHash === h);
+    const c = entry?.[1];
+    if (!entry || !c || c.expiresAt <= n || c.uses >= c.maximumUses)
       return "invalid-class-code";
     const k = `${s}:${d}`,
       uses = this.usage.get(k) ?? 0;
     if (uses >= l) return "network-limit";
     c.uses++;
     this.usage.set(k, uses + 1);
+    if (o) this.deviceClasses.set(o, entry[0]);
     return "success";
+  }
+  async getClassInferenceKey(o: string): Promise<ClassInferenceKey | null> {
+    const classCodeHash = this.deviceClasses.get(o);
+    const key = classCodeHash && this.classCodes.get(classCodeHash)?.inferenceKey;
+    return classCodeHash && key ? { classCodeHash, ...key } : null;
   }
   async getOwnerTokenVersion(o: string) {
     return this.ownerTokenVersions.get(o) ?? 0;

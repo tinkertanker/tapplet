@@ -42,14 +42,23 @@ export async function issueDeviceToken(
   now: Date,
   lifetimeDays = 400,
   tokenVersion = 0,
+  ownerId = newDeviceOwnerId(),
 ): Promise<{ token: string; expiresAt: string }> {
   return issueDeviceTokenForOwner(
     secret,
-    randomSlug(24),
+    ownerId,
     now,
     lifetimeDays,
     tokenVersion,
   );
+}
+
+export function newDeviceOwnerId(): string {
+  return randomSlug(24);
+}
+
+export function ownerHashForId(ownerId: string): Promise<string> {
+  return sha256(`owner:${ownerId}`);
 }
 
 export async function refreshDeviceToken(
@@ -113,7 +122,7 @@ export async function ownerCredentialFrom(
   if (payload.expiresAt <= nowMilliseconds) throw invalidDeviceToken();
   await currentTokenVersion(payload, repository);
   return {
-    ownerHash: await sha256(`owner:${payload.ownerId}`),
+    ownerHash: await ownerHashForId(payload.ownerId),
     expiresAt: payload.expiresAt,
   };
 }
@@ -125,7 +134,7 @@ async function currentTokenVersion(
   repository: StudioRepository | undefined,
 ): Promise<number> {
   if (!repository) return payload.tokenVersion ?? 0;
-  const ownerHash = await sha256(`owner:${payload.ownerId}`);
+  const ownerHash = await ownerHashForId(payload.ownerId);
   const stored = await repository.getOwnerTokenVersion(ownerHash);
   if ((payload.tokenVersion ?? 0) !== stored) throw invalidDeviceToken();
   return stored;

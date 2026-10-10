@@ -28,9 +28,20 @@ npx wrangler secret put ADMIN_ENCRYPTION_KEY --profile tinkertanker
 ```
 
 Both values must be at least 32 characters. Keep `ADMIN_ENCRYPTION_KEY` stable:
-rotating it makes any API key already encrypted in D1 unreadable. To rotate the
-encryption key, first switch the panel back to environment defaults, rotate the
-secret, then save the provider key again. The browser keeps `ADMIN_TOKEN` in
+rotating it makes every key already encrypted in D1 unreadable, including
+tkslopper class keys. Until each class key is re-attached, keyed classes cannot
+generate or revise (they never fall back to the fleet). Plan rotation as an
+outage for keyed classes:
+
+1. List the keyed classes without revealing keys:
+   `npx wrangler d1 execute DB --remote --profile tinkertanker --command "SELECT label, inference_key_hint, expires_at FROM class_codes WHERE inference_key_ciphertext IS NOT NULL ORDER BY label"`.
+   For each, make sure you hold its class code in its protected record and can
+   issue a replacement group key in tkslopper (keys cannot be read back).
+2. Switch the panel back to environment defaults, rotate the secret, then save
+   the provider key again.
+3. For each keyed class, issue or rotate its group key in tkslopper and attach
+   it under **Class AI access** with the class code. Do not remove class keys as
+   a recovery shortcut: that moves the class onto fleet access. The browser keeps `ADMIN_TOKEN` in
 tab-scoped session storage and clears it on sign-out; never put either secret in
 a URL, command argument, source file or support message.
 
@@ -245,6 +256,16 @@ the exact row's label, limit, expiry and use count, and disable only that hash
 before securely archiving the record and provisioning a replacement. Never
 identify a row only by the non-unique label, and never paste class codes or
 hashes into issues, commits, chat logs or screenshots.
+
+## Class AI access
+
+A class code can carry a tkslopper classroom group key so the class's AI is
+governed by its tkslopper class: approved aliases, budget, schedule and pause.
+Set it up and rotate it as described in
+[class-scoped access](TKSLOPPER_TRANSPORT.md#class-scoped-access). Treat the
+key like the class code: paste it only into the operations panel, never into
+issues, commits, chat logs or screenshots. Migration `0015_class_inference.sql`
+must be applied before the updated API is deployed; CI applies it on `master`.
 
 ## Short-code rollout and legacy codes
 
