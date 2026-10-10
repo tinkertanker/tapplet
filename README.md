@@ -98,9 +98,10 @@ environments; never put them in
 revision and repair (`max` on OpenCode's DeepSeek chat models and `xhigh` on
 Muse Spark and OpenRouter). Set `AI_REASONING_EFFORT` (`minimal`, `low`,
 `medium`, `high`, `xhigh` or `max`) to replace that default; an admin override
-uses it too. Every model call must finish within Tapplet's 45-second abort, so
-check latency before raising effort: maximum reasoning on Muse Spark takes
-minutes per call. The deployed default is OpenRouter `openai/gpt-6-luna` at
+uses it too. Every direct model call must finish within Tapplet's 60-second
+abort, and a repair starts only if another full call fits in 135 seconds, inside
+the iPad's 150-second wait. Check latency before raising effort: maximum
+reasoning on Muse Spark takes minutes per call. The deployed default is OpenRouter `openai/gpt-6-luna` at
 `low`, about 20 seconds per generation. Uploaded-image safety review uses `gpt-5.6-luna`
 through OpenCode Go with reasoning disabled and requires `OPENCODE_API_KEY`.
 

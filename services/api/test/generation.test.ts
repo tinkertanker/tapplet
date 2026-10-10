@@ -90,7 +90,7 @@ describe("HTML generation contract", () => {
       },
       [exemplar],
     );
-    expect(PROMPT_VERSION).toBe("html-v7");
+    expect(PROMPT_VERSION).toBe("html-v8");
     expect(SYSTEM_PROMPT).toContain("Honour the activity form");
     expect(prompt).toContain("-----BEGIN UNTRUSTED EXEMPLAR DATA-----");
     expect(prompt).toContain("-----END UNTRUSTED EXEMPLAR DATA-----");
@@ -173,6 +173,34 @@ describe("HTML generation contract", () => {
     expect(occurrences(candidatePrompt, markers[4]!)).toBe(1);
     expect(occurrences(candidatePrompt, markers[5]!)).toBe(1);
     expect(markers.slice(0, 4).every((marker) => !candidatePrompt.includes(marker))).toBe(true);
+  });
+
+  it("repairs only while a full model call fits in the iPad's wait", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
+    try {
+      const provider = {
+        name: "slow",
+        generate: vi.fn(async () => {
+          now.mockReturnValue(40_000);
+          return { html: "bad" };
+        }),
+        repair: vi.fn(async () => {
+          now.mockReturnValue(100_000);
+          return { html: "still bad" };
+        }),
+        revise: vi.fn(),
+        moderate: vi.fn(),
+      } as unknown as ModelProvider;
+
+      // 40 s + a 60 s repair fits the 135 s budget; 100 s + another does not.
+      await expect(generateArtifact(provider, brief)).rejects.toMatchObject({
+        message: "No time left to repair the model output.",
+        retryable: true,
+      });
+      expect(provider.repair).toHaveBeenCalledTimes(1);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("supports controlled repair caps and emits metadata-only validation traces", async () => {
