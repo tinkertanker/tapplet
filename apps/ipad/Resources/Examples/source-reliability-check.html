@@ -10,7 +10,7 @@ document.querySelectorAll('.q').forEach(q=>q.onclick=e=>{
   q.nextElementSibling.textContent=why[q.dataset.kind][ok?0:1];
 });
 const term=document.getElementById('term'),tm=document.getElementById('tm');
-function setMark(control,ok){let mark=control.nextElementSibling;if(!mark||!mark.classList.contains('mark')){mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');control.insertAdjacentElement('afterend',mark)}mark.className='mark '+(ok?'correct':'incorrect');mark.textContent=ok?'✓':'✗';control.setAttribute('aria-invalid',ok?'false':'true')}function clearMark(control){control.removeAttribute('aria-invalid');const mark=control.nextElementSibling;if(mark?.classList.contains('mark')){mark.className='mark';mark.textContent=''}}
+function setMark(control,ok){let mark=control.nextElementSibling;if(!mark||!mark.classList.contains('mark')){mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');control.insertAdjacentElement('afterend',mark)}mark.className='mark '+(ok?'correct':'incorrect');mark.textContent=ok?'✓':'✗';control.setAttribute('aria-invalid',ok?'false':'true')}function clearMark(control){control.removeAttribute('aria-invalid');const mark=control.nextElementSibling;if(mark?.classList.contains('mark')){mark.className='mark';mark.textContent=''}}function clearEdited(e){const c=e.target;if(c.hasAttribute?.('aria-invalid')){c.classList.remove('correct','incorrect');clearMark(c)}}document.addEventListener('input',clearEdited);document.addEventListener('change',clearEdited);
 
 let attempts=0;
 const hints=[
