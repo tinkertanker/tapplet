@@ -67,9 +67,7 @@ jobs:
       - name: Build Tapplet unsigned (Release)
         run: xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
       - name: Run unit tests (Debug)
-        run: |
-          xcrun simctl bootstatus "$TAPPLET_TEST_DEVICE" -b
-          xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$TAPPLET_TEST_DEVICE" -resultBundlePath "$RUNNER_TEMP/tapplet-test-evidence/TappletTests.xcresult" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletTests test
+        run: xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$TAPPLET_TEST_DEVICE" -resultBundlePath "$RUNNER_TEMP/tapplet-test-evidence/TappletTests.xcresult" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletTests test
       - name: Retain native test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -94,7 +92,6 @@ jobs:
         run: |
           xcrun simctl list devices -j > "$RUNNER_TEMP/tapplet-test-evidence/devices-before.json"
           vm_stat > "$RUNNER_TEMP/tapplet-test-evidence/memory-before.txt"
-          xcrun simctl bootstatus "$TAPPLET_TEST_DEVICE" -b
           date -u > "$RUNNER_TEMP/tapplet-test-evidence/test-start.txt"
           xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$TAPPLET_TEST_DEVICE" -resultBundlePath "$RUNNER_TEMP/tapplet-test-evidence/TappletUITests.xcresult" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletUITests test
       - name: Capture simulator launch diagnostics on failure

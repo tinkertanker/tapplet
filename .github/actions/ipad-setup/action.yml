@@ -1,5 +1,5 @@
 name: iPad setup
-description: Select Xcode 26, start booting an iPad simulator, install pinned XcodeGen and generate the project.
+description: Select Xcode 26 and an iPad simulator, install pinned XcodeGen and generate the project.
 runs:
   using: composite
   steps:
@@ -26,16 +26,13 @@ runs:
         test "${XCODE_VERSION%%.*}" -ge 26
         test "${SDK_VERSION%%.*}" -ge 26
         echo "Using Xcode $XCODE_VERSION with iPhoneOS SDK $SDK_VERSION"
-    # A cold simulator takes minutes to boot; overlap it with XcodeGen and the builds.
-    - name: Start booting an iPad simulator
+    - name: Select an iPad simulator
       shell: bash
       run: |
         SIMULATOR_SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
         DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; version=sys.argv[1].replace(".", "-"); d=json.load(sys.stdin)["devices"]; runtime=next((key for key in d if key.endswith("iOS-" + version)), None); candidates=[] if runtime is None else [x for x in d[runtime] if "iPad" in x["name"]]; assert candidates, f"No available iPad for iOS {sys.argv[1]}"; print(candidates[0]["udid"])' "$SIMULATOR_SDK")
         echo "TAPPLET_TEST_DEVICE=$DEVICE" >> "$GITHUB_ENV"
         mkdir -p "$RUNNER_TEMP/tapplet-test-evidence"
-        date -u > "$RUNNER_TEMP/tapplet-test-evidence/boot-start.txt"
-        nohup xcrun simctl boot "$DEVICE" > "$RUNNER_TEMP/tapplet-test-evidence/simulator-boot.log" 2>&1 &
     - name: Install XcodeGen 2.44.1
       shell: bash
       run: |
