@@ -4,6 +4,8 @@ import UIKit
 struct TappletRootView: View {
     @Bindable var store: TappletStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var feedbackAttachments: [FeedbackAttachment]?
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -58,6 +60,13 @@ struct TappletRootView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityValue(workshopAccessValue)
+
+                    Button(action: sendFeedback) {
+                        Label("Send feedback", systemImage: "envelope")
+                    }
+                    .foregroundStyle(TappletTheme.ink)
+                    .accessibilityIdentifier("sidebar-feedback")
+                    .accessibilityHint("Opens an email to the Tapplet Studio team with a screenshot and any open tapplet attached.")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -101,6 +110,15 @@ struct TappletRootView: View {
             )
         ) {
             WorkshopAccessView(store: store)
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { feedbackAttachments != nil },
+                set: { if !$0 { feedbackAttachments = nil } }
+            )
+        ) {
+            FeedbackMailView(attachments: feedbackAttachments ?? []) { feedbackAttachments = nil }
+                .ignoresSafeArea()
         }
         .alert(
             "Project recovery",
@@ -166,6 +184,25 @@ struct TappletRootView: View {
             guard let notice else { return }
             UIAccessibility.post(notification: .announcement, argument: notice)
         }
+    }
+
+    private func sendFeedback() {
+        guard FeedbackMail.canCompose else {
+            openURL(FeedbackMail.mailtoURL)
+            return
+        }
+        var attachments: [FeedbackAttachment] = []
+        if let screenshot = FeedbackMail.screenshot() { attachments.append(screenshot) }
+        if let project = store.selectedProject {
+            attachments.append(
+                FeedbackAttachment(
+                    data: Data(project.source.html.utf8),
+                    mimeType: "text/html",
+                    fileName: "\(project.id).html"
+                )
+            )
+        }
+        feedbackAttachments = attachments
     }
 
     private var detailTitle: String {
