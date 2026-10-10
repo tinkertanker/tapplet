@@ -120,7 +120,10 @@ row.
 
 - On registration the Worker records which class row the new device joined
   (`device_classes`), in the same D1 transaction as the activation. Devices
-  registered before migration `0015` have no class and keep the fleet path.
+  registered before this Worker version was deployed (including any registered
+  by the previous Worker after migration `0015` was applied) have no class and
+  keep the fleet path; refreshing their tokens does not change that. Attaching
+  a key to a code only affects devices registered with it since the deploy.
 - For a device whose class has a key, generation, revision, repair,
   publication review and uploaded-image review send the key directly as the
   gateway Bearer credential. There is no grant exchange, no control-plane call
@@ -131,10 +134,14 @@ row.
   credential, and it works while `INFERENCE_TRANSPORT=direct`. An unsupported
   `INFERENCE_TRANSPORT` value still stops all model calls, including classes.
 - A class never falls back to the fleet configuration. A missing gateway or
-  alias setting, an undecryptable key, or a gateway 401/402/403 fails that
-  request. The iPad shows "Your class has used its AI allowance" (HTTP 429,
+  alias setting, an undecryptable or incomplete key, or a gateway 401/402/403
+  fails that class's model calls. Generation, revision and repair then fail:
+  the iPad shows "Your class has used its AI allowance" (HTTP 429,
   `CLASS_AI_ALLOWANCE_REACHED`) for a 402, and "AI is not available for your
   class right now" (HTTP 403, `CLASS_AI_UNAVAILABLE`) for a 401 or 403.
+  Publication and uploaded-image review stay advisory, as for the fleet: the
+  share or upload proceeds with the usual "review unavailable" warning, without
+  a fleet review.
 
 ### Operator setup
 
@@ -232,7 +239,12 @@ Tapplet does not create any of this; tkslopper operators set it up per stage.
    until the canary is accepted.
 5. To roll back, set `INFERENCE_TRANSPORT=direct` and redeploy. Tapplet never
    switches back automatically after a tkslopper error, because that would
-   double-charge ambiguous attempts and hide kill switches.
+   double-charge ambiguous attempts and hide kill switches. This rolls back the
+   fleet only: classes with a key keep using tkslopper in `direct` mode. To
+   contain a class-path incident, pause or revoke the class in tkslopper; to
+   return a class to fleet access, remove its key deliberately. Setting
+   `INFERENCE_TRANSPORT=off` (any unsupported value) stops every model call,
+   fleet and class alike.
 
 For a local transport smoke test, bind the local tkslopper dev Workers as the
 `TKSLOPPER_GATEWAY` and `TKSLOPPER_CONTROL_PLANE` service bindings (the URL
