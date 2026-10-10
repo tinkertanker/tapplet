@@ -6,57 +6,66 @@ const varsBox=document.getElementById('vars'),stepsBox=document.getElementById('
 function setMark(control,ok){let mark=control.nextElementSibling;if(!mark||!mark.classList.contains('mark')){mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');control.insertAdjacentElement('afterend',mark)}mark.className='mark '+(ok?'correct':'incorrect');mark.textContent=ok?'✓':'✗';control.setAttribute('aria-invalid',ok?'false':'true')}function clearMark(control){control.removeAttribute('aria-invalid');const mark=control.nextElementSibling;if(mark?.classList.contains('mark')){mark.className='mark';mark.textContent=''}}function clearEdited(e){const c=e.target;if(c.hasAttribute?.('aria-invalid')){c.classList.remove('correct','incorrect');clearMark(c)}}document.addEventListener('input',clearEdited);document.addEventListener('change',clearEdited);
 
 const data=[['The lining material','changed'],["Water’s temperature rise",'measured'],['Volume of water','same'],['Starting temperature','same'],['Bottle size and material','same'],['Test location','same']];
+const varHints={changed:'Only one thing should be changed on purpose: the thing you are testing. Is that what this is?',measured:'The measured result is what you record at the end to see which lining worked. Is that what this is?',same:'If this were different for each bottle, could you still tell which lining worked?'};
 const opts='<option value="">Choose…</option><option value="changed">Changed on purpose</option><option value="measured">Measured result</option><option value="same">Kept the same</option>';
 varsBox.innerHTML=data.map(x=>`<label class="var">${x[0]}<select data-answer="${x[1]}">${opts}</select></label>`).join('');
 document.getElementById('checkVars').onclick=()=>{
   const a=[...varsBox.querySelectorAll('select')];
   if(a.some(x=>!x.value)){
     a.forEach(x=>{x.classList.remove('correct','incorrect');clearMark(x)});
-    document.getElementById('vm').textContent='Choose an answer for every item first.';
+    document.getElementById('vm').textContent='Choose an option for every variable first.';
     return;
   }
-  let allCorrect=true;
+  const wrong=a.filter(x=>x.value!==x.dataset.answer);
   a.forEach(x=>{
     x.classList.remove('correct','incorrect');
     if(x.value===x.dataset.answer){
       x.classList.add('correct');
     }else{
       x.classList.add('incorrect');
-      allCorrect=false;
     }
     setMark(x,x.value===x.dataset.answer);
   });
-  document.getElementById('vm').textContent=allCorrect
+  document.getElementById('vm').textContent=wrong.length===0
     ?'✓ Correct! Only the lining should change. If the bottles, water and place stay the same, a cooler result really is about the lining.'
-    :'✗ Try again. Ask what you change on purpose, what you measure at the end, and what you keep the same so the comparison stays fair.';
+    :`✗ ${a.length-wrong.length} of ${a.length} correct. Look again at the ones marked ✗. ${varHints[wrong[0].value]}`;
 };
 document.getElementById('diagnose').onclick=()=>{
   const boxes=[...document.querySelectorAll('input[type=checkbox]')];
-  const ok=boxes.every(x=>(x.dataset.spoil==='1')===x.checked);
-  document.getElementById('dm').textContent=ok
+  boxes.forEach(x=>{
+    if(x.checked)setMark(x,x.dataset.spoil==='1');
+    else clearMark(x);
+  });
+  const extra=boxes.filter(x=>x.checked&&x.dataset.spoil==='0').length,found=boxes.filter(x=>x.checked&&x.dataset.spoil==='1').length;
+  document.getElementById('dm').textContent=!extra&&found===2
     ?'✓ Correct! Those two extras spoil the test. A sunny windowsill at 11 am is warmer than a storeroom at 2 pm, so you cannot tell whether cork or felt kept the water cooler.'
-    :'✗ Try again. Ravi did change the lining, and he did measure temperature. That is fine. Look at where and when he compared the bottles.';
+    :extra
+      ?'✗ Not quite. A tick marked ✗ is part of a fair test, not a problem. Ravi is meant to change the lining and measure the result.'
+      :`✗ You have found ${found} of 2. Look at where and when each bottle was tested.`;
 };
 const original=['Choose identical labelled bottles','Add equal water at the same starting temperature','Wrap each with equal thickness of its lining','Place both side by side for twenty minutes','Measure and compare temperature rise'];
 let order=[2,0,4,1,3];
-function render(){stepsBox.innerHTML=order.map((n,i)=>`<div class="step">${original[n]}<button type="button" data-i="${i}" aria-label="Move step up"${i?'':' disabled'}>Up</button></div>`).join('')}
+function render(){stepsBox.innerHTML=order.map((n,i)=>`<div class="step"><span class="t" data-order-step>${original[n]}</span><button type="button" data-i="${i}" aria-label="Move step up"${i?'':' disabled'}>Up</button></div>`).join('')}
 stepsBox.onclick=e=>{
   const i=+e.target.dataset.i;
-  if(!i)return;
+  if(Number.isNaN(i)||i===0)return;
+  stepsBox.querySelectorAll('[data-order-step]').forEach(clearMark);
   [order[i],order[i-1]]=[order[i-1],order[i]];
+  document.getElementById('sm').textContent='';
   render();
 };
 document.getElementById('checkSteps').onclick=()=>{
-  const correct=order.every((n,i)=>n===i);
-  document.getElementById('sm').textContent=correct
+  const right=order.filter((n,i)=>n===i).length;
+  stepsBox.querySelectorAll('[data-order-step]').forEach((step,i)=>setMark(step,order[i]===i));
+  document.getElementById('sm').textContent=right===order.length
     ?'✓ Correct! That order is fair. Match the bottles and water first, add the one difference, stand them together, and only then measure.'
-    :'✗ Try again. Get the bottles and water matching first. Put the lining on, stand them together, and measure last. Measuring early would not be a fair comparison.';
+    :`✗ ${right} of ${order.length} steps are in the right place. Think about what must match before you compare, and what you can measure only at the end.`;
 };
 document.getElementById('reset').onclick=()=>{
   order=[2,0,4,1,3];
   render();
   varsBox.querySelectorAll('select').forEach(x=>{x.value='';x.classList.remove('correct','incorrect');clearMark(x);});
-  document.querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=false);
+  document.querySelectorAll('input[type=checkbox]').forEach(x=>{x.checked=false;clearMark(x)});
   document.getElementById('vm').textContent='';
   document.getElementById('dm').textContent='';
   document.getElementById('sm').textContent='';

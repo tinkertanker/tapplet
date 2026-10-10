@@ -239,6 +239,9 @@ test('editing a graded answer clears its stale ✓/✗ state', async () => {
       assert.equal(other.correct, true, `${file} sibling keeps its grade`);
       assert.equal(other.mark, '✓');
       await page.click(checkSelector);
+      if (file === 'paragraph-structure-sequencer.html') {
+        assert.match(await page.textContent('#jm'), /A supporting detail explains one stage of the process/);
+      }
       assert.deepEqual(await stateOfEl(first), { correct: false, incorrect: true, mark: '✗', invalid: 'true' }, `${file} regraded wrong`);
       const right = await first.evaluate((el) => el.dataset.a ?? el.dataset.answer);
       await first.evaluate((el, v) => {
@@ -267,6 +270,7 @@ test('editing a graded answer clears its stale ✓/✗ state', async () => {
       await page.selectOption('#evidence', wrong);
       assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: false, mark: '', invalid: null }, 'evidence edit clears');
       await page.click('#checkE');
+      assert.match(await page.textContent('#em'), /A photo shows the trees, but not whether the street got cooler/);
       assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: true, mark: '✗', invalid: 'true' });
       await page.selectOption('#evidence', 'ok');
       assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: false, mark: '', invalid: null }, 'evidence correct edit only clears');
@@ -287,4 +291,138 @@ test('line golf rejects a half-unit miss on a horizontal hole', async () => {
   assert.equal(dom.window.onLine(0, 1, 1, 1), true);
   assert.equal(dom.window.onLine(2, 1, 1, 3), true);
   dom.window.close();
+});
+
+test('fair-test variables and confounds give choice-specific feedback', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/cool-box-fair-test-lab.html', 'utf8'));
+    await page.$$eval('#vars select', (selects) => selects.forEach((select) => {
+      select.value = select.dataset.answer;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }));
+    const variable = page.locator('#vars select').first();
+    await variable.selectOption('same');
+    await page.click('#checkVars');
+    assert.equal(await page.locator('#vars .mark.correct').count(), 5);
+    assert.equal(await page.locator('#vars .mark.incorrect').count(), 1);
+    assert.match(await page.textContent('#vm'), /^✗ 5 of 6 correct\./);
+    assert.match(await page.textContent('#vm'), /If this were different for each bottle, could you still tell which lining worked\?/);
+    assert.equal(await variable.getAttribute('aria-invalid'), 'true');
+    await variable.selectOption('changed');
+    assert.deepEqual(await variable.evaluate((el) => ({
+      incorrect: el.classList.contains('incorrect'),
+      mark: el.nextElementSibling?.textContent ?? '',
+      invalid: el.getAttribute('aria-invalid'),
+    })), { incorrect: false, mark: '', invalid: null });
+
+    const confound = page.locator('input[data-spoil="1"]').first();
+    await confound.check();
+    await page.click('#diagnose');
+    assert.match(await page.textContent('#dm'), /^✗ You have found 1 of 2\./);
+    assert.equal(await confound.evaluate((el) => el.nextElementSibling.textContent), '✓');
+    const irrelevant = page.locator('input[data-spoil="0"]').first();
+    await irrelevant.check();
+    await page.click('#diagnose');
+    assert.match(await page.textContent('#dm'), /A tick marked ✗ is part of a fair test/);
+    assert.equal(await irrelevant.evaluate((el) => el.nextElementSibling.textContent), '✗');
+    await irrelevant.uncheck();
+    assert.deepEqual(await irrelevant.evaluate((el) => ({
+      mark: el.nextElementSibling?.textContent ?? '',
+      invalid: el.getAttribute('aria-invalid'),
+    })), { mark: '', invalid: null });
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('named-technique hints change on each wrong attempt', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const [file, answer] of [
+      ['persuasive-language-lab.html', 'rhetorical question'],
+      ['source-reliability-check.html', 'corroboration'],
+    ]) {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(`apps/ipad/Resources/Examples/${file}`, 'utf8'));
+      await page.fill('#term', 'wrong guess');
+      const hints = new Set();
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await page.click('#check');
+        const message = await page.textContent('#tm');
+        assert.match(message, /^✗ Try again\./, file);
+        hints.add(message);
+      }
+      assert.equal(hints.size, 3, file);
+      await page.fill('#term', answer);
+      await page.click('#check');
+      assert.match(await page.textContent('#tm'), /^✓ Correct!/, file);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('plant-cell matches are listed as structure beside job', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/plant-cell-hotspots.html', 'utf8'));
+    await page.locator('.hot').evaluateAll((spots) => spots.forEach((spot) => spot.click()));
+    await page.click('#picks [data-s="3"]');
+    await page.click('#jobs [data-j="1"]');
+    assert.equal(await page.locator('#matchedList .match-row').count(), 0);
+    assert.match(await page.textContent('#feedback'), /^✗ /);
+    await page.click('#jobs [data-j="3"]');
+    assert.equal(await page.locator('#matchedList .match-row').count(), 1);
+    assert.match(await page.textContent('#matchedList .match-row'), /^Nucleus→Contains genetic material/);
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('ordering feedback marks each step, clears on moves, and counts correct positions', async () => {
+  const cases = [
+    { file: 'cool-box-fair-test-lab.html', list: '#steps', check: '#checkSteps', message: '#sm', move: 1, marks: ['✓', '✗', '✗', '✗', '✗'], count: '1 of 5' },
+    { file: 'market-street-field-notes.html', list: '#steps', check: '#checkS', message: '#sm', move: 1, marks: ['✓', '✗', '✗', '✗'], count: '1 of 4' },
+    { file: 'paragraph-structure-sequencer.html', list: '#order', check: '#checkO', message: '#om', move: 3, marks: ['✗', '✓', '✓', '✗'], count: '2 of 4' },
+  ];
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const example of cases) {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(`apps/ipad/Resources/Examples/${example.file}`, 'utf8'));
+      await page.click(example.check);
+      const initialMarks = await page.$$eval(`${example.list} [data-order-step]`, (steps) =>
+        steps.map((step) => step.nextElementSibling?.classList.contains('mark') ? step.nextElementSibling.textContent : ''),
+      );
+      assert.equal(initialMarks.length, example.marks.length, example.file);
+      await page.click(`${example.list} button[data-i="${example.move}"]`);
+      assert.equal(await page.textContent(example.message), '', `${example.file} move clears feedback`);
+      const cleared = await page.$$eval(`${example.list} [data-order-step]`, (steps) =>
+        steps.map((step) => ({
+          mark: step.nextElementSibling?.classList.contains('mark') ? step.nextElementSibling.textContent : '',
+          invalid: step.getAttribute('aria-invalid'),
+        })),
+      );
+      assert.deepEqual(cleared, example.marks.map(() => ({ mark: '', invalid: null })), `${example.file} move clears step marks`);
+      await page.click(example.check);
+      const marks = await page.$$eval(`${example.list} [data-order-step]`, (steps) =>
+        steps.map((step) => step.nextElementSibling?.classList.contains('mark') ? step.nextElementSibling.textContent : ''),
+      );
+      assert.deepEqual(marks, example.marks, example.file);
+      assert.match(await page.textContent(example.message), new RegExp(`^✗ ${example.count} steps are in the right place\\.`), example.file);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
 });
