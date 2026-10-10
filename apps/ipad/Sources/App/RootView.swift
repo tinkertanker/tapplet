@@ -117,7 +117,7 @@ struct TappletRootView: View {
                 set: { if !$0 { feedbackAttachments = nil } }
             )
         ) {
-            FeedbackMailView(attachments: feedbackAttachments ?? [])
+            FeedbackMailView(attachments: feedbackAttachments ?? []) { feedbackAttachments = nil }
                 .ignoresSafeArea()
         }
         .alert(

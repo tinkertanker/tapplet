@@ -8,6 +8,7 @@ struct FeedbackAttachment: Sendable {
     var fileName: String
 }
 
+@MainActor
 enum FeedbackMail {
     static let recipient = "hello@tinkertanker.com"
     static let subject = "Tapplet Studio feedback"
@@ -32,7 +33,6 @@ enum FeedbackMail {
         return components.url ?? URL(string: "mailto:\(recipient)")!
     }
 
-    @MainActor
     static func screenshot() -> FeedbackAttachment? {
         let window = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -49,6 +49,7 @@ enum FeedbackMail {
 
 struct FeedbackMailView: UIViewControllerRepresentable {
     var attachments: [FeedbackAttachment]
+    var onFinish: () -> Void
 
     func makeUIViewController(context: Context) -> MFMailComposeViewController {
         let controller = MFMailComposeViewController()
@@ -64,16 +65,19 @@ struct FeedbackMailView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: MFMailComposeViewController, context: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
 
     @MainActor
     final class Coordinator: NSObject, @preconcurrency MFMailComposeViewControllerDelegate {
+        let onFinish: () -> Void
+        init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+
         func mailComposeController(
             _ controller: MFMailComposeViewController,
             didFinishWith result: MFMailComposeResult,
             error: Error?
         ) {
-            controller.dismiss(animated: true)
+            onFinish()
         }
     }
 }
