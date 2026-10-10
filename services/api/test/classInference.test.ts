@@ -5,6 +5,7 @@ import { decryptClassKey, encryptClassKey, handleAdminRequest } from "../src/adm
 import { FixtureModelProvider } from "../src/ai/fixtureProvider";
 import { ModelProviderError } from "../src/ai/provider";
 import type { ModelProvider } from "../src/ai/provider";
+import type { AssetStore } from "../src/assets";
 import {
   ClassAccessError,
   readTkslopperClassConfig,
@@ -16,6 +17,7 @@ import { createStudioApp } from "../src/app";
 import { ownerHashFrom } from "../src/auth";
 import { createClassInference } from "../src/classInference";
 import type { StudioEnv } from "../src/env";
+import type { ImageSafetyInspector } from "../src/imageSafety";
 import { MemorySourceStore } from "../src/sourceStore";
 import { D1StudioRepository } from "../src/storage/d1Repository";
 import { MemoryStudioRepository } from "../src/storage/memoryRepository";
@@ -236,6 +238,12 @@ describe("class registration", () => {
     ]);
     await expect(repository.getClassInferenceKey("owner-a")).resolves.toEqual({ classCodeHash: "full", ciphertext: "cipher", iv: "iv" });
     await expect(repository.getClassInferenceKey("owner-b")).resolves.toBeNull();
+    sqlite.prepare("UPDATE class_codes SET inference_key_iv=NULL").run();
+    const incomplete = await repository.getClassInferenceKey("owner-a");
+    expect(incomplete).toEqual({ classCodeHash: "full", ciphertext: "cipher", iv: "" });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const inference = await createClassInference(env(), incomplete!);
+    await expect(inference.provider.generate(brief, [])).rejects.toBeInstanceOf(ModelProviderError);
     sqlite.prepare("UPDATE class_codes SET inference_key_ciphertext=NULL,inference_key_iv=NULL").run();
     await expect(repository.getClassInferenceKey("owner-a")).resolves.toBeNull();
     sqlite.close();
@@ -273,17 +281,23 @@ describe("class-scoped API requests", () => {
     },
   };
 
-  function setup(classProvider: (ownerHash: string) => ModelProvider | null) {
+  const classInspector: ImageSafetyInspector = {
+    inspect: async () => ({ status: "unavailable" as const }),
+  };
+
+  function setup(
+    classProvider: (ownerHash: string) => ModelProvider | null,
+    options: { provider?: ModelProvider; assets?: AssetStore } = {},
+  ) {
     const repository = new MemoryStudioRepository();
     repository.classCodes.set(hashOf("123456"), { maximumUses: 5, uses: 0, expiresAt: "2099-01-01T00:00:00Z" });
     const app = createStudioApp({
       repository,
-      provider: new FixtureModelProvider(),
+      provider: options.provider ?? new FixtureModelProvider(),
+      ...(options.assets ? { assets: options.assets } : {}),
       classInference: async (ownerHash) => {
         const provider = classProvider(ownerHash);
-        return provider
-          ? { provider, imageSafety: { inspect: async () => ({ status: "unavailable" as const }) } }
-          : null;
+        return provider ? { provider, imageSafety: classInspector } : null;
       },
       config,
       sources: new MemorySourceStore(),
@@ -300,20 +314,21 @@ describe("class-scoped API requests", () => {
       expect(response.status).toBe(201);
       return ((await response.json()) as { token: string }).token;
     };
-    const generate = (token: string) =>
+    const send = (token: string, path: string, body?: unknown) =>
       app.fetch(
-        new Request("https://api.test/v1/artifacts/generate", {
+        new Request(`https://api.test${path}`, {
           method: "POST",
           headers: {
             "x-device-token": token,
             "cf-connecting-ip": "192.0.2.1",
             origin: "https://studio.test",
-            "content-type": "application/json",
+            ...(body === undefined ? {} : { "content-type": "application/json" }),
           },
-          body: JSON.stringify(creationBrief),
+          body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );
-    return { repository, register, generate };
+    const generate = (token: string) => send(token, "/v1/artifacts/generate", creationBrief);
+    return { repository, register, generate, send };
   }
 
   it("records the joined class and generates with the class provider", async () => {
@@ -335,6 +350,59 @@ describe("class-scoped API requests", () => {
     const body = (await response.json()) as { artifact: { id: string } };
     const artifact = await repository.getArtifact(body.artifact.id, ownerHash);
     expect(repository.revisions.get(artifact!.headRevisionId)?.modelVersion).toBe("tkslopper:class");
+  });
+
+  it("revises with the class provider and keeps class review advisory without fleet fallback", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fleet = Object.assign(new FixtureModelProvider(), { name: "fleet" });
+    const fleetModerate = vi.spyOn(fleet, "moderate");
+    const classProvider = Object.assign(new FixtureModelProvider(), {
+      name: "tkslopper:class",
+      moderate: () => Promise.reject(new ClassAccessError("allowance", 402)),
+    });
+    const put = vi.fn().mockResolvedValue({
+      id: "asset-1",
+      ownerHash: "owner",
+      objectKey: "assets/owner/asset-1.jpg",
+      contentType: "image/jpeg",
+      byteLength: 3,
+      width: 1,
+      height: 1,
+      sha256: "hash",
+      alternativeText: "A diagram",
+      decorative: false,
+      createdAt: "2026-10-10T00:00:00Z",
+      warnings: [],
+    });
+    const { repository, register, generate, send } = setup(() => classProvider, {
+      provider: fleet,
+      assets: { put } as unknown as AssetStore,
+    });
+    const token = await register();
+    const first = (await (await generate(token)).json()) as {
+      artifact: { id: string };
+      headRevision: { id: string };
+    };
+
+    const revised = await send(token, `/v1/artifacts/${first.artifact.id}/revisions`, {
+      instruction: "Use a number line",
+      expectedHeadRevisionId: first.headRevision.id,
+    });
+    expect(revised.status).toBe(201);
+    const second = (await revised.json()) as { headRevision: { id: string } };
+    expect(repository.revisions.get(second.headRevision.id)?.modelVersion).toBe("tkslopper:class");
+
+    const published = await send(token, `/v1/artifacts/${first.artifact.id}/publish`, {
+      expectedHeadRevisionId: second.headRevision.id,
+    });
+    expect(published.status).toBe(201);
+    expect(((await published.json()) as { warnings: Array<{ code: string }> }).warnings).toContainEqual(
+      expect.objectContaining({ code: "AI_CONTENT_REVIEW_UNAVAILABLE" }),
+    );
+    expect(fleetModerate).not.toHaveBeenCalled();
+
+    expect((await send(token, "/v1/assets")).status).toBe(201);
+    expect(put.mock.calls[0]?.[1]).toMatchObject({ imageSafety: classInspector });
   });
 
   it.each([

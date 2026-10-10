@@ -129,18 +129,20 @@ export class D1StudioRepository implements StudioRepository {
   }
   async getClassInferenceKey(o: string) {
     const r = await this.p(
-      "SELECT c.code_hash,c.inference_key_ciphertext,c.inference_key_iv FROM device_classes d JOIN class_codes c ON c.code_hash=d.class_code_hash WHERE d.owner_hash=?1 AND c.inference_key_ciphertext IS NOT NULL AND c.inference_key_iv IS NOT NULL",
+      "SELECT c.code_hash,c.inference_key_ciphertext,c.inference_key_iv FROM device_classes d JOIN class_codes c ON c.code_hash=d.class_code_hash WHERE d.owner_hash=?1 AND (c.inference_key_ciphertext IS NOT NULL OR c.inference_key_iv IS NOT NULL)",
       o,
     ).first<{
       code_hash: string;
-      inference_key_ciphertext: string;
-      inference_key_iv: string;
+      inference_key_ciphertext: string | null;
+      inference_key_iv: string | null;
     }>();
+    // A half-written key must not select fleet access: an empty part fails
+    // decryption, so the class's model calls are unavailable instead.
     return r
       ? {
           classCodeHash: r.code_hash,
-          ciphertext: r.inference_key_ciphertext,
-          iv: r.inference_key_iv,
+          ciphertext: r.inference_key_ciphertext ?? "",
+          iv: r.inference_key_iv ?? "",
         }
       : null;
   }
