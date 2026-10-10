@@ -10,7 +10,7 @@ struct FeedbackAttachment: Sendable {
 
 @MainActor
 enum FeedbackMail {
-    static let recipient = "hello@tinkertanker.com"
+    static let recipient = "hello@tk.sg"
     static let subject = "Tapplet Studio feedback"
 
     static var canCompose: Bool { MFMailComposeViewController.canSendMail() }
