@@ -5,6 +5,7 @@ import {
   referencedAssetIds,
   reviseArtifact,
   validateHtmlOutput,
+  MAX_HTML_BYTES,
 } from "../src/generation";
 import {
   generationPrompt,
@@ -68,6 +69,18 @@ describe("HTML generation contract", () => {
   it("preserves valid cards including unknown optional metadata fields", () => {
     const designCard = { title: "Fractions", tags: ["math"], layout: "cards", future: { color: "blue" } };
     expect(validateHtmlOutput({ html, designCard })).toEqual({ html, designCard });
+  });
+
+  it("accepts only HTML that a revise can re-emit within its output budget", () => {
+    const padded = (bytes: number) =>
+      html.replace("Hello", "x".repeat(bytes - new TextEncoder().encode(html).byteLength + 5));
+    expect(validateHtmlOutput({ html: padded(MAX_HTML_BYTES) }).html).toHaveLength(MAX_HTML_BYTES);
+    try {
+      validateHtmlOutput({ html: padded(MAX_HTML_BYTES + 1) });
+      expect.unreachable();
+    } catch (error) {
+      expect((error as InvalidModelOutputError).issues).toContain("HTML exceeds 64KB.");
+    }
   });
 
   it("accepts complete self-contained HTML and extracts managed assets", () => {

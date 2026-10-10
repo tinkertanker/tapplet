@@ -1,7 +1,8 @@
 import { parse as parseJavaScript } from 'acorn';
 import { parse as parseHtml } from 'parse5';
 
-export const MAX_HTML_BYTES = 200_000;
+// Matches MAX_HTML_BYTES in services/api/src/generation.ts (the revise output budget).
+export const MAX_HTML_BYTES = 64_000;
 
 const JAVASCRIPT_TYPES = new Set([
   '', 'application/ecmascript', 'application/javascript',

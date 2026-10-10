@@ -33,7 +33,11 @@ export interface RequiredManagedAsset {
   alternativeText: string | null;
   decorative: boolean;
 }
-const MAX_HTML_BYTES = 200_000;
+// Every provider caps generate, revise and repair at 32,000 output tokens, and
+// reasoning shares that budget. JSON-escaped HTML costs roughly 3-4 bytes per
+// token, so 64 KB (about 16-21k tokens) is HTML the next revise can re-emit.
+// Keep scripts/lib/html-artifact.mjs in step.
+export const MAX_HTML_BYTES = 64_000;
 export const DEFAULT_MAX_MODEL_REPAIRS = 2;
 const URL_ATTRIBUTE =
   /\b(src|href|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
@@ -244,7 +248,10 @@ function inspect(
     };
     parsed = parsedHtml;
     if (new TextEncoder().encode(html).byteLength > MAX_HTML_BYTES)
-      issues.push({ kind: "structure", message: "HTML exceeds 200KB." });
+      issues.push({
+        kind: "structure",
+        message: `HTML exceeds ${MAX_HTML_BYTES / 1000}KB.`,
+      });
     if (
       !/^\s*<!doctype html>/i.test(html) ||
       !/<html[\s>]/i.test(html) ||

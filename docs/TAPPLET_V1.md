@@ -66,7 +66,8 @@ publication routes.
 The service applies structural checks before saving a generated revision:
 
 - complete HTML document with `doctype`, `head` and `body`;
-- at most 200 KB (the generation prompt targets substantially less);
+- at most 64 KB, so a later revise can re-emit the whole document within the
+  32,000-token output budget (the generation prompt targets substantially less);
 - no external scripts, styles, packages, frames or arbitrary resource URLs;
 - no network APIs;
 - only existing images owned by the teacher's device;
