@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FixtureModelProvider } from "../src/ai/fixtureProvider";
 import { OpenAiCompatibleProvider } from "../src/ai/openAiCompatibleProvider";
+import { ModelProviderError, type ModelProvider } from "../src/ai/provider";
 import { MODERATION_SYSTEM_PROMPT } from "../src/ai/prompts";
 import type { AssetStore, StoredAsset } from "../src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../src/auth";
@@ -1347,6 +1348,106 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.artifacts.size).toBe(0);
     expect(repository.revisions.size).toBe(0);
     expect(sources.sources.size).toBe(0);
+  });
+
+  it("refunds generation quota when the provider fails before any candidate", async () => {
+    const provider = new FixtureModelProvider();
+    const generate = provider.generate.bind(provider);
+    let failNext = true;
+    provider.generate = async (...args) => {
+      if (failNext) {
+        failNext = false;
+        throw new ModelProviderError("Provider request timed out", true);
+      }
+      return generate(...args);
+    };
+    app = createStudioApp({
+      repository,
+      provider,
+      config: { ...config, dailyGenerationLimit: 1, dailyDraftCreationLimit: 1 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const failed = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(failed.status).toBe(503);
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "MODEL_PROVIDER_ERROR" },
+    });
+    expect(
+      (
+        await app.fetch(
+          authenticated("/v1/artifacts/generate", "POST", creationBrief),
+        )
+      ).status,
+    ).toBe(201);
+  });
+
+  it("keeps generation charged when a repair fails after a candidate", async () => {
+    const provider: ModelProvider = new FixtureModelProvider();
+    provider.generate = async () => ({ html: "not html" });
+    provider.repair = async () => {
+      throw new ModelProviderError("Provider request timed out", true);
+    };
+    app = createStudioApp({
+      repository,
+      provider,
+      config: { ...config, dailyGenerationLimit: 1 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    expect(
+      (
+        await app.fetch(
+          authenticated("/v1/artifacts/generate", "POST", creationBrief),
+        )
+      ).status,
+    ).toBe(503);
+    const limited = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(limited.status).toBe(429);
+    await expect(limited.json()).resolves.toMatchObject({
+      error: { code: "LIMIT_REACHED" },
+    });
+  });
+
+  it("refunds revision quota when the provider fails before any candidate", async () => {
+    const provider = new FixtureModelProvider();
+    app = createStudioApp({
+      repository,
+      provider,
+      config: { ...config, dailyGenerationLimit: 2 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const generated = (await (
+      await app.fetch(
+        authenticated("/v1/artifacts/generate", "POST", creationBrief),
+      )
+    ).json()) as { artifact: { id: string }; headRevision: RevisionRecord };
+    const revise = provider.revise.bind(provider);
+    let failNext = true;
+    provider.revise = async (...args) => {
+      if (failNext) {
+        failNext = false;
+        throw new ModelProviderError("Provider request timed out", true);
+      }
+      return revise(...args);
+    };
+    const request = () =>
+      app.fetch(
+        authenticated(`/v1/artifacts/${generated.artifact.id}/revisions`, "POST", {
+          instruction: "Use a number line",
+          expectedHeadRevisionId: generated.headRevision.id,
+        }),
+      );
+
+    expect((await request()).status).toBe(503);
+    expect((await request()).status).toBe(201);
   });
 
   it("rejects a revision if the head changes while the provider is working", async () => {

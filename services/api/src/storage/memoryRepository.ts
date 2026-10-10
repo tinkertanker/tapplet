@@ -39,6 +39,11 @@ export class MemoryStudioRepository implements StudioRepository {
     this.usage.set(k, n + 1);
     return true;
   }
+  async refundGeneration(s: string, d: string) {
+    const k = `${s}:${d}`,
+      n = this.usage.get(k) ?? 0;
+    if (n > 0) this.usage.set(k, n - 1);
+  }
   async purgeUsage(b: string) {
     for (const k of this.usage.keys())
       if (k.slice(-10) < b) this.usage.delete(k);

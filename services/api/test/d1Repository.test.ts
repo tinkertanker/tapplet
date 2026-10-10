@@ -739,6 +739,23 @@ describe("D1StudioRepository owner token versions", () => {
   });
 });
 
+describe("D1StudioRepository generation usage", () => {
+  it("refunds one consumed unit without dropping below zero", async () => {
+    const { database, sqlite } = sqliteD1Database();
+    const repository = new D1StudioRepository(database);
+    await expect(repository.consumeGeneration("generation:o", "2026-08-02", 1)).resolves.toBe(true);
+    await expect(repository.consumeGeneration("generation:o", "2026-08-02", 1)).resolves.toBe(false);
+    await repository.refundGeneration("generation:o", "2026-08-02");
+    await repository.refundGeneration("generation:o", "2026-08-02");
+    await repository.refundGeneration("generation:missing", "2026-08-02");
+    expect(sqlite.prepare("SELECT owner_hash,request_count FROM generation_usage").all()).toEqual([
+      { owner_hash: "generation:o", request_count: 0 },
+    ]);
+    await expect(repository.consumeGeneration("generation:o", "2026-08-02", 1)).resolves.toBe(true);
+    sqlite.close();
+  });
+});
+
 describe("D1StudioRepository registration transaction", () => {
   it("shares legacy suffix capacity and expiry while rolling back network-limited activations", async () => {
     const { database, sqlite } = sqliteD1Database();

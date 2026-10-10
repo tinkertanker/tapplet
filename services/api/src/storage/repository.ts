@@ -124,6 +124,8 @@ export interface StudioRepository {
     date: string,
     limit: number,
   ): Promise<boolean>;
+  /** Returns one unit taken by consumeGeneration; never drops below zero. */
+  refundGeneration(subject: string, date: string): Promise<void>;
   purgeUsage(before: string): Promise<void>;
   consumeRegistration(
     classCodeHash: string,
