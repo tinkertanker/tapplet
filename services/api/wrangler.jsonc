@@ -35,8 +35,11 @@
     }
   ],
   "vars": {
-    "AI_PROVIDER": "opencode-go",
-    "AI_MODEL": "muse-spark-1.2-contributor",
+    "AI_PROVIDER": "openrouter",
+    "AI_MODEL": "openai/gpt-6-luna",
+    // Optional; replaces the provider's default artifact effort (OpenRouter's
+    // is xhigh). Each model call must finish inside Tapplet's 45-second abort.
+    "AI_REASONING_EFFORT": "low",
     "AI_BASE_URL": "https://api.deepseek.com",
     "IMAGE_SAFETY_MODEL": "gpt-5.6-luna",
     // "direct" keeps the provider settings above. "tkslopper" routes every

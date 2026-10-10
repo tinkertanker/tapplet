@@ -91,13 +91,17 @@ requires the evaluation endpoint to match its configured `AI_BASE_URL`.
 
 For OpenCode Zen or Go, use a model ID listed in the provider's endpoint table;
 Tapplet supports OpenAI-compatible chat completions and the Responses API used
-by the default `muse-spark-1.2-contributor` model. For OpenRouter, use an
+by `muse-spark-1.2-contributor`. For OpenRouter, use an
 OpenRouter model slug. Provider credentials are Wrangler secrets in deployed
 environments; never put them in
-`wrangler.jsonc`. Tapplet requests maximum reasoning for generation, revision
-and repair (`max` on OpenCode's DeepSeek chat models and `xhigh` on Muse Spark
-and OpenRouter); this can increase
-latency and token cost. Uploaded-image safety review uses `gpt-5.6-luna`
+`wrangler.jsonc`. By default Tapplet requests maximum reasoning for generation,
+revision and repair (`max` on OpenCode's DeepSeek chat models and `xhigh` on
+Muse Spark and OpenRouter). Set `AI_REASONING_EFFORT` (`minimal`, `low`,
+`medium`, `high`, `xhigh` or `max`) to replace that default; an admin override
+uses it too. Every model call must finish within Tapplet's 45-second abort, so
+check latency before raising effort: maximum reasoning on Muse Spark takes
+minutes per call. The deployed default is OpenRouter `openai/gpt-6-luna` at
+`low`, about 20 seconds per generation. Uploaded-image safety review uses `gpt-5.6-luna`
 through OpenCode Go with reasoning disabled and requires `OPENCODE_API_KEY`.
 
 Setting `INFERENCE_TRANSPORT=tkslopper` instead routes every model call,

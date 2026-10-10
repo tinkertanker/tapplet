@@ -6,6 +6,7 @@ export interface StudioEnv {
   AI_MODEL: string;
   AI_BASE_URL: string;
   AI_API_KEY?: string;
+  AI_REASONING_EFFORT?: string;
   OPENCODE_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
