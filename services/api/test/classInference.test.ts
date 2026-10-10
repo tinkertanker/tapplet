@@ -213,7 +213,7 @@ function sqliteD1(sqlite: DatabaseSync): D1Database {
 function classDatabase() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(
-    "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT,short_code_hash TEXT UNIQUE,allocation_id TEXT,inference_key_ciphertext TEXT,inference_key_iv TEXT,inference_key_hint TEXT);" +
+    "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT,short_code_hash TEXT UNIQUE,allocation_id TEXT,inference_key_ciphertext TEXT,inference_key_iv TEXT,inference_key_hint TEXT,inference_key_version INTEGER NOT NULL DEFAULT 0);" +
       "CREATE TABLE generation_usage(owner_hash TEXT NOT NULL,usage_date TEXT NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_hash,usage_date));" +
       "CREATE TABLE device_classes(owner_hash TEXT PRIMARY KEY,class_code_hash TEXT NOT NULL,created_at TEXT NOT NULL);",
   );
@@ -478,6 +478,37 @@ describe("class key administration", () => {
     expect(response?.status).toBe(status);
     expect(((await response?.json()) as { error: { code: string } }).error.code).toBe(code);
     expect(sqlite.prepare("SELECT inference_key_ciphertext FROM class_codes").get()).toEqual({ inference_key_ciphertext: null });
+    sqlite.close();
+  });
+
+  it("lets a removal made during an attach's gateway check win", async () => {
+    const { sqlite, database } = seeded();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      await gate;
+      return models([ARTIFACT, REVIEW, IMAGE]);
+    }));
+    const attaching = handleAdminRequest(
+      adminRequest("/v1/admin/class-codes/key", { code: "CDEFGH", classKey: GROUP_KEY }),
+      env({ DB: database }),
+    );
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    const removed = await handleAdminRequest(
+      adminRequest("/v1/admin/class-codes/key", { code: "CDEFGH", classKey: null }),
+      env({ DB: database }),
+    );
+    expect(removed?.status).toBe(200);
+    release();
+    const attached = await attaching;
+    expect(attached?.status).toBe(409);
+    expect(((await attached?.json()) as { error: { code: string } }).error.code).toBe("CLASS_KEY_CHANGED");
+    expect(sqlite.prepare("SELECT inference_key_ciphertext,inference_key_hint FROM class_codes").get()).toEqual({
+      inference_key_ciphertext: null,
+      inference_key_hint: null,
+    });
     sqlite.close();
   });
 

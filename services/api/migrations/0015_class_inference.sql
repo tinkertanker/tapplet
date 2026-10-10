@@ -5,6 +5,8 @@
 ALTER TABLE class_codes ADD COLUMN inference_key_ciphertext TEXT;
 ALTER TABLE class_codes ADD COLUMN inference_key_iv TEXT;
 ALTER TABLE class_codes ADD COLUMN inference_key_hint TEXT;
+-- Bumped by every attach or removal so a slow attach cannot undo a newer change.
+ALTER TABLE class_codes ADD COLUMN inference_key_version INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE device_classes (
   owner_hash TEXT PRIMARY KEY,
