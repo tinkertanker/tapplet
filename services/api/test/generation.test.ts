@@ -90,7 +90,7 @@ describe("HTML generation contract", () => {
       },
       [exemplar],
     );
-    expect(PROMPT_VERSION).toBe("html-v7");
+    expect(PROMPT_VERSION).toBe("html-v8");
     expect(SYSTEM_PROMPT).toContain("Honour the activity form");
     expect(prompt).toContain("-----BEGIN UNTRUSTED EXEMPLAR DATA-----");
     expect(prompt).toContain("-----END UNTRUSTED EXEMPLAR DATA-----");
