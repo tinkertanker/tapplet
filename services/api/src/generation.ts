@@ -83,6 +83,8 @@ export interface GenerationOptions {
   maxModelRepairs?: number;
   trace?: OperationalTraceContext;
   sessionId?: string;
+  /** Called once the provider has returned a first candidate. */
+  onCandidate?: () => void;
 }
 
 function attributeValue(match: RegExpMatchArray): string {
@@ -475,6 +477,7 @@ async function accept(
   requiredAssets: readonly RequiredManagedAsset[] = [],
   options: GenerationOptions = {},
 ): Promise<GeneratedArtifact> {
+  options.onCandidate?.();
   let current = candidate;
   const maxRepairs = options.maxModelRepairs ?? DEFAULT_MAX_MODEL_REPAIRS;
   if (!Number.isInteger(maxRepairs) || maxRepairs < 0 || maxRepairs > 2)

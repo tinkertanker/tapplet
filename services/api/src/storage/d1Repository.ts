@@ -70,6 +70,13 @@ export class D1StudioRepository implements StudioRepository {
     ).run();
     return (r.meta.changes ?? 0) === 1;
   }
+  async refundGeneration(s: string, d: string) {
+    await this.p(
+      "UPDATE generation_usage SET request_count=request_count-1 WHERE owner_hash=?1 AND usage_date=?2 AND request_count>0",
+      s,
+      d,
+    ).run();
+  }
   async purgeUsage(b: string) {
     await this.p("DELETE FROM generation_usage WHERE usage_date<?1", b).run();
   }
