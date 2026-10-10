@@ -76,13 +76,13 @@ describe("Tapplet API registration and public HTML", () => {
     },
   };
 
-  function register(accessCode: string) {
+  function register(accessCode: string, address = "192.0.2.1") {
     return app.fetch(
       new Request("https://api.test/v1/devices/register", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "cf-connecting-ip": "192.0.2.1",
+          "cf-connecting-ip": address,
         },
         body: JSON.stringify({ accessCode }),
       }),
@@ -204,6 +204,44 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.classCodes.get(hash)?.uses).toBe(1);
   });
 
+  it("registers six-digit codes including leading zeroes", async () => {
+    const hash = createHash("sha256").update("class-code:000042").digest("hex");
+    repository.classCodes.set(hash, {
+      maximumUses: 1,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    expect((await register("000041")).status).toBe(403);
+    expect((await register(" 000-042 ")).status).toBe(201);
+    expect((await register("000042")).status).toBe(403);
+  });
+
+  it("shares the remaining activation budget between a legacy code and its last six characters", async () => {
+    const hash = createHash("sha256").update("class-code:1234ABCDEFGH").digest("hex");
+    const shortCodeHash = createHash("sha256").update("class-code:CDEFGH").digest("hex");
+    repository.classCodes.set(hash, {
+      maximumUses: 3,
+      uses: 1,
+      expiresAt: "2026-08-03T00:00:00Z",
+      shortCodeHash,
+    });
+    expect((await register("DEFGHJ")).status).toBe(403);
+    expect((await register(" cde-fgh ")).status).toBe(201);
+    expect((await register("1234ABCDEFGH")).status).toBe(201);
+    expect((await register("CDEFGH")).status).toBe(403);
+    expect((await register("1234ABCDEFGH")).status).toBe(403);
+  });
+
+  it("does not accept a legacy suffix at or after the original expiry", async () => {
+    const hash = createHash("sha256").update("class-code:1234ABCDEFGH").digest("hex");
+    const shortCodeHash = createHash("sha256").update("class-code:CDEFGH").digest("hex");
+    for (const expiresAt of ["2026-08-02T00:00:00.000Z", "2026-08-01T23:59:59.000Z"]) {
+      repository.classCodes.set(hash, { maximumUses: 3, uses: 0, expiresAt, shortCodeHash });
+      expect((await register("CDEFGH")).status).toBe(403);
+      expect((await register("1234ABCDEFGH")).status).toBe(403);
+    }
+  });
+
   it("rejects legacy four-letter codes without consuming them", async () => {
     const hash = createHash("sha256")
       .update("class-code:1234ABCD")
@@ -241,11 +279,17 @@ describe("Tapplet API registration and public HTML", () => {
     expect((await register("1234ABCDEFGH")).status).toBe(201);
   });
 
-  it("caps varied invalid attempts separately without blocking a valid registration", async () => {
+  it("blocks even correct numeric and legacy codes after the network attempt budget is exhausted", async () => {
     const correct = createHash("sha256")
       .update("class-code:1234ABCDEFGH")
       .digest("hex");
     repository.classCodes.set(correct, {
+      maximumUses: 1,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    const numericHash = createHash("sha256").update("class-code:000042").digest("hex");
+    repository.classCodes.set(numericHash, {
       maximumUses: 1,
       uses: 0,
       expiresAt: "2026-08-03T00:00:00Z",
@@ -265,8 +309,31 @@ describe("Tapplet API registration and public HTML", () => {
     expect(
       ((await locked.json()) as { error: { code: string } }).error.code,
     ).toBe("CLASS_CODE_NETWORK_LOCKED");
-    expect((await register("1234ABCDEFGH")).status).toBe(201);
-    expect(repository.classCodes.get(correct)?.uses).toBe(1);
+    expect((await register("000042")).status).toBe(429);
+    expect((await register("1234ABCDEFGH")).status).toBe(429);
+    expect(repository.classCodes.get(correct)?.uses).toBe(0);
+    expect(repository.classCodes.get(numericHash)?.uses).toBe(0);
+  });
+
+  it.each([
+    ["2001:db8:1234:5678::1", "2001:0db8:1234:5678:0000:0000:0000:0002", "2001:db8:1234:5678:ffff:ffff:ffff:ffff", "2001:db8:1235:5678::1"],
+    ["2001:db8:1234:5601::1", "2001:db8:1234:56ab::2", "2001:db8:1234:ffff::3", "2001:db8:1235:ffff::3"],
+    ["192.0.2.9", "::ffff:192.0.2.9", "::ffff:c000:209", "192.0.2.10"],
+  ])("shares attempt limits across an IPv6 /48 or mapped IPv4 address: %s", async (first, second, third, other) => {
+    const hash = createHash("sha256").update("class-code:000042").digest("hex");
+    repository.classCodes.set(hash, { maximumUses: 1, uses: 0, expiresAt: "2026-08-03T00:00:00Z" });
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: { ...config, dailyNetworkClassCodeFailureLimit: 2 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    expect((await register("000001", first)).status).toBe(403);
+    expect((await register("000002", second)).status).toBe(403);
+    expect((await register("000042", third)).status).toBe(429);
+    expect(repository.classCodes.get(hash)?.uses).toBe(0);
+    expect((await register("000042", other)).status).toBe(201);
   });
 
   it("injects one scoped base and one report control without changing the source", () => {

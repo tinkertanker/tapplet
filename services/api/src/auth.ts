@@ -171,6 +171,32 @@ export async function networkHashFrom(request: Request): Promise<string> {
   return sha256(`network:${address}`);
 }
 
+// A /48 also bounds rotation among the /64s or /56s delegated to one customer.
+// Other usage quotas retain their existing IP keys.
+export async function classCodeAttemptNetworkHashFrom(request: Request): Promise<string> {
+  let address = request.headers.get('cf-connecting-ip')?.trim() || 'local-or-unknown';
+  if (address.includes(':')) {
+    try {
+      const host = new URL(`http://[${address}]/`).hostname;
+      if (!host.startsWith('[') || !host.endsWith(']')) throw new Error();
+      const literal = host.slice(1, -1);
+      const [left, right] = literal.split('::');
+      const leading = left ? left.split(':') : [];
+      const trailing = right ? right.split(':') : [];
+      const groups = literal.includes('::')
+        ? [...leading, ...Array<string>(8 - leading.length - trailing.length).fill('0'), ...trailing]
+        : leading;
+      const words = groups.map(group => parseInt(group, 16));
+      address = words.slice(0, 5).every(word => word === 0) && words[5] === 0xffff
+        ? [words[6]! >> 8, words[6]! & 255, words[7]! >> 8, words[7]! & 255].join('.')
+        : `${words.slice(0, 3).map(word => word.toString(16)).join(':')}::/48`;
+    } catch {
+      address = 'local-or-unknown';
+    }
+  }
+  return sha256(`network:${address}`);
+}
+
 export function randomSlug(byteLength = 15): string {
   const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
   let binary = '';

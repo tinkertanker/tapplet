@@ -31,6 +31,7 @@
     "eval:browser:test": "tsx --test evals/browser/evaluate.test.ts",
     "verify:live": "tsx scripts/verify-live-api.ts",
     "class-access:provision": "node scripts/provision-class-access.mjs",
+    "class-access:shorten": "node scripts/shorten-class-access.mjs",
     "ipad:generate": "cd apps/ipad && xcodegen generate"
   },
   "devDependencies": {

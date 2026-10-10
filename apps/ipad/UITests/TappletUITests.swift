@@ -218,7 +218,11 @@ final class TappletUITests: XCTestCase {
     func testWorkshopAccessCanBeDeferred() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Enter four numbers followed by eight letters, for example 1234ABCDEFGH. A hyphen is optional."].exists)
+        XCTAssertTrue(app.staticTexts["Enter your six-digit code. For an older code, use its last six letters."].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Access code entry"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
         let explore: XCUIElement = app.buttons["Explore examples"]
         XCTAssertTrue(explore.waitForExistence(timeout: 5))
         explore.tap()
@@ -329,6 +333,10 @@ final class TappletUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Complete the class code"].waitForExistence(timeout: 3))
         XCTAssertEqual(code.value as? String, "SHORT")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Incomplete access code"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     @MainActor

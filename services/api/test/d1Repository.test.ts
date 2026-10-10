@@ -43,7 +43,7 @@ const artifact: ArtifactRecord = {
 };
 
 function sqliteD1Database(
-  schema = "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT);" +
+  schema = "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT,short_code_hash TEXT UNIQUE);" +
     "CREATE TABLE generation_usage(owner_hash TEXT NOT NULL,usage_date TEXT NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_hash,usage_date));",
 ) {
   const sqlite = new DatabaseSync(":memory:");
@@ -740,6 +740,24 @@ describe("D1StudioRepository owner token versions", () => {
 });
 
 describe("D1StudioRepository registration transaction", () => {
+  it("shares legacy suffix capacity and expiry while rolling back network-limited activations", async () => {
+    const { database, sqlite } = sqliteD1Database();
+    sqlite.prepare(
+      "INSERT INTO class_codes(code_hash,short_code_hash,label,maximum_uses,use_count,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",
+    ).run("full", "suffix", "Legacy class", 3, 1, "2029-07-04T00:00:00.000Z", "2026-08-01T00:00:00.000Z");
+    const repository = new D1StudioRepository(database);
+    const now = "2026-10-09T00:00:00.000Z";
+    await expect(repository.consumeRegistration("suffix", now, "network-a", "2026-10-09", 1)).resolves.toBe("success");
+    await expect(repository.consumeRegistration("full", now, "network-a", "2026-10-09", 1)).resolves.toBe("network-limit");
+    expect(sqlite.prepare("SELECT use_count,last_used_at FROM class_codes").get()).toEqual({ use_count: 2, last_used_at: now });
+    await expect(repository.consumeRegistration("full", now, "network-b", "2026-10-09", 1)).resolves.toBe("success");
+    await expect(repository.consumeRegistration("suffix", now, "network-c", "2026-10-09", 1)).resolves.toBe("invalid-class-code");
+    sqlite.prepare("UPDATE class_codes SET use_count=0").run();
+    await expect(repository.consumeRegistration("suffix", "2029-07-04T00:00:00.000Z", "network-c", "2029-07-04", 1)).resolves.toBe("invalid-class-code");
+    expect(sqlite.prepare("SELECT COUNT(*) AS rows,SUM(request_count) AS uses FROM generation_usage").get()).toEqual({ rows: 2, uses: 2 });
+    sqlite.close();
+  });
+
   it("spends both counters on success and restores class state at the network limit", async () => {
     const { database, sqlite } = sqliteD1Database();
     sqlite

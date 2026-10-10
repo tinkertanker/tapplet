@@ -14,6 +14,10 @@ enum WorkshopAccessCodeValidator {
             byte == 45 || (48...57).contains(byte) || (65...90).contains(byte) || (97...122).contains(byte)
         }) else { return false }
         let bytes = Array(normalizedCode(value).utf8)
+        if bytes.count == 6 {
+            return bytes.allSatisfy { (48...57).contains($0) }
+                || bytes.allSatisfy { (65...90).contains($0) }
+        }
         guard bytes.count == 12 else { return false }
         return bytes[..<4].allSatisfy { (48...57).contains($0) }
             && bytes[4...].allSatisfy { (65...90).contains($0) }
@@ -84,7 +88,7 @@ struct WorkshopAccessView: View {
                                 .accessibilityIdentifier("workshop-access-code")
                                 .disabled(isRegistering)
 
-                            Label("Enter four numbers followed by eight letters, for example 1234ABCDEFGH. A hyphen is optional.", systemImage: "info.circle")
+                            Label("Enter your six-digit code. For an older code, use its last six letters.", systemImage: "info.circle")
                                 .font(.footnote)
                                 .foregroundStyle(accessCodeIsTooShort ? TappletTheme.danger : TappletTheme.mutedInk)
                         }
@@ -165,8 +169,7 @@ struct WorkshopAccessView: View {
     }
 
     private var accessCodeIsTooShort: Bool {
-        // Codes are four digits plus eight letters.
-        !cleanedAccessCode.isEmpty && cleanedAccessCode.count < 12
+        !cleanedAccessCode.isEmpty && WorkshopAccessCodeValidator.normalizedCode(cleanedAccessCode).count < 6
     }
 
     private var accessCodeIsIncomplete: Bool {
@@ -194,7 +197,7 @@ struct WorkshopAccessView: View {
         guard !accessCodeIsIncomplete else {
             registrationError = TappletErrorPresentation(
                 title: "Complete the class code",
-                message: "Enter all four numbers and every letter of your code. Your code is still in the field above.",
+                message: "Enter six numbers, or the last six letters of an older code. Your code is still in the field above.",
                 requestsWorkshopAccess: false
             )
             codeIsFocused = true
