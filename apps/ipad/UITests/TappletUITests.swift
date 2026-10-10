@@ -5,7 +5,7 @@ final class TappletUITests: XCTestCase {
     @MainActor
     func testLaunchesIntoExploreWithoutABlankCanvas() {
         let app = launchApp()
-        XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Start with an example"].waitUntilExists(timeout: 8))
         XCTAssertTrue(app.staticTexts["Rain, paved ground and drainage"].exists)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Make a copy'")).firstMatch.exists)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch.exists)
@@ -16,7 +16,7 @@ final class TappletUITests: XCTestCase {
     @MainActor
     func testExploreOffersBundledHTMLSeedForRemixing() {
         let app = launchApp()
-        XCTAssertTrue(app.staticTexts["Rain, paved ground and drainage"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Rain, paved ground and drainage"].waitUntilExists(timeout: 8))
         XCTAssertTrue(app.buttons["Make a copy"].exists)
     }
 
@@ -25,41 +25,41 @@ final class TappletUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = launchApp()
         let preview = app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch
-        XCTAssertTrue(preview.waitForExistence(timeout: 8))
+        XCTAssertTrue(preview.waitUntilExists(timeout: 8))
         preview.tap()
 
         let playerHeading = app.staticTexts["Rain, paved ground and drainage"]
         XCTAssertTrue(
-            playerHeading.waitForExistence(timeout: 25),
+            playerHeading.waitUntilExists(timeout: 25),
             "The bundled HTML artifact should render, not a blank web view."
         )
         XCTAssertTrue(
-            app.navigationBars.staticTexts["Rain, paved ground and drainage"].waitForExistence(timeout: 3),
+            app.navigationBars.staticTexts["Rain, paved ground and drainage"].waitUntilExists(timeout: 3),
             "The preview chrome should keep the full activity title readable."
         )
 
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Done"].waitUntilExists(timeout: 5))
         app.buttons["Done"].tap()
-        XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5) || app.staticTexts["Explore"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Explore"].waitUntilExists(timeout: 5) || app.staticTexts["Explore"].waitUntilExists(timeout: 5))
     }
 
     @MainActor
     func testExploreSearchAndFiltersCanBeCleared() {
         let app = launchApp()
         let search = app.textFields["example-search"]
-        XCTAssertTrue(search.waitForExistence(timeout: 8))
+        XCTAssertTrue(search.waitUntilExists(timeout: 8))
         search.tap()
         search.typeText("fractions")
 
-        XCTAssertTrue(app.staticTexts["Equivalent fractions"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Equivalent fractions"].waitUntilExists(timeout: 3))
         XCTAssertFalse(app.staticTexts["What do m and c do?"].exists)
 
         search.tap()
         search.typeText(" nonsense")
-        XCTAssertTrue(app.staticTexts["No examples found"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["No examples found"].waitUntilExists(timeout: 3))
         app.buttons["clear-example-filters"].tap()
 
-        XCTAssertTrue(app.staticTexts["18 examples"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["18 examples"].waitUntilExists(timeout: 3))
         XCTAssertTrue(app.staticTexts["What do m and c do?"].exists)
     }
 
@@ -67,7 +67,7 @@ final class TappletUITests: XCTestCase {
     func testGuidedMakeReachesApprovalAndCreatesAProject() throws {
         let app = launchApp()
         selectSidebarItem(label: "Make", in: app)
-        XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitUntilExists(timeout: 5))
         XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].exists)
 
         let answers = [
@@ -81,23 +81,23 @@ final class TappletUITests: XCTestCase {
 
         for answer in answers {
             let textView = app.textViews["guided-answer"]
-            XCTAssertTrue(textView.waitForExistence(timeout: 3))
+            XCTAssertTrue(textView.waitUntilExists(timeout: 3))
             textView.tap()
             textView.typeText(answer)
             advanceGuidedFlow(in: app)
         }
 
-        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 5))
         app.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         let photos = app.buttons["Choose from Photos"]
         let editorForm = app.descendants(matching: .any)["tapplet-editor-form"]
-        XCTAssertTrue(editorForm.waitForExistence(timeout: 3))
+        XCTAssertTrue(editorForm.waitUntilExists(timeout: 3))
         for _ in 0..<3 {
             if photos.exists { break }
             editorForm.swipeUp()
         }
-        XCTAssertTrue(photos.waitForExistence(timeout: 3))
+        XCTAssertTrue(photos.waitUntilExists(timeout: 3))
         XCTAssertTrue(app.buttons["Choose a file"].exists)
     }
 
@@ -105,15 +105,15 @@ final class TappletUITests: XCTestCase {
     func testAdvisoryWarningKeepsTheTappletAndRepromptSurfaceAvailable() {
         let app = launchApp(extraArguments: ["--ui-testing-advisory-warning"])
         selectSidebarItem(label: "Make", in: app)
-        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitUntilExists(timeout: 5))
         app.buttons["starter-plan-times-tables-lightning"].tap()
-        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 5))
 
         app.buttons["Make my tapplet"].tap()
 
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         let warning = app.staticTexts["AI review flagged a possible email address. Check the content or re-prompt."]
-        XCTAssertTrue(warning.waitForExistence(timeout: 3))
+        XCTAssertTrue(warning.waitUntilExists(timeout: 3))
         XCTAssertTrue(app.buttons["Make this change"].exists)
 
         app.buttons["Dismiss message"].tap()
@@ -125,16 +125,16 @@ final class TappletUITests: XCTestCase {
     func testAdvisoryWarningCanBeDismissedInsideTheShareSheet() {
         let app = launchApp(extraArguments: ["--ui-testing-advisory-warning"])
         selectSidebarItem(label: "Make", in: app)
-        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitUntilExists(timeout: 5))
         app.buttons["starter-plan-times-tables-lightning"].tap()
-        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 5))
         app.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
 
         app.buttons["Share"].tap()
 
         let warning = app.staticTexts["AI review flagged a possible email address. Check the content or re-prompt."]
-        XCTAssertTrue(warning.waitForExistence(timeout: 3))
+        XCTAssertTrue(warning.waitUntilExists(timeout: 3))
         XCTAssertTrue(app.buttons["Dismiss warning"].isHittable)
         app.buttons["Dismiss warning"].tap()
         XCTAssertTrue(warning.waitForNonExistence(timeout: 3))
@@ -151,12 +151,12 @@ final class TappletUITests: XCTestCase {
             let app = launchApp(extraArguments: arguments)
             selectSidebarItem(label: "Make", in: app)
             let plan = app.buttons["starter-plan-times-tables-lightning"]
-            XCTAssertTrue(plan.waitForExistence(timeout: 5))
+            XCTAssertTrue(plan.waitUntilExists(timeout: 5))
             plan.tap()
             app.buttons["Make my tapplet"].tap()
-            XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+            XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
             app.buttons["Share"].tap()
-            XCTAssertTrue(app.navigationBars["Share with students"].waitForExistence(timeout: 3))
+            XCTAssertTrue(app.navigationBars["Share with students"].waitUntilExists(timeout: 3))
 
             XCTAssertEqual(app.buttons["update-student-link"].exists, state == "stale")
             XCTAssertEqual(app.staticTexts["publication-stale-notice"].exists, state == "stale")
@@ -187,17 +187,17 @@ final class TappletUITests: XCTestCase {
     @MainActor
     func testExploreGamesFilterAndUseThisPlan() {
         let app = launchApp()
-        XCTAssertTrue(app.buttons["form-filter-game"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["form-filter-game"].waitUntilExists(timeout: 8))
         app.buttons["form-filter-game"].tap()
-        XCTAssertTrue(app.staticTexts["4 examples"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["4 examples"].waitUntilExists(timeout: 3))
         XCTAssertTrue(app.staticTexts["Times-tables lightning"].exists)
         XCTAssertFalse(app.staticTexts["Rain, paved ground and drainage"].exists)
 
         app.buttons.matching(NSPredicate(format: "label == 'Preview'")).firstMatch.tap()
-        XCTAssertTrue(app.buttons["use-example-plan"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["use-example-plan"].waitUntilExists(timeout: 8))
         app.buttons["use-example-plan"].tap()
 
-        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 5))
         XCTAssertTrue(app.staticTexts["Game"].exists)
     }
 
@@ -206,9 +206,9 @@ final class TappletUITests: XCTestCase {
         let app = launchApp()
         selectSidebarItem(label: "Make", in: app)
         let plan = app.buttons["starter-plan-times-tables-lightning"]
-        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+        XCTAssertTrue(plan.waitUntilExists(timeout: 5))
         plan.tap()
-        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 5))
         XCTAssertTrue(app.staticTexts["Primary 5 Mathematics"].exists)
         XCTAssertTrue(app.staticTexts["Game"].exists)
         XCTAssertTrue(app.staticTexts["pinned-example-plan"].exists)
@@ -217,32 +217,32 @@ final class TappletUITests: XCTestCase {
     @MainActor
     func testWorkshopAccessCanBeDeferred() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
-        XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitUntilExists(timeout: 5))
         XCTAssertTrue(app.staticTexts["Enter your six-digit code. For an older code, use its last six letters."].exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Access code entry"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         let explore: XCUIElement = app.buttons["Explore examples"]
-        XCTAssertTrue(explore.waitForExistence(timeout: 5))
+        XCTAssertTrue(explore.waitUntilExists(timeout: 5))
         explore.tap()
-        XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Start with an example"].waitUntilExists(timeout: 5))
         let showSidebar = app.buttons["Show Sidebar"]
-        if showSidebar.waitForExistence(timeout: 2) { showSidebar.tap() }
-        XCTAssertTrue(app.staticTexts["Tapplet Studio access"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Code needed"].waitForExistence(timeout: 5))
+        if showSidebar.waitUntilExists(timeout: 2) { showSidebar.tap() }
+        XCTAssertTrue(app.staticTexts["Tapplet Studio access"].waitUntilExists(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Code needed"].waitUntilExists(timeout: 5))
     }
 
     @MainActor
     func testMakeRequestsWorkshopAccessWhenCodeIsNeeded() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         let explore = app.buttons["Explore examples"]
-        XCTAssertTrue(explore.waitForExistence(timeout: 5))
+        XCTAssertTrue(explore.waitUntilExists(timeout: 5))
         explore.tap()
 
         selectSidebarItem(label: "Make", in: app)
 
-        XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitUntilExists(timeout: 5))
         XCTAssertTrue(app.buttons["activate-workshop-access"].exists)
     }
 
@@ -250,9 +250,9 @@ final class TappletUITests: XCTestCase {
     func testCopyRequestsAccessInsteadOfShowingAGenericError() {
         let app = launchApp(extraArguments: ["--ui-testing-access-required-on-action"])
         let copy = app.buttons.matching(NSPredicate(format: "label == 'Make a copy'")).firstMatch
-        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        XCTAssertTrue(copy.waitUntilExists(timeout: 5))
         copy.tap()
-        XCTAssertTrue(app.buttons["activate-workshop-access"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["activate-workshop-access"].waitUntilExists(timeout: 5))
         XCTAssertFalse(app.alerts["Could not make a copy"].exists)
         capture("Copy-access-recovery", app: app)
     }
@@ -263,21 +263,21 @@ final class TappletUITests: XCTestCase {
             let app = launchApp(extraArguments: ["--ui-testing-access-required-on-action"])
             selectSidebarItem(label: "Make", in: app)
             let plan = app.buttons["starter-plan-times-tables-lightning"]
-            XCTAssertTrue(plan.waitForExistence(timeout: 5))
+            XCTAssertTrue(plan.waitUntilExists(timeout: 5))
             plan.tap()
             app.buttons["Make my tapplet"].tap()
-            XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+            XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
 
             if action == "share" {
                 app.buttons["Share"].tap()
                 let createLink = app.buttons["Create student link"]
-                XCTAssertTrue(createLink.waitForExistence(timeout: 3))
+                XCTAssertTrue(createLink.waitUntilExists(timeout: 3))
                 createLink.tap()
             } else {
                 app.buttons["refine-suggestion-timer"].tap()
                 app.buttons["Make this change"].tap()
             }
-            XCTAssertTrue(app.buttons["activate-workshop-access"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["activate-workshop-access"].waitUntilExists(timeout: 5))
             XCTAssertFalse(app.alerts["Tapplet Studio could not complete this action"].exists)
             XCTAssertFalse(app.navigationBars["Share with students"].exists)
             capture("\(action)-access-recovery", app: app)
@@ -293,28 +293,28 @@ final class TappletUITests: XCTestCase {
             ])
             selectSidebarItem(label: "Make", in: app)
             let plan = app.buttons["starter-plan-times-tables-lightning"]
-            XCTAssertTrue(plan.waitForExistence(timeout: 5))
+            XCTAssertTrue(plan.waitUntilExists(timeout: 5))
             plan.tap()
             app.buttons["Make my tapplet"].tap()
-            XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+            XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
             app.buttons["Share"].tap()
             let createLink = app.buttons["Create student link"]
-            XCTAssertTrue(createLink.waitForExistence(timeout: 3))
+            XCTAssertTrue(createLink.waitUntilExists(timeout: 3))
             createLink.tap()
             app.buttons["Done"].tap()
 
             if !reopenBeforeFailure {
-                XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 8))
+                XCTAssertFalse(app.buttons["activate-workshop-access"].waitUntilExists(timeout: 8))
             }
             app.buttons["Share"].tap()
-            XCTAssertTrue(app.buttons["Create student link"].waitForExistence(timeout: 3))
+            XCTAssertTrue(app.buttons["Create student link"].waitUntilExists(timeout: 3))
             if reopenBeforeFailure {
-                XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 8))
+                XCTAssertFalse(app.buttons["activate-workshop-access"].waitUntilExists(timeout: 8))
                 XCTAssertTrue(app.navigationBars["Share with students"].exists)
                 XCTAssertTrue(app.buttons["Create student link"].isEnabled)
             }
             app.buttons["Done"].tap()
-            XCTAssertFalse(app.buttons["activate-workshop-access"].waitForExistence(timeout: 2))
+            XCTAssertFalse(app.buttons["activate-workshop-access"].waitUntilExists(timeout: 2))
             app.terminate()
         }
     }
@@ -323,7 +323,7 @@ final class TappletUITests: XCTestCase {
     func testWorkshopAccessExplainsAndValidatesAShortCodeWithoutClearingIt() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         let code = app.textFields["workshop-access-code"]
-        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        XCTAssertTrue(code.waitUntilExists(timeout: 5))
         code.tap()
         code.typeText("SHORT")
 
@@ -331,7 +331,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(activate.isEnabled)
         activate.tap()
 
-        XCTAssertTrue(app.staticTexts["Complete the class code"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Complete the class code"].waitUntilExists(timeout: 3))
         XCTAssertEqual(code.value as? String, "SHORT")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Incomplete access code"
@@ -345,7 +345,7 @@ final class TappletUITests: XCTestCase {
         selectSidebarItem(label: "Make", in: app)
 
         let answer = app.textViews["guided-answer"]
-        XCTAssertTrue(answer.waitForExistence(timeout: 5))
+        XCTAssertTrue(answer.waitUntilExists(timeout: 5))
         answer.tap()
         answer.typeText("Secondary 3 Physics")
         app.buttons["Primary 5 Science"].tap()
@@ -360,18 +360,18 @@ final class TappletUITests: XCTestCase {
         ]
         for response in answers {
             let currentAnswer = app.textViews["guided-answer"]
-            XCTAssertTrue(currentAnswer.waitForExistence(timeout: 3))
+            XCTAssertTrue(currentAnswer.waitUntilExists(timeout: 3))
             currentAnswer.tap()
             currentAnswer.typeText(response)
             advanceGuidedFlow(in: app)
         }
 
-        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 5))
         app.buttons["edit-brief-answer-1"].tap()
-        XCTAssertTrue(app.staticTexts["What should they understand or be able to do?"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["What should they understand or be able to do?"].waitUntilExists(timeout: 3))
         app.buttons["Recall key ideas"].tap()
         advanceGuidedFlow(in: app)
-        XCTAssertTrue(app.staticTexts["Check your answers"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 3))
         XCTAssertTrue(app.staticTexts["Explain projectile range\nRecall key ideas"].exists)
         XCTAssertFalse(app.buttons["Change answers"].exists)
         capture("Edited-answer-back-to-summary", app: app)
@@ -382,17 +382,17 @@ final class TappletUITests: XCTestCase {
         let app = launchApp()
         selectSidebarItem(label: "Make", in: app)
         let plan = app.buttons["starter-plan-times-tables-lightning"]
-        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+        XCTAssertTrue(plan.waitUntilExists(timeout: 5))
         plan.tap()
         app.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         app.buttons["Back"].tap()
         selectSidebarItem(label: "My Tapplets", in: app)
 
         let delete = app.buttons["Delete"]
-        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        XCTAssertTrue(delete.waitUntilExists(timeout: 5))
         delete.tap()
-        XCTAssertTrue(app.buttons["Delete tapplet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Delete tapplet"].waitUntilExists(timeout: 3))
         XCTAssertTrue(app.staticTexts["This deletes the tapplet and its revision history, and turns off any student link. This cannot be undone."].exists)
         capture("Delete-confirmation", app: app)
         // iPad confirmation popovers cancel by tapping outside, not a Cancel row.
@@ -407,16 +407,16 @@ final class TappletUITests: XCTestCase {
     func testMyAppletsEmptyStateOffersMakeAndExplore() {
         let app = launchApp()
         selectSidebarItem(label: "My Tapplets", in: app)
-        XCTAssertTrue(app.staticTexts["Your tapplets will appear here"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your tapplets will appear here"].waitUntilExists(timeout: 5))
         XCTAssertTrue(app.staticTexts["Make one from a short plan, or copy an example from Explore."].exists)
         XCTAssertTrue(app.buttons["Restore tapplets"].exists)
         app.buttons["empty-start-with-example"].tap()
-        XCTAssertTrue(app.staticTexts["Start with an example"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Start with an example"].waitUntilExists(timeout: 5))
 
         selectSidebarItem(label: "My Tapplets", in: app)
-        XCTAssertTrue(app.buttons["empty-make-applet"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["empty-make-applet"].waitUntilExists(timeout: 5))
         app.buttons["empty-make-applet"].tap()
-        XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Who are you teaching?"].waitUntilExists(timeout: 5))
     }
 
     @MainActor
@@ -424,7 +424,7 @@ final class TappletUITests: XCTestCase {
         let app = launchApp()
         selectSidebarItem(label: "Make", in: app)
         for suggestion in ["Primary 5 Science", "Recall key ideas", "Beat a 60-second countdown"] {
-            XCTAssertTrue(app.buttons[suggestion].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons[suggestion].waitUntilExists(timeout: 5))
             app.buttons[suggestion].tap()
             advanceGuidedFlow(in: app)
         }
@@ -443,7 +443,7 @@ final class TappletUITests: XCTestCase {
         selectSidebarItem(label: "Make", in: editorApp)
         editorApp.buttons["starter-plan-times-tables-lightning"].tap()
         editorApp.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(editorApp.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(editorApp.buttons["Share"].waitUntilExists(timeout: 8))
         let form = editorApp.descendants(matching: .any)["tapplet-editor-form"]
         for _ in 0..<3 { form.swipeUp() }
         XCTAssertFalse(editorApp.staticTexts["Source"].exists)
@@ -455,18 +455,18 @@ final class TappletUITests: XCTestCase {
     func testSuccessfulRefinementDoesNotEraseInstructionsTypedWhileWaiting() {
         let app = launchApp(extraArguments: ["--ui-testing-held-refinement"])
         selectSidebarItem(label: "Make", in: app)
-        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitUntilExists(timeout: 5))
         app.buttons["starter-plan-times-tables-lightning"].tap()
         app.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         let prompt = app.textViews.firstMatch
-        XCTAssertTrue(prompt.waitForExistence(timeout: 3))
+        XCTAssertTrue(prompt.waitUntilExists(timeout: 3))
         app.buttons["refine-suggestion-timer"].tap()
         let submitted = prompt.value as? String ?? ""
         XCTAssertFalse(submitted.isEmpty)
         app.buttons["Make this change"].tap()
         let complete = app.buttons["complete-test-refinement"]
-        XCTAssertTrue(complete.waitForExistence(timeout: 5), "A is suspended before B is typed")
+        XCTAssertTrue(complete.waitUntilExists(timeout: 5), "A is suspended before B is typed")
         prompt.tap()
         let nextInstruction = "Use blue labels next"
         prompt.typeText(nextInstruction)
@@ -474,17 +474,17 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(pendingInstructions?.contains(nextInstruction) == true)
         XCTAssertNotEqual(pendingInstructions, submitted, "New instructions must exist before A completes")
         complete.tap()
-        XCTAssertTrue(app.buttons["Make this change"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
         XCTAssertEqual(prompt.value as? String, pendingInstructions, "Completion of A must not erase unsent B")
-        XCTAssertTrue(app.staticTexts["UI test refinement complete"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["UI test refinement complete"].waitUntilExists(timeout: 8))
         capture("Refinement-preserves-unsent-instructions", app: app)
 
         // Keeping every prompt forever would pass the preservation assertion.
         // A successful request still clears text that has not changed.
         app.buttons["Make this change"].tap()
-        XCTAssertTrue(complete.waitForExistence(timeout: 5))
+        XCTAssertTrue(complete.waitUntilExists(timeout: 5))
         complete.tap()
-        XCTAssertTrue(app.buttons["Make this change"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
         XCTAssertEqual(prompt.value as? String, "", "An unchanged submitted prompt should still clear")
     }
 
@@ -492,10 +492,10 @@ final class TappletUITests: XCTestCase {
     func testImagesListDoesNotExposeRetainedHistoricalCache() {
         let app = launchApp(extraArguments: ["--ui-testing-history-images"])
         selectSidebarItem(label: "Make", in: app)
-        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitUntilExists(timeout: 5))
         app.buttons["starter-plan-times-tables-lightning"].tap()
         app.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         let form = app.descendants(matching: .any)["tapplet-editor-form"]
         let photos = app.buttons["Choose from Photos"]
         for _ in 0..<5 {
@@ -515,10 +515,10 @@ final class TappletUITests: XCTestCase {
     func testImagesListIncludesCurrentReferencesWithoutCachedFiles() {
         let app = launchApp(extraArguments: ["--ui-testing-history-images", "--ui-testing-uncached-current-images"])
         selectSidebarItem(label: "Make", in: app)
-        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitUntilExists(timeout: 5))
         app.buttons["starter-plan-times-tables-lightning"].tap()
         app.buttons["Make my tapplet"].tap()
-        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         let form = app.descendants(matching: .any)["tapplet-editor-form"]
         let photos = app.buttons["Choose from Photos"]
         for _ in 0..<5 {
@@ -547,28 +547,40 @@ final class TappletUITests: XCTestCase {
     @MainActor
     private func selectSidebarItem(label: String, in app: XCUIApplication) {
         let item = app.staticTexts[label].firstMatch
-        if !item.waitForExistence(timeout: 2) {
-            let sidebarButton = app.buttons.matching(
-                NSPredicate(format: "label CONTAINS[c] 'sidebar'")
-            ).firstMatch
-            XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
-            sidebarButton.tap()
+        let showSidebar = app.buttons.matching(
+            NSPredicate(format: "label ==[c] 'Show Sidebar'")
+        ).firstMatch
+        // Wait for either state without a failing wait: a timed-out wait makes
+        // XCTest collect a slow accessibility snapshot for failure triage.
+        let deadline = Date().addingTimeInterval(8)
+        while !item.exists && !showSidebar.exists && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
-        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        if !item.exists, showSidebar.exists {
+            showSidebar.tap()
+        }
+        XCTAssertTrue(item.waitUntilExists(timeout: 5))
         item.tap()
     }
 
     @MainActor
     private func advanceGuidedFlow(in app: XCUIApplication) {
         let keyboardButton = app.buttons["guided-continue-keyboard"]
-        if keyboardButton.waitForExistence(timeout: 2), keyboardButton.isHittable {
+        let bottomButton = app.buttons["guided-continue"]
+        // As in selectSidebarItem, avoid a timed-out wait and its slow snapshot.
+        // The bottom button can exist behind the keyboard, so wait until one of
+        // the two is hittable, preferring the keyboard toolbar button.
+        let hittable = { (button: XCUIElement) in button.exists && button.isHittable }
+        let deadline = Date().addingTimeInterval(5)
+        while !hittable(keyboardButton) && !hittable(bottomButton) && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        if hittable(keyboardButton) {
             keyboardButton.tap()
             return
         }
 
-        let bottomButton = app.buttons["guided-continue"]
-        XCTAssertTrue(bottomButton.waitForExistence(timeout: 3))
-        XCTAssertTrue(bottomButton.isHittable)
+        XCTAssertTrue(hittable(bottomButton))
         bottomButton.tap()
     }
 
@@ -579,5 +591,14 @@ final class TappletUITests: XCTestCase {
         app.launchArguments = ["--ui-testing-reset"] + extraArguments
         app.launch()
         return app
+    }
+}
+
+private extension XCUIElement {
+    /// Like `waitForExistence(timeout:)`, which always waits about a second
+    /// before its first check, but returns at once when the element exists.
+    @MainActor
+    func waitUntilExists(timeout: TimeInterval) -> Bool {
+        exists || waitForExistence(timeout: timeout)
     }
 }
