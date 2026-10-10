@@ -2,6 +2,7 @@ import { createConfiguredModelProvider, handleAdminRequest } from "./admin";
 import { createStudioApp } from "./app";
 import { FAVICON_SVG, publicationErrorResponse } from "./brand";
 import { CloudflareAssetStore } from "./assets";
+import { createClassInference } from "./classInference";
 import { readConfig, type StudioEnv } from "./env";
 import type { ImageSafetyInspector } from "./imageSafety";
 import { OpenCodeGoImageSafetyInspector } from "./imageSafety";
@@ -34,9 +35,14 @@ export default {
       return servePublic(request, env);
     }
 
+    const repository = new D1StudioRepository(env.DB);
     return createStudioApp({
-      repository: new D1StudioRepository(env.DB),
+      repository,
       provider: createConfiguredModelProvider(env),
+      classInference: async (ownerHash) => {
+        const key = await repository.getClassInferenceKey(ownerHash);
+        return key ? createClassInference(env, key) : null;
+      },
       config: readConfig(env),
       sources: new R2SourceStore(env.MEDIA),
       assets: new CloudflareAssetStore(

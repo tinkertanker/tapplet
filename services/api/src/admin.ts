@@ -8,7 +8,9 @@ import type { ModelProvider } from "./ai/provider";
 import { BUNDLED_MODELS, loadModelCatalogue } from "./ai/modelCatalogue";
 import {
   createTkslopperModelProvider,
+  GROUP_KEY_PATTERN,
   inferenceTransport,
+  readTkslopperClassConfig,
   readTkslopperConfig,
   TkslopperClient,
 } from "./ai/tkslopper";
@@ -50,6 +52,7 @@ const ADMIN_PATHS = new Set([
   "/v1/admin/model",
   "/v1/admin/model-catalogue",
   "/v1/admin/class-codes",
+  "/v1/admin/class-codes/key",
 ]);
 const MODEL_PROVIDERS = new Set([
   "anthropic",
@@ -150,6 +153,27 @@ export async function decryptAdminApiKey(
     base64ToBytes(ciphertext),
   );
   return new TextDecoder().decode(plaintext);
+}
+
+// Binds each class key to its class row; admin_model_settings cannot store
+// this provider name, so model keys and class keys are never interchangeable.
+const CLASS_KEY_SCOPE = "tkslopper-class";
+
+export function encryptClassKey(
+  key: string,
+  secret: string,
+  classCodeHash: string,
+): Promise<{ ciphertext: string; iv: string }> {
+  return encryptAdminApiKey(key, secret, CLASS_KEY_SCOPE, classCodeHash);
+}
+
+export function decryptClassKey(
+  ciphertext: string,
+  iv: string,
+  secret: string,
+  classCodeHash: string,
+): Promise<string> {
+  return decryptAdminApiKey(ciphertext, iv, secret, CLASS_KEY_SCOPE, classCodeHash);
 }
 
 async function digest(value: string): Promise<Uint8Array> {
@@ -425,6 +449,99 @@ function createClassCode(): string {
   return String(randomInt(1_000_000)).padStart(6, "0");
 }
 
+interface VerifiedClassKey {
+  key: string;
+  hint: string;
+  warning?: string;
+}
+
+/**
+ * Checks a tkslopper classroom group key before it is stored. Unknown keys and
+ * keys missing Tapplet's aliases are rejected; a class that is paused or not
+ * yet started (403) or an unreachable gateway is saved with a warning.
+ */
+async function verifyClassKey(
+  env: StudioEnv,
+  value: unknown,
+): Promise<VerifiedClassKey> {
+  const key = typeof value === "string" ? value.trim() : "";
+  if (!GROUP_KEY_PATTERN.test(key))
+    throw new HttpError(422, "INVALID_CLASS_KEY", "Enter a tkslopper class key starting with tkgk_.");
+  const config = readTkslopperClassConfig(env, key);
+  if (!config.ok)
+    throw new HttpError(409, "CLASS_KEY_UNCONFIGURED", config.reason);
+  const probe = await new TkslopperClient(config.config).probeAliases();
+  const hint = key.slice(-4);
+  if (probe.status === 401)
+    throw new HttpError(422, "INVALID_CLASS_KEY", "tkslopper did not recognise this class key.");
+  if (probe.status === 200) {
+    const required = [
+      config.config.artifactAlias,
+      config.config.reviewAlias,
+      config.config.imageAlias,
+    ];
+    const missing = [...new Set(required)].filter((alias) => !probe.aliases.includes(alias));
+    if (missing.length)
+      throw new HttpError(
+        422,
+        "CLASS_KEY_ALIASES_MISSING",
+        `This class key does not allow: ${missing.join(", ")}.`,
+      );
+    return { key, hint };
+  }
+  return {
+    key,
+    hint,
+    warning:
+      probe.status === 403
+        ? "Saved, but tkslopper is refusing this class right now: it may be paused, revoked or outside its schedule."
+        : "Saved without checking: tkslopper could not be reached.",
+  };
+}
+
+function normalisedClassCode(value: unknown): string {
+  const code = typeof value === "string" ? value.trim().toUpperCase().replaceAll("-", "") : "";
+  if (!/^(?:\d{6}|[A-Z]{6}|\d{4}[A-Z]{8})$/.test(code))
+    throw new HttpError(422, "INVALID_CLASS_CODE", "Enter the class access code.");
+  return code;
+}
+
+async function setClassKey(request: Request, env: StudioEnv): Promise<Response> {
+  const body = await readJson<Record<string, unknown>>(request, 2_000);
+  const code = normalisedClassCode(body.code);
+  const row = await env.DB.prepare(
+    "SELECT code_hash,label FROM class_codes WHERE code_hash=?1 OR short_code_hash=?1",
+  )
+    .bind(await sha256(`class-code:${code}`))
+    .first<{ code_hash: string; label: string }>();
+  if (!row)
+    return apiError(404, "CLASS_CODE_NOT_FOUND", "No class uses this access code.");
+  if (body.classKey === null) {
+    await env.DB.prepare(
+      "UPDATE class_codes SET inference_key_ciphertext=NULL,inference_key_iv=NULL,inference_key_hint=NULL WHERE code_hash=?1",
+    )
+      .bind(row.code_hash)
+      .run();
+    return json({ label: row.label, keyHint: null });
+  }
+  const verified = await verifyClassKey(env, body.classKey);
+  const encrypted = await encryptClassKey(
+    verified.key,
+    env.ADMIN_ENCRYPTION_KEY!,
+    row.code_hash,
+  );
+  await env.DB.prepare(
+    "UPDATE class_codes SET inference_key_ciphertext=?1,inference_key_iv=?2,inference_key_hint=?3 WHERE code_hash=?4",
+  )
+    .bind(encrypted.ciphertext, encrypted.iv, verified.hint, row.code_hash)
+    .run();
+  return json({
+    label: row.label,
+    keyHint: verified.hint,
+    ...(verified.warning ? { warning: verified.warning } : {}),
+  });
+}
+
 async function mintClassCode(request: Request, env: StudioEnv): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(request, 2_000);
   const classNumber = body.classNumber;
@@ -446,25 +563,45 @@ async function mintClassCode(request: Request, env: StudioEnv): Promise<Response
     Date.parse(expiresAt) <= Date.now()
   )
     return apiError(422, "INVALID_EXPIRY", "Choose a future expiry date and time.");
+  const classKey =
+    body.classKey === undefined || body.classKey === null || body.classKey === ""
+      ? undefined
+      : await verifyClassKey(env, body.classKey);
 
   const createdAt = new Date().toISOString();
   for (let attempt = 0; attempt < 20; attempt++) {
     const code = createClassCode();
+    const codeHash = await sha256(`class-code:${code}`);
+    // The ciphertext is bound to its row, so it is re-encrypted per attempt.
+    const encrypted = classKey
+      ? await encryptClassKey(classKey.key, env.ADMIN_ENCRYPTION_KEY!, codeHash)
+      : undefined;
     const result = await env.DB.prepare(
-      `INSERT INTO class_codes(code_hash,label,maximum_uses,expires_at,created_at)
-       VALUES(?1,?2,?3,?4,?5) ON CONFLICT(code_hash) DO NOTHING`,
+      `INSERT INTO class_codes(code_hash,label,maximum_uses,expires_at,created_at,inference_key_ciphertext,inference_key_iv,inference_key_hint)
+       VALUES(?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(code_hash) DO NOTHING`,
     )
       .bind(
-        await sha256(`class-code:${code}`),
+        codeHash,
         `Class ${classNumber}`,
         maximumUses,
         expiresAt,
         createdAt,
+        encrypted?.ciphertext ?? null,
+        encrypted?.iv ?? null,
+        classKey?.hint ?? null,
       )
       .run();
     if (result.meta.changes === 1)
       return json(
-        { code, classNumber, maximumUses, expiresAt, createdAt },
+        {
+          code,
+          classNumber,
+          maximumUses,
+          expiresAt,
+          createdAt,
+          keyHint: classKey?.hint ?? null,
+          ...(classKey?.warning ? { warning: classKey.warning } : {}),
+        },
         { status: 201 },
       );
   }
@@ -502,6 +639,8 @@ export async function handleAdminRequest(
       return secured(await resetModel(env));
     if (pathname === "/v1/admin/class-codes" && request.method === "POST")
       return secured(await mintClassCode(request, env));
+    if (pathname === "/v1/admin/class-codes/key" && request.method === "POST")
+      return secured(await setClassKey(request, env));
     return secured(apiError(404, "NOT_FOUND", "Endpoint not found."));
   } catch (error) {
     if (error instanceof HttpError)
@@ -525,7 +664,8 @@ const ADMIN_HTML = String.raw`<!doctype html>
 <label>Provider<select id="provider"><option value="opencode-go">OpenCode Go</option><option value="opencode">OpenCode Zen</option><option value="openrouter">OpenRouter</option><option value="openai-compatible">OpenAI / compatible</option><option value="anthropic">Claude (Anthropic)</option><option value="fixture">Fixture (testing only)</option></select></label><label>Model<input id="model" required maxlength="200"></label>
 <label id="preset-label" class="wide">Suggested model<select id="model-preset" aria-describedby="preset-note"></select></label><p id="preset-note" class="wide note">Suggestions never replace a saved model. Custom model IDs remain supported.</p>
 <label class="wide">Base URL<input id="base-url" type="url" required maxlength="500"></label><label class="wide">Replace API key<input id="api-key" type="password" maxlength="2000" autocomplete="new-password" placeholder="Blank keeps the existing key"></label></div><p id="key-state" class="note"></p><p id="transport" class="note"></p><p id="transport-problem" class="note error" role="alert"></p><div class="actions"><button id="save-model">Save configuration</button><button id="clear-key" type="button" class="danger">Remove key</button><button id="reset-model" type="button" class="secondary">Use environment defaults</button><span id="source" class="pill"></span></div><div id="model-status" class="status" role="status"></div></form></section>
-<section class="card"><h2>Mint class access code</h2><form id="code-form"><div class="fields"><label>Class number<input id="class-number" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" placeholder="1234" required></label><label>Maximum activations<input id="maximum-uses" type="number" min="1" max="100" value="30" required></label><label class="wide">Expires at<input id="expires-at" type="datetime-local" required></label></div><div class="actions"><button id="mint-code">Mint code</button></div><div id="code-result" class="status" role="status"></div><p class="note">The code is shown once. Copy it to a protected location before leaving this page; only its hash is stored.</p></form></section>
+<section class="card"><h2>Mint class access code</h2><form id="code-form"><div class="fields"><label>Class number<input id="class-number" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" placeholder="1234" required></label><label>Maximum activations<input id="maximum-uses" type="number" min="1" max="100" value="30" required></label><label class="wide">Expires at<input id="expires-at" type="datetime-local" required></label><label class="wide">tkslopper class key (optional)<input id="mint-class-key" type="password" maxlength="200" autocomplete="off" placeholder="tkgk_…" aria-describedby="mint-class-key-note"></label><p id="mint-class-key-note" class="wide note">With a key, this class uses its tkslopper aliases, budget and pause. Without one, it uses the model configuration above.</p></div><div class="actions"><button id="mint-code">Mint code</button></div><div id="code-result" class="status" role="status"></div><p class="note">The code is shown once. Copy it to a protected location before leaving this page; only its hash is stored.</p></form></section>
+<section class="card"><h2>Class AI access</h2><form id="class-key-form"><div class="fields"><label>Class access code<input id="class-key-code" autocomplete="off" maxlength="20" required></label><label>tkslopper class key<input id="class-key" type="password" maxlength="200" autocomplete="off" placeholder="tkgk_…"></label></div><div class="actions"><button id="attach-class-key">Attach key</button><button id="remove-class-key" type="button" class="danger">Remove key</button></div><div id="class-key-result" class="status" role="status"></div><p class="note">Attaching replaces the class's key for every iPad that joined with this code. Removing it returns the class to the model configuration above.</p></form></section>
 <section class="card"><h2>Models used</h2><div id="models" class="models"></div><p class="note">Based on persisted revisions. Token and spend telemetry is not available from the current provider contract.</p></section>
 <section class="card"><h2>Activity · last 14 days</h2><div id="chart" class="chart" aria-hidden="true"></div><div class="legend" aria-hidden="true"><span><i class="dot"></i>Generations</span><span><i class="dot dark"></i>Revisions</span></div><div id="activity-summary" class="models"></div></section>
 <section class="card"><h2>Uploads · last 14 days</h2><div id="upload-summary"></div><p class="note">Counts successful owner upload reservations; network safety counters are excluded.</p></section></div></section>
@@ -550,8 +690,11 @@ $('model-preset').onchange=()=>{if($('model-preset').value)$('model').value=$('m
 $('model').oninput=suggestions;$('base-url').oninput=suggestions;
 $('login-form').onsubmit=async event=>{event.preventDefault();token=$('token').value;$('login-error').textContent='';try{await load();sessionStorage.setItem('tapplet-admin-token',token)}catch(error){token='';$('login-error').textContent=error.message}};
 $('model-form').onsubmit=async event=>{event.preventDefault();const button=$('save-model');button.disabled=true;$('model-status').className='status';$('model-status').textContent='Saving…';try{await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:$('provider').value,model:$('model').value,baseUrl:$('base-url').value,apiKey:$('api-key').value})});await load();$('model-status').textContent='Configuration saved.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{button.disabled=false}};
-$('code-form').onsubmit=async event=>{event.preventDefault();const button=$('mint-code');button.disabled=true;$('code-result').className='status';$('code-result').textContent='Minting…';try{const expiry=new Date($('expires-at').value);const result=await api('/v1/admin/class-codes',{method:'POST',body:JSON.stringify({classNumber:$('class-number').value,maximumUses:Number($('maximum-uses').value),expiresAt:expiry.toISOString()})});$('code-result').innerHTML='Class access code: <strong style="font-size:20px">'+escapeHtml(result.code)+'</strong><br>Copy it now — it cannot be retrieved later.';try{data=await api('/v1/admin/overview');render();modelLoaded()}catch{}}catch(error){$('code-result').className='status error';$('code-result').textContent=error.message}finally{button.disabled=false}};
+$('code-form').onsubmit=async event=>{event.preventDefault();const button=$('mint-code');button.disabled=true;$('code-result').className='status';$('code-result').textContent='Minting…';try{const expiry=new Date($('expires-at').value);const result=await api('/v1/admin/class-codes',{method:'POST',body:JSON.stringify({classNumber:$('class-number').value,maximumUses:Number($('maximum-uses').value),expiresAt:expiry.toISOString(),classKey:$('mint-class-key').value})});$('mint-class-key').value='';$('code-result').innerHTML='Class access code: <strong style="font-size:20px">'+escapeHtml(result.code)+'</strong><br>'+(result.keyHint?'tkslopper class key …'+escapeHtml(result.keyHint)+' attached.<br>':'')+(result.warning?escapeHtml(result.warning)+'<br>':'')+'Copy it now — it cannot be retrieved later.';try{data=await api('/v1/admin/overview');render();modelLoaded()}catch{}}catch(error){$('code-result').className='status error';$('code-result').textContent=error.message}finally{button.disabled=false}};
 $('clear-key').onclick=async()=>{if(!confirm('Remove the stored API key? Model requests will stop until another key is configured.'))return;const button=$('clear-key'),m=data.model;let completed=false;button.disabled=true;$('model-status').className='status';$('model-status').textContent='Removing…';try{await api('/v1/admin/model',{method:'PATCH',body:JSON.stringify({provider:m.provider,model:m.model,baseUrl:m.baseUrl,clearApiKey:true})});await load();completed=true;$('model-status').textContent='API key removed.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{if(!completed)button.disabled=false}};
 $('reset-model').onclick=async()=>{if(!confirm('Discard the admin override and use Worker environment defaults?'))return;const button=$('reset-model');let completed=false;button.disabled=true;$('model-status').className='status';$('model-status').textContent='Resetting…';try{await api('/v1/admin/model',{method:'DELETE'});await load();completed=true;$('model-status').textContent='Using environment defaults.'}catch(error){$('model-status').className='status error';$('model-status').textContent=error.message}finally{if(!completed)button.disabled=false}};
+async function setClassKey(classKey){const button=classKey===null?$('remove-class-key'):$('attach-class-key');button.disabled=true;$('class-key-result').className='status';$('class-key-result').textContent=classKey===null?'Removing…':'Checking with tkslopper…';try{const result=await api('/v1/admin/class-codes/key',{method:'POST',body:JSON.stringify({code:$('class-key-code').value,classKey})});$('class-key').value='';$('class-key-result').textContent=result.label+': '+(result.keyHint?'tkslopper class key …'+result.keyHint+' attached.':'class key removed; using the model configuration.')+(result.warning?' '+result.warning:'')}catch(error){$('class-key-result').className='status error';$('class-key-result').textContent=error.message}finally{button.disabled=false}}
+$('class-key-form').onsubmit=event=>{event.preventDefault();void setClassKey($('class-key').value)};
+$('remove-class-key').onclick=()=>{if(!$('class-key-code').reportValidity())return;if(!confirm('Remove this class key? iPads in the class will use the model configuration instead.'))return;void setClassKey(null)};
 $('sign-out').onclick=()=>{sessionStorage.removeItem('tapplet-admin-token');location.reload()};if(token)load().catch(()=>{sessionStorage.removeItem('tapplet-admin-token');token=''})
 </script></body></html>`;

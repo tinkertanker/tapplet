@@ -44,6 +44,8 @@ export interface AssetStore {
       now: string;
       maximumNetworkCount: number;
       maximumNetworkBytes: number;
+      /** Replaces the store's inspector, e.g. with the device's class access. */
+      imageSafety?: ImageSafetyInspector;
     },
   ): Promise<AssetRecord>;
   get(id: string): Promise<StoredAsset | null>;
@@ -134,6 +136,7 @@ export class CloudflareAssetStore implements AssetStore {
       now: string;
       maximumNetworkCount: number;
       maximumNetworkBytes: number;
+      imageSafety?: ImageSafetyInspector;
     },
   ): Promise<AssetRecord> {
     const { ownerHash, networkHash, now, maximumNetworkCount, maximumNetworkBytes } = context;
@@ -261,7 +264,7 @@ export class CloudflareAssetStore implements AssetStore {
         .bind(ownerHash)
         .first<{ asset_count: number; total_bytes: number }>(),
       crypto.subtle.digest('SHA-256', digestInput).then(hex),
-      this.reviewCanonicalImage(canonicalBytes),
+      this.reviewCanonicalImage(canonicalBytes, context.imageSafety ?? this.imageSafety),
     ]);
     if (
       (stored?.asset_count ?? 0) >= MAXIMUM_STORED_ASSETS ||
@@ -356,10 +359,11 @@ export class CloudflareAssetStore implements AssetStore {
 
   private async reviewCanonicalImage(
     canonicalBytes: Uint8Array,
+    imageSafety: ImageSafetyInspector | undefined,
   ): Promise<AdvisoryWarning[]> {
-    if (!this.imageSafety) return [imageReviewUnavailableWarning()];
+    if (!imageSafety) return [imageReviewUnavailableWarning()];
     try {
-      const review = await this.imageSafety.inspect(canonicalBytes, 'image/jpeg');
+      const review = await imageSafety.inspect(canonicalBytes, 'image/jpeg');
       if (review.status === 'flagged') return [imageReviewFlaggedWarning(review.reason)];
       if (review.status === 'unavailable') return [imageReviewUnavailableWarning()];
       return [];

@@ -1,17 +1,21 @@
 import type { ModelProvider, TeacherBrief, DesignCard } from "./ai/provider";
 import { ModelProviderError } from "./ai/provider";
+import { ClassAccessError } from "./ai/tkslopper";
 import type { AssetRecord, AssetStore, StoredAsset } from "./assets";
 import {
   classCodeAttemptNetworkHashFrom,
   DEVICE_TOKEN_RECOVERY_DAYS,
   issueDeviceToken,
   networkHashFrom,
+  newDeviceOwnerId,
+  ownerHashForId,
   ownerCredentialFrom,
   ownerHashFrom,
   randomSlug,
   refreshDeviceToken,
   sha256,
 } from "./auth";
+import type { ClassInference } from "./classInference";
 import type { StudioConfig } from "./env";
 import {
   generateArtifact,
@@ -59,6 +63,8 @@ import {
 interface Deps {
   repository: StudioRepository;
   provider: ModelProvider;
+  /** Model access from the device's class, or null for the global provider. */
+  classInference?: (ownerHash: string) => Promise<ClassInference | null>;
   config: StudioConfig;
   sources: SourceStore;
   assets?: AssetStore;
@@ -350,6 +356,10 @@ export function createStudioApp(d: Deps) {
       d.repository,
     );
   }
+  async function inference(o: string) {
+    const scoped = await d.classInference?.(o);
+    return scoped ?? { provider: d.provider, imageSafety: undefined };
+  }
   async function quota(
     r: Request,
     o: string,
@@ -616,6 +626,7 @@ export function createStudioApp(d: Deps) {
         );
       const timestamp = now(),
         date = timestamp.toISOString().slice(0, 10),
+        ownerId = newDeviceOwnerId(),
         classCodeHash = await sha256(`class-code:${code}`),
         networkHash = await networkHashFrom(r);
       // Reserve every attempt before testing the credential: a successful guess
@@ -638,6 +649,7 @@ export function createStudioApp(d: Deps) {
           `registration:${networkHash}`,
           date,
           d.config.dailyNetworkRegistrationLimit,
+          await ownerHashForId(ownerId),
         );
       if (registration === "network-limit")
         throw new HttpError(
@@ -665,7 +677,13 @@ export function createStudioApp(d: Deps) {
         );
       }
       return json(
-        await issueDeviceToken(d.config.deviceTokenSigningSecret, timestamp),
+        await issueDeviceToken(
+          d.config.deviceTokenSigningSecret,
+          timestamp,
+          undefined,
+          undefined,
+          ownerId,
+        ),
         { status: 201 },
       );
     }
@@ -749,7 +767,8 @@ export function createStudioApp(d: Deps) {
         });
       }
       const aid = id();
-      const out = await generateArtifact(d.provider, b, ex, {
+      const { provider } = await inference(o);
+      const out = await generateArtifact(provider, b, ex, {
         ...d.generationPolicy,
         ...(trace ? { trace } : {}),
         sessionId: aid,
@@ -774,7 +793,7 @@ export function createStudioApp(d: Deps) {
         instruction: null,
         designCard: out.designCard ? JSON.stringify(out.designCard) : null,
         exemplars: ex.map((x) => x.revisionId),
-        modelVersion: d.provider.name,
+        modelVersion: provider.name,
         promptVersion: PROMPT_VERSION,
         screenshotKey: null,
         createdAt: timestamp,
@@ -884,8 +903,10 @@ export function createStudioApp(d: Deps) {
         );
       const o = await owner(r);
       if (s.length === 2 && r.method === "POST") {
+        const { imageSafety } = await inference(o);
         const a = await d.assets.put(r, {
           ownerHash: o,
+          ...(imageSafety ? { imageSafety } : {}),
           networkHash: await networkHashFrom(r),
           now: now().toISOString(),
           maximumNetworkCount: d.config.dailyNetworkUploadLimit,
@@ -1045,8 +1066,9 @@ export function createStudioApp(d: Deps) {
             "REVISION_NOT_FOUND",
             "Revision unavailable.",
           );
+        const { provider } = await inference(o);
         const out = await reviseArtifact(
-            d.provider,
+            provider,
             html,
             design(current),
             instruction,
@@ -1075,7 +1097,7 @@ export function createStudioApp(d: Deps) {
             instruction,
             designCard: out.designCard ? JSON.stringify(out.designCard) : null,
             exemplars: [],
-            modelVersion: d.provider.name,
+            modelVersion: provider.name,
             promptVersion: PROMPT_VERSION,
             screenshotKey: null,
             createdAt: timestamp,
@@ -1152,7 +1174,8 @@ export function createStudioApp(d: Deps) {
         await assets(html, o);
         await quota(r, o, "safety");
         try {
-          const m = await d.provider.moderate(html, trace, a.id);
+          const { provider } = await inference(o);
+          const m = await provider.moderate(html, trace, a.id);
           if (!m.safe) warnings.push(publicationReviewWarning(m.categories));
         } catch (error) {
           const diagnostic = error instanceof Error
@@ -1437,6 +1460,18 @@ export function createStudioApp(d: Deps) {
                   "Generated HTML was invalid.",
                   e.issues,
                 )
+              : e instanceof ClassAccessError
+                ? e.denial === "allowance"
+                  ? apiError(
+                      429,
+                      "CLASS_AI_ALLOWANCE_REACHED",
+                      "Your class has used its AI allowance. Ask your facilitator for more.",
+                    )
+                  : apiError(
+                      403,
+                      "CLASS_AI_UNAVAILABLE",
+                      "AI is not available for your class right now. It may be paused or finished; ask your facilitator.",
+                    )
               : e instanceof ModelProviderError
                 ? apiError(
                     e.retryable ? 503 : 502,

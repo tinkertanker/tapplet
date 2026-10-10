@@ -44,10 +44,9 @@ export type TkslopperOperation = ModelOperation | "image_review";
 /** Where a tkslopper Worker is reached: a service binding or a public URL. */
 export type TkslopperTarget = { binding: Fetcher } | { url: string };
 
-export interface TkslopperConfig {
-  controlPlane: TkslopperTarget;
+/** Gateway routing shared by the service-credential and class-key modes. */
+export interface TkslopperRouteConfig {
   gateway: TkslopperTarget;
-  serviceCredential: string;
   artifactAlias: string;
   reviewAlias: string;
   imageAlias: string;
@@ -58,12 +57,34 @@ export interface TkslopperConfig {
   maxRequestBytes: number;
 }
 
+/** Fleet mode: a service credential exchanged for short-lived grants. */
+export interface TkslopperConfig extends TkslopperRouteConfig {
+  controlPlane: TkslopperTarget;
+  serviceCredential: string;
+}
+
+/**
+ * Class mode: a tkslopper classroom group key sent directly as the gateway
+ * Bearer credential, so the class's aliases, budget, schedule and pause apply.
+ */
+export interface TkslopperClassConfig extends TkslopperRouteConfig {
+  groupKey: string;
+}
+
+export type TkslopperClientConfig = TkslopperConfig | TkslopperClassConfig;
+
 export type TkslopperConfigResult =
   | { ok: true; config: TkslopperConfig }
   | { ok: false; reason: string };
 
+export type TkslopperClassConfigResult =
+  | { ok: true; config: TkslopperClassConfig }
+  | { ok: false; reason: string };
+
 // Mirrors tkslopper's opaque credential format: tksvc_<id>_<secret>.
 const CREDENTIAL_PATTERN = /^tksvc_([A-Za-z0-9-]{8,64})_[A-Za-z0-9_-]{16,128}$/;
+// Mirrors tkslopper's classroom group key format.
+export const GROUP_KEY_PATTERN = /^tkgk_[A-Za-z0-9_-]{16,128}$/;
 const ALIAS_PATTERN = /^[a-z][a-z0-9._:-]*\.v[1-9][0-9]*$/;
 const DEFAULT_MAX_REQUEST_BYTES = 1_048_576;
 const MINIMUM_REQUEST_BYTES = 1_024;
@@ -168,12 +189,6 @@ export function readTkslopperConfig(env: StudioEnv): TkslopperConfigResult {
     env.TKSLOPPER_CONTROL_PLANE,
   );
   if (controlPlane.problem) problems.push(controlPlane.problem);
-  const gateway = serviceTarget(
-    "TKSLOPPER_GATEWAY_URL",
-    env.TKSLOPPER_GATEWAY_URL,
-    env.TKSLOPPER_GATEWAY,
-  );
-  if (gateway.problem) problems.push(gateway.problem);
 
   const serviceCredential = env.TKSLOPPER_SERVICE_CREDENTIAL?.trim() ?? "";
   if (!CREDENTIAL_PATTERN.test(serviceCredential))
@@ -181,6 +196,49 @@ export function readTkslopperConfig(env: StudioEnv): TkslopperConfigResult {
       "TKSLOPPER_SERVICE_CREDENTIAL must be a tksvc_ service credential secret",
     );
 
+  const route = readRouteConfig(env, problems);
+  if (problems.length || !controlPlane.target || !route)
+    return {
+      ok: false,
+      reason: `tkslopper transport is misconfigured: ${problems.join("; ")}.`,
+    };
+  return {
+    ok: true,
+    config: { ...route, controlPlane: controlPlane.target, serviceCredential },
+  };
+}
+
+/**
+ * Reads the gateway routing for a class's group key. It needs neither the
+ * control plane nor the service credential, and is independent of
+ * INFERENCE_TRANSPORT, so a class can use tkslopper before the fleet does.
+ */
+export function readTkslopperClassConfig(
+  env: StudioEnv,
+  groupKey: string,
+): TkslopperClassConfigResult {
+  const problems: string[] = [];
+  if (!GROUP_KEY_PATTERN.test(groupKey))
+    problems.push("the class key must be a tkgk_ classroom group key");
+  const route = readRouteConfig(env, problems);
+  if (problems.length || !route)
+    return {
+      ok: false,
+      reason: `tkslopper class access is misconfigured: ${problems.join("; ")}.`,
+    };
+  return { ok: true, config: { ...route, groupKey } };
+}
+
+function readRouteConfig(
+  env: StudioEnv,
+  problems: string[],
+): TkslopperRouteConfig | undefined {
+  const gateway = serviceTarget(
+    "TKSLOPPER_GATEWAY_URL",
+    env.TKSLOPPER_GATEWAY_URL,
+    env.TKSLOPPER_GATEWAY,
+  );
+  if (gateway.problem) problems.push(gateway.problem);
   const aliases = {
     artifactAlias: env.TKSLOPPER_ARTIFACT_ALIAS?.trim() ?? "",
     reviewAlias: env.TKSLOPPER_REVIEW_ALIAS?.trim() ?? "",
@@ -228,29 +286,16 @@ export function readTkslopperConfig(env: StudioEnv): TkslopperConfigResult {
       `TKSLOPPER_MAX_REQUEST_BYTES must be a whole number from ${MINIMUM_REQUEST_BYTES} to ${MAXIMUM_REQUEST_BYTES}`,
     );
 
-  if (
-    problems.length ||
-    !controlPlane.target ||
-    !gateway.target ||
-    !isArtifactEndpoint(endpoint)
-  )
-    return {
-      ok: false,
-      reason: `tkslopper transport is misconfigured: ${problems.join("; ")}.`,
-    };
+  if (problems.length || !gateway.target || !isArtifactEndpoint(endpoint))
+    return undefined;
   return {
-    ok: true,
-    config: {
-      controlPlane: controlPlane.target,
-      gateway: gateway.target,
-      serviceCredential,
-      ...aliases,
-      ...(efforts.artifactEffort ? { artifactEffort: efforts.artifactEffort } : {}),
-      ...(efforts.reviewEffort ? { reviewEffort: efforts.reviewEffort } : {}),
-      ...(efforts.imageEffort ? { imageEffort: efforts.imageEffort } : {}),
-      artifactEndpoint: endpoint,
-      maxRequestBytes,
-    },
+    gateway: gateway.target,
+    ...aliases,
+    ...(efforts.artifactEffort ? { artifactEffort: efforts.artifactEffort } : {}),
+    ...(efforts.reviewEffort ? { reviewEffort: efforts.reviewEffort } : {}),
+    ...(efforts.imageEffort ? { imageEffort: efforts.imageEffort } : {}),
+    artifactEndpoint: endpoint,
+    maxRequestBytes,
   };
 }
 
@@ -300,6 +345,28 @@ export class TkslopperError extends ModelProviderError {
     readonly gatewayRequestId?: string,
   ) {
     super(message, retryable);
+  }
+}
+
+/**
+ * The class's tkslopper access refused a request: its budget is spent
+ * (`allowance`), or its key, class or group is unknown, revoked, paused or
+ * outside its schedule (`unavailable`). Never retried or rerouted.
+ */
+export class ClassAccessError extends TkslopperError {
+  constructor(
+    readonly denial: "allowance" | "unavailable",
+    status: number,
+    gatewayRequestId?: string,
+  ) {
+    super(
+      denial === "allowance"
+        ? "Class AI allowance reached"
+        : "Class AI access unavailable",
+      false,
+      status,
+      gatewayRequestId,
+    );
   }
 }
 
@@ -364,9 +431,11 @@ export class TkslopperClient {
   private readonly now: () => number;
   private readonly capabilities: string[];
   private readonly cacheKey: string;
+  // A class key is itself the Bearer credential: no exchange, cache or expiry.
+  private readonly classGrant?: Grant;
 
   constructor(
-    private readonly config: TkslopperConfig,
+    private readonly config: TkslopperClientConfig,
     options: TkslopperClientOptions = {},
   ) {
     this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -375,12 +444,56 @@ export class TkslopperClient {
     this.capabilities = [
       ...new Set([config.artifactAlias, config.reviewAlias, config.imageAlias]),
     ];
+    if ("groupKey" in config) {
+      this.classGrant = {
+        accessToken: config.groupKey,
+        expiresAt: Number.POSITIVE_INFINITY,
+        refreshAt: Number.POSITIVE_INFINITY,
+      };
+      this.cacheKey = "";
+      return;
+    }
     // Keyed on the credential id so the secret is not copied into the cache.
     this.cacheKey = JSON.stringify([
       "url" in config.controlPlane ? config.controlPlane.url : "service-binding",
       CREDENTIAL_PATTERN.exec(config.serviceCredential)?.[1] ?? "",
       this.capabilities,
     ]);
+  }
+
+  /**
+   * Checks this credential against GET /v1/models within three seconds.
+   * Returns the HTTP status (0 when unreachable) and, on success, which of
+   * Tapplet's configured aliases the credential may use.
+   */
+  async probeAliases(): Promise<{ status: number; aliases: string[] }> {
+    try {
+      const grant = await this.grant();
+      const response = await this.dispatch(this.config.gateway, "/v1/models", {
+        method: "GET",
+        headers: { authorization: `Bearer ${grant.accessToken}`, accept: "application/json" },
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "manual",
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        return { status: response.status, aliases: [] };
+      }
+      const bytes = await readBodyBytes(response, 256_000);
+      const body: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      if (!isRecord(body) || !Array.isArray(body.data)) return { status: 0, aliases: [] };
+      const listed = new Set(
+        body.data.flatMap((item) => (isRecord(item) && typeof item.id === "string" ? [item.id] : [])),
+      );
+      return {
+        status: response.status,
+        aliases: this.capabilities.filter((alias) => listed.has(alias)),
+      };
+    } catch {
+      return { status: 0, aliases: [] };
+    }
   }
 
   /** Optional, read-only labels. No listing cache and no effect on inference IDs. */
@@ -458,7 +571,7 @@ export class TkslopperClient {
 
     let grant = await this.grant();
     let response = await this.send(path, serialised, operation, grant);
-    if (response.status === 401) {
+    if (response.status === 401 && !this.classGrant) {
       this.invalidate(grant);
       const rejectedId = response.headers.get("x-tkslopper-request-id");
       console.error(
@@ -483,6 +596,14 @@ export class TkslopperClient {
       console.error(
         `tkslopper ${operation} failed: HTTP ${response.status} ${code}${requestId ? ` (request ${requestId})` : ""}`,
       );
+      // Budget is 402; unknown, revoked, paused or out-of-schedule access is
+      // 401 or 403. For a class key these describe the class, not the fleet.
+      if (this.classGrant && [401, 402, 403].includes(response.status))
+        throw new ClassAccessError(
+          response.status === 402 ? "allowance" : "unavailable",
+          response.status,
+          requestId,
+        );
       throw new TkslopperError(
         typeof error?.error?.message === "string"
           ? error.error.message
@@ -549,6 +670,7 @@ export class TkslopperClient {
   }
 
   private async grant(): Promise<Grant> {
+    if (this.classGrant) return this.classGrant;
     const slot = this.cache.slot(this.cacheKey);
     const current = slot.grant;
     if (current && this.now() < current.refreshAt) return current;
@@ -618,23 +740,27 @@ export class TkslopperClient {
   }
 
   private invalidate(grant: Grant): void {
+    if (this.classGrant) return;
     const slot = this.cache.slot(this.cacheKey);
     if (slot.grant === grant) delete slot.grant;
   }
 
   private async exchange(): Promise<Grant> {
+    const config = this.config;
+    if ("groupKey" in config)
+      throw new TkslopperError("Class keys are not exchanged", false);
     // Expiry is measured from before the request so round-trip latency never
     // makes a grant look longer-lived than the control plane issued it.
     const requestedAt = this.now();
     let response: Response;
     try {
       response = await this.dispatch(
-        this.config.controlPlane,
+        config.controlPlane,
         "/v1/token",
         {
           method: "POST",
           headers: {
-            authorization: `Bearer ${this.config.serviceCredential}`,
+            authorization: `Bearer ${config.serviceCredential}`,
             "content-type": "application/json",
           },
           body: JSON.stringify({
@@ -828,7 +954,7 @@ export class TkslopperModelProvider implements ModelProvider {
   private readonly client: TkslopperClient;
 
   constructor(
-    private readonly config: TkslopperConfig,
+    private readonly config: TkslopperClientConfig,
     options: TkslopperModelProviderOptions = {},
   ) {
     this.name = `tkslopper:${config.artifactAlias}`;
@@ -1059,7 +1185,7 @@ export class TkslopperImageSafetyInspector implements ImageSafetyInspector {
   private readonly client: TkslopperClient;
 
   constructor(
-    private readonly config: TkslopperConfig,
+    private readonly config: TkslopperClientConfig,
     options: TkslopperModelProviderOptions = {},
   ) {
     this.client = options.client ?? new TkslopperClient(config, options);
