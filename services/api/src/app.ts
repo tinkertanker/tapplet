@@ -2,6 +2,7 @@ import type { ModelProvider, TeacherBrief, DesignCard } from "./ai/provider";
 import { ModelProviderError } from "./ai/provider";
 import type { AssetRecord, AssetStore, StoredAsset } from "./assets";
 import {
+  classCodeAttemptNetworkHashFrom,
   DEVICE_TOKEN_RECOVERY_DAYS,
   issueDeviceToken,
   networkHashFrom,
@@ -621,7 +622,7 @@ export function createStudioApp(d: Deps) {
       // must not bypass a network that has already exhausted its search budget.
       if (
         !(await d.repository.consumeGeneration(
-          `class-code-fail-network:${networkHash}`,
+          `class-code-fail-network:${await classCodeAttemptNetworkHashFrom(r)}`,
           date,
           d.config.dailyNetworkClassCodeFailureLimit,
         ))

@@ -63,12 +63,12 @@ test('reuses only a matching protected provisioning file after a failed attempt'
   const path = join(mkdtempSync(join(tmpdir(), 'tapplet-class-')), '0042.txt');
   writeFileSync(path, '# Tapplet class code\n# Class: 0042\n# Maximum activations: 30\n# Expires: 2030-01-01T00:00:00.000Z\n\n0042ABCDEFGH\n', { mode: 0o644 });
   const expected = { classNumber: '0042', maximumUses: 30, expiresAt: '2030-01-01T00:00:00.000Z' };
-  assert.equal(readProvisioningFile(path, expected), '0042ABCDEFGH');
+  assert.equal(readProvisioningFile(path, expected).code, '0042ABCDEFGH');
   assert.equal(readFileSync(path, 'utf8').includes('0042ABCDEFGH'), true);
   assert.equal(statSync(path).mode & 0o077, 0);
   assert.throws(() => readProvisioningFile(path, { ...expected, maximumUses: 31 }));
   writeFileSync(path, '# Tapplet class code\n# Class: 0042\n# Maximum activations: 30\n# Expires: 2030-01-01T00:00:00.000Z\n\n000042\n');
-  assert.equal(readProvisioningFile(path, expected), '000042');
+  assert.equal(readProvisioningFile(path, expected).code, '000042');
 });
 
 test('rejects linked credential files and directories', () => {
@@ -131,6 +131,9 @@ test('CLI replaces only a confirmed numeric collision and preserves uncertain re
   sqlite.exec('CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT,maximum_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at TEXT,created_at TEXT)');
   const hash = code => createHash('sha256').update(`class-code:${code}`).digest('hex');
   sqlite.prepare('INSERT INTO class_codes VALUES(?,?,?,?,?,?)').run(hash('123456'), 'Class 0042', 9, 7, '2090-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+  const original = sqlite.prepare('SELECT * FROM class_codes').get();
+  sqlite.exec(readFileSync(new URL('../services/api/migrations/0014_class_code_allocation_identity.sql', import.meta.url), 'utf8'));
+  assert.deepEqual({ ...sqlite.prepare('SELECT * FROM class_codes').get() }, { ...original, allocation_id: null });
   writeFileSync(join(root, 'bin/npx'), `#!/usr/bin/env node
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -140,10 +143,11 @@ const db = new DatabaseSync(process.env.TEST_DB);
 if (process.env.COLLIDE && !existsSync(process.env.COLLIDE)) {
   const code = readFileSync(process.env.TEST_CODE_FILE,'utf8').trim().split('\\n').at(-1);
   const hash = createHash('sha256').update('class-code:'+code).digest('hex');
-  db.prepare('INSERT OR IGNORE INTO class_codes VALUES(?,?,?,?,?,?)').run(hash,'Other class',9,7,'2090-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z');
+  db.prepare('INSERT OR IGNORE INTO class_codes(code_hash,label,maximum_uses,use_count,expires_at,created_at) VALUES(?,?,?,?,?,?)').run(hash,'Class 0042',30,30,'2099-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z');
   writeFileSync(process.env.COLLIDE,'done');
 }
 const results = db.prepare(process.argv.at(-1)).all();
+if (process.env.LOSE_RESPONSE) process.exit(1);
 console.log(JSON.stringify([{success:true,results}]));
 db.close();
 `, { mode: 0o700 });
@@ -158,15 +162,34 @@ db.close();
     renameSync(path, join(root, 'original-code.txt'));
     const result = run({ FAIL_TRANSPORT: '', COLLIDE: join(root, 'collided') });
     assert.equal(result.status, 0, result.stderr);
-    const code = readProvisioningFile(path, { classNumber: '0042', maximumUses: 30, expiresAt: '2099-01-01T00:00:00.000Z' });
+    const expected = { classNumber: '0042', maximumUses: 30, expiresAt: '2099-01-01T00:00:00.000Z' };
+    const { code, allocationId } = readProvisioningFile(path, expected);
     assert.match(code, /^\d{6}$/);
     assert.notEqual(code, '123456');
     assert.equal(statSync(path).mode & 0o077, 0);
     assert.deepEqual({ ...sqlite.prepare('SELECT label,maximum_uses,use_count FROM class_codes WHERE code_hash=?').get(hash('123456')) }, { label: 'Class 0042', maximum_uses: 9, use_count: 7 });
     assert.equal(sqlite.prepare('SELECT label FROM class_codes WHERE code_hash=?').get(hash(code)).label, 'Class 0042');
+    assert.equal(sqlite.prepare('SELECT use_count FROM class_codes WHERE code_hash=?').get(hash(code)).use_count, 0);
+    assert.equal(sqlite.prepare('SELECT allocation_id FROM class_codes WHERE code_hash=?').get(hash(code)).allocation_id, allocationId);
     assert.equal(run({ FAIL_TRANSPORT: '' }).status, 0);
-    assert.equal(readProvisioningFile(path, { classNumber: '0042', maximumUses: 30, expiresAt: '2099-01-01T00:00:00.000Z' }), code);
+    assert.equal(readProvisioningFile(path, expected).code, code);
     assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM class_codes').get().count, 3);
+
+    renameSync(path, join(root, 'successful-code.txt'));
+    assert.notEqual(run({ LOSE_RESPONSE: '1' }).status, 0);
+    const uncertainFile = readFileSync(path, 'utf8');
+    const uncertainCode = readProvisioningFile(path, expected).code;
+    sqlite.prepare('UPDATE class_codes SET use_count=2 WHERE code_hash=?').run(hash(uncertainCode));
+    const inserted = sqlite.prepare('SELECT * FROM class_codes WHERE code_hash=?').get(hash(uncertainCode));
+    assert.equal(run({}).status, 0);
+    assert.equal(readFileSync(path, 'utf8'), uncertainFile);
+    assert.deepEqual(sqlite.prepare('SELECT * FROM class_codes WHERE code_hash=?').get(hash(uncertainCode)), inserted);
+
+    renameSync(path, join(root, 'recovered-code.txt'));
+    assert.notEqual(run({ COLLIDE: join(root, 'second-collision'), LOSE_RESPONSE: '1' }).status, 0);
+    const collidedFile = readFileSync(path, 'utf8');
+    assert.notEqual(run({}).status, 0);
+    assert.equal(readFileSync(path, 'utf8'), collidedFile);
   } finally {
     sqlite.close();
   }

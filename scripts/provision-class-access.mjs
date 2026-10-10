@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
@@ -57,7 +57,8 @@ export function readProvisioningFile(path, expected) {
       (code.length === 12 && !code.startsWith(expected.classNumber))) {
     throw new Error(`${path} does not match this request. Preserve it and use its recorded arguments to retry, or move it to the Trash before rotating the code.`);
   }
-  return code;
+  const allocationId = contents.match(/^# Allocation: ([0-9a-f-]{36})$/m)?.[1];
+  return { code, allocationId };
 }
 
 export function ensureProtectedDirectory(path) {
@@ -79,12 +80,15 @@ function sqlString(value) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-export function provisioningStatement({ hash, label, maximumUses, expiresAt, createdAt }) {
-  return `INSERT INTO class_codes (code_hash, label, maximum_uses, expires_at, created_at) VALUES (` +
-    `${sqlString(hash)}, ${sqlString(label)}, ${maximumUses}, ${sqlString(expiresAt)}, ${sqlString(createdAt)}) ` +
+export function provisioningStatement({ hash, label, maximumUses, expiresAt, createdAt, allocationId }) {
+  return `INSERT INTO class_codes (code_hash, label, maximum_uses, expires_at, created_at, allocation_id) VALUES (` +
+    `${sqlString(hash)}, ${sqlString(label)}, ${maximumUses}, ${sqlString(expiresAt)}, ${sqlString(createdAt)}, ` +
+    `${allocationId ? sqlString(allocationId) : 'NULL'}) ` +
     `ON CONFLICT(code_hash) DO UPDATE SET code_hash=excluded.code_hash ` +
     `WHERE class_codes.label=excluded.label AND class_codes.maximum_uses=excluded.maximum_uses ` +
-    `AND class_codes.expires_at=excluded.expires_at RETURNING label, maximum_uses, expires_at;`;
+    `AND class_codes.expires_at=excluded.expires_at ` +
+    `AND class_codes.allocation_id IS excluded.allocation_id ` +
+    `RETURNING label, maximum_uses, expires_at;`;
 }
 
 export function provisioningResultMatches(output, expected) {
@@ -107,9 +111,14 @@ function main() {
   const outputPath = resolve(outputDirectory, `${classNumber}.txt`);
   ensureProtectedDirectory(outputDirectory);
   const existingCodeFile = existsSync(outputPath);
-  let code = existingCodeFile
+  const saved = existingCodeFile
     ? readProvisioningFile(outputPath, { classNumber, maximumUses, expiresAt })
-    : createClassCode();
+    : undefined;
+  if (saved?.code.length === 6 && !saved.allocationId) {
+    throw new Error('This older numeric code file has no allocation identity. Preserve it and verify its existing class record before provisioning; do not rotate or reset it automatically.');
+  }
+  let code = saved?.code ?? createClassCode();
+  const allocationId = saved ? saved.allocationId : randomUUID();
   const expected = { label: `Class ${classNumber}`, maximumUses, expiresAt };
   let replaceConfirmedCollision = false;
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -117,12 +126,14 @@ function main() {
       hash: codeHash(code),
       ...expected,
       createdAt: new Date().toISOString(),
+      allocationId,
     });
     const contents = [
       '# Tapplet class code',
       `# Class: ${classNumber}`,
       `# Maximum activations: ${maximumUses}`,
       `# Expires: ${expiresAt}`,
+      ...(allocationId ? [`# Allocation: ${allocationId}`] : []),
       '# Share only with this class. Each iPad activation consumes one use.',
       '',
       code,
@@ -136,7 +147,7 @@ function main() {
       } finally {
         closeSync(descriptor);
       }
-    } else if (!existsSync(outputPath)) {
+    } else if (!existingCodeFile) {
       writeFileSync(outputPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     }
     const result = spawnSync(

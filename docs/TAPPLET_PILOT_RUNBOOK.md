@@ -249,6 +249,15 @@ hashes into issues, commits, chat logs or screenshots.
 ## Short-code rollout and legacy codes
 
 Apply migration `0013_short_class_codes.sql` before deploying the updated API.
+Apply `0014_class_code_allocation_identity.sql` before using the provisioning CLI.
+Use the migration runner; do not reapply migrations already in the remote ledger.
+0014 adds a nullable allocation identity without rewriting existing rows. New
+numeric credential files retain this identity so uncertain retries cannot adopt
+another allocation with the same label, limit and expiry. Retain the complete
+protected file, not just its code. Older numeric files without an allocation
+identity still activate normally, but provisioning fails closed until an operator
+verifies their existing record; never reset usage or silently rotate them.
+
 For each existing twelve-character code whose original file is available, run
 from the repository root:
 
@@ -272,7 +281,10 @@ Six-digit codes have one million possibilities. The existing
 `DAILY_NETWORK_CLASS_CODE_FAILURE_LIMIT` now bounds **all format-valid attempts**
 before checking the credential, including successful guesses; its configured
 500-attempt budget remains separate from the 100 successful registrations per
-network. A locked network cannot bypass this budget with a correct guess.
+IP address. Attempt budgets group IPv6 addresses by /64, and IPv4-mapped IPv6
+addresses share their IPv4 address's budget. Other usage quotas keep their existing
+keys. This limits address rotation within one /64, not distributed proxy guessing.
+A locked network cannot bypass this budget with a correct guess.
 Use workshop-appropriate expiries. Numeric allocation retries confirmed hash
 collisions; uncertain CLI results preserve the protected file for an identical
 retry. The unique legacy-alias index rejects shared suffixes; a conflicting

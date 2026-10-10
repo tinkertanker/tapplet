@@ -76,13 +76,13 @@ describe("Tapplet API registration and public HTML", () => {
     },
   };
 
-  function register(accessCode: string) {
+  function register(accessCode: string, address = "192.0.2.1") {
     return app.fetch(
       new Request("https://api.test/v1/devices/register", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "cf-connecting-ip": "192.0.2.1",
+          "cf-connecting-ip": address,
         },
         body: JSON.stringify({ accessCode }),
       }),
@@ -313,6 +313,26 @@ describe("Tapplet API registration and public HTML", () => {
     expect((await register("1234ABCDEFGH")).status).toBe(429);
     expect(repository.classCodes.get(correct)?.uses).toBe(0);
     expect(repository.classCodes.get(numericHash)?.uses).toBe(0);
+  });
+
+  it.each([
+    ["2001:db8:1234:5678::1", "2001:0db8:1234:5678:0000:0000:0000:0002", "2001:db8:1234:5678:ffff:ffff:ffff:ffff", "2001:db8:1234:5679::1"],
+    ["192.0.2.9", "::ffff:192.0.2.9", "::ffff:c000:209", "192.0.2.10"],
+  ])("shares attempt limits across an IPv6 /64 or mapped IPv4 address: %s", async (first, second, third, other) => {
+    const hash = createHash("sha256").update("class-code:000042").digest("hex");
+    repository.classCodes.set(hash, { maximumUses: 1, uses: 0, expiresAt: "2026-08-03T00:00:00Z" });
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: { ...config, dailyNetworkClassCodeFailureLimit: 2 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    expect((await register("000001", first)).status).toBe(403);
+    expect((await register("000002", second)).status).toBe(403);
+    expect((await register("000042", third)).status).toBe(429);
+    expect(repository.classCodes.get(hash)?.uses).toBe(0);
+    expect((await register("000042", other)).status).toBe(201);
   });
 
   it("injects one scoped base and one report control without changing the source", () => {
