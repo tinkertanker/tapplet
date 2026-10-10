@@ -42,10 +42,12 @@ export interface RepairContext {
 }
 export interface ModelProvider {
   readonly name: string;
+  // Session IDs are opaque conversation identifiers, never device tokens or owner data.
   generate(
     brief: TeacherBrief,
     exemplars: Exemplar[],
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<unknown>;
   revise(
     currentHtml: string,
@@ -53,16 +55,19 @@ export interface ModelProvider {
     instruction: string,
     brief: TeacherBrief,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<unknown>;
   repair(
     candidate: unknown,
     issues: string[],
     context?: RepairContext,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<unknown>;
   moderate(
     html: string,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<ModerationDecision>;
 }
 export class ModelProviderError extends Error {

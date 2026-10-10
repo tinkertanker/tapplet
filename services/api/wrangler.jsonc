@@ -48,7 +48,8 @@
     // the URLs when present.
     "INFERENCE_TRANSPORT": "direct",
     "TKSLOPPER_CONTROL_PLANE_URL": "",
-    "TKSLOPPER_GATEWAY_URL": "",
+    // Public catalogue source; this does not enable managed inference.
+    "TKSLOPPER_GATEWAY_URL": "https://api.slopper.tk.sg",
     "TKSLOPPER_ARTIFACT_ALIAS": "",
     "TKSLOPPER_REVIEW_ALIAS": "",
     "TKSLOPPER_IMAGE_ALIAS": "",
@@ -72,8 +73,8 @@
     // Must stay >= the class_codes.maximum_uses ceiling (100, see migration
     // 0007) so a class sharing one NAT can reach its configured capacity.
     "DAILY_NETWORK_REGISTRATION_LIMIT": "100",
-    // Invalid attempts use a separate, higher network budget so typos cannot
-    // consume valid activations while unbounded code enumeration remains capped.
+    // All format-valid attempts count, including successful guesses. Keep this
+    // above the registration limit to leave room for typos. IPv6 uses /48 buckets.
     "DAILY_NETWORK_CLASS_CODE_FAILURE_LIMIT": "500",
     "CLASS_CODE_FAILURE_LOCKOUT": "10",
     "MAXIMUM_DRAFTS_PER_OWNER": "100",

@@ -1,6 +1,56 @@
 import type { DesignCard, Exemplar, RepairContext, TeacherBrief } from "./provider";
 export const PROMPT_VERSION = "html-v7";
 export type PromptBoundaryMode = "bounded" | "legacy-unbounded";
+// Shared structured-output contracts for native Claude and managed capabilities.
+// An empty object represents omitted design metadata in strict JSON schemas.
+export const ARTIFACT_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    html: { type: "string" },
+    designCard: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+            tags: { type: "array", items: { type: "string" } },
+            interactionPattern: { type: "string" },
+            structureNotes: { type: "string" },
+            namedElementIds: { type: "array", items: { type: "string" } },
+          },
+          required: [
+            "title",
+            "description",
+            "tags",
+            "interactionPattern",
+            "structureNotes",
+            "namedElementIds",
+          ],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      ],
+    },
+  },
+  required: ["html", "designCard"],
+  additionalProperties: false,
+};
+export const MODERATION_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    safe: { type: "boolean" },
+    categories: { type: "array", items: { type: "string" } },
+    reason: { type: "string" },
+  },
+  required: ["safe", "categories", "reason"],
+  additionalProperties: false,
+};
 const EXEMPLAR_BEGIN = "-----BEGIN UNTRUSTED EXEMPLAR DATA-----";
 const EXEMPLAR_END = "-----END UNTRUSTED EXEMPLAR DATA-----";
 const CURRENT_HTML_BEGIN = "-----BEGIN UNTRUSTED CURRENT HTML-----";

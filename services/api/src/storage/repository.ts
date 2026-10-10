@@ -129,7 +129,10 @@ export interface StudioRepository {
   getOwnerTokenVersion(ownerHash: string): Promise<number>;
   bumpOwnerTokenVersion(ownerHash: string): Promise<number>;
   countArtifacts(owner: string): Promise<number>;
-  createArtifact(input: CreateArtifactInput): Promise<void>;
+  createArtifact(
+    input: CreateArtifactInput,
+    maximum?: number,
+  ): Promise<boolean>;
   upsertCuratedSeed(input: CuratedSeedInput): Promise<void>;
   getArtifact(id: string, owner: string): Promise<ArtifactRecord | null>;
   getArtifactPublic(id: string): Promise<ArtifactRecord | null>;

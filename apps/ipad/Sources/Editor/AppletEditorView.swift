@@ -36,6 +36,12 @@ struct AppletEditorView: View {
         Form {
             Section("Ask Tapplet Studio") {
                 TextEditor(text: $prompt).frame(height: 90)
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing-reset"),
+                   ProcessInfo.processInfo.arguments.contains("--ui-testing-held-refinement"),
+                   store.uiTestingRefinementIsWaiting {
+                    Button("Complete test refinement") { store.completeUITestingRefinement() }
+                        .accessibilityIdentifier("complete-test-refinement")
+                }
                 FlowLayout(spacing: 8) {
                     ForEach(RefineSuggestion.all) { suggestion in
                         Button(suggestion.title) {
@@ -51,12 +57,13 @@ struct AppletEditorView: View {
                     }
                 }
                 Button(working ? "Updating…" : "Make this change") {
+                    let submittedPrompt = prompt
                     working = true
                     Task {
                         defer { working = false }
                         do {
-                            let warnings = try await store.refine(prompt, projectID: project.id)
-                            if warnings.isEmpty { prompt = "" }
+                            let warnings = try await store.refine(submittedPrompt, projectID: project.id)
+                            if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
                         } catch {
                             let presentation = store.present(error, during: .refinement)
                             operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
@@ -73,7 +80,11 @@ struct AppletEditorView: View {
                 .disabled(project.source.revision.parentRevisionId == nil)
             }
             Section("Details") { DetailsFields(store: store, project: project) }
-            Section("Images") { ImageManagementView(store: store, projectID: project.id, assets: project.localAssets) }
+            Section("Images") {
+                let referencedIDs = TappletStore.referencedAssetIDs(in: project.source.html)
+                ImageManagementView(store: store, projectID: project.id,
+                                    assetIDs: referencedIDs.sorted())
+            }
             Section("History") {
                 ForEach(project.revisions.reversed()) { revision in
                     HStack {
@@ -105,7 +116,7 @@ struct AppletEditorView: View {
 private struct ImageManagementView: View {
     let store: TappletStore
     let projectID: String
-    let assets: [LocalAppletAssetFile]
+    let assetIDs: [String]
     @State private var photo: PhotosPickerItem?
     @State private var pendingData: Data?
     @State private var description = ""
@@ -115,13 +126,13 @@ private struct ImageManagementView: View {
     @State private var error: String?
 
     var body: some View {
-        ForEach(assets) { asset in
+        ForEach(assetIDs, id: \.self) { assetID in
             HStack {
-                Label(asset.id, systemImage: "photo")
+                Label(assetID, systemImage: "photo")
                 Spacer()
                 Button("Remove", role: .destructive) {
                     Task {
-                        do { try await store.removeImage(assetID: asset.id, projectID: projectID) }
+                        do { try await store.removeImage(assetID: assetID, projectID: projectID) }
                         catch { self.error = error.localizedDescription }
                     }
                 }
@@ -144,7 +155,12 @@ private struct ImageManagementView: View {
             do { let url = try result.get(); guard url.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }; defer { url.stopAccessingSecurityScopedResource() }; pendingData = try Data(contentsOf: url) }
             catch { self.error = error.localizedDescription }
         }
-        .sheet(isPresented: $showsCamera) { CameraImagePicker { pendingData = $0 } }
+        .sheet(isPresented: $showsCamera) {
+            CameraImagePicker { data in
+                showsCamera = false
+                if let data { pendingData = data }
+            }
+        }
     }
 
     private func upload() {

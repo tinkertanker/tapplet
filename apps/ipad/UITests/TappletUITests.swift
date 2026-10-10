@@ -218,7 +218,11 @@ final class TappletUITests: XCTestCase {
     func testWorkshopAccessCanBeDeferred() {
         let app = launchApp(extraArguments: ["--ui-testing-registration-required"])
         XCTAssertTrue(app.staticTexts["Browse examples on this iPad"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Enter four numbers followed by eight letters, for example 1234ABCDEFGH. A hyphen is optional."].exists)
+        XCTAssertTrue(app.staticTexts["Enter your six-digit code. For an older code, use its last six letters."].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Access code entry"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
         let explore: XCUIElement = app.buttons["Explore examples"]
         XCTAssertTrue(explore.waitForExistence(timeout: 5))
         explore.tap()
@@ -329,6 +333,10 @@ final class TappletUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Complete the class code"].waitForExistence(timeout: 3))
         XCTAssertEqual(code.value as? String, "SHORT")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Incomplete access code"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     @MainActor
@@ -441,6 +449,91 @@ final class TappletUITests: XCTestCase {
         XCTAssertFalse(editorApp.staticTexts["Source"].exists)
         XCTAssertFalse(editorApp.staticTexts.matching(NSPredicate(format: "label CONTAINS '<!DOCTYPE' OR label CONTAINS '<html'")).firstMatch.exists)
         capture("Editor-no-raw-Source", app: editorApp)
+    }
+
+    @MainActor
+    func testSuccessfulRefinementDoesNotEraseInstructionsTypedWhileWaiting() {
+        let app = launchApp(extraArguments: ["--ui-testing-held-refinement"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        let prompt = app.textViews.firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 3))
+        app.buttons["refine-suggestion-timer"].tap()
+        let submitted = prompt.value as? String ?? ""
+        XCTAssertFalse(submitted.isEmpty)
+        app.buttons["Make this change"].tap()
+        let complete = app.buttons["complete-test-refinement"]
+        XCTAssertTrue(complete.waitForExistence(timeout: 5), "A is suspended before B is typed")
+        prompt.tap()
+        let nextInstruction = "Use blue labels next"
+        prompt.typeText(nextInstruction)
+        let pendingInstructions = prompt.value as? String
+        XCTAssertTrue(pendingInstructions?.contains(nextInstruction) == true)
+        XCTAssertNotEqual(pendingInstructions, submitted, "New instructions must exist before A completes")
+        complete.tap()
+        XCTAssertTrue(app.buttons["Make this change"].waitForExistence(timeout: 5))
+        XCTAssertEqual(prompt.value as? String, pendingInstructions, "Completion of A must not erase unsent B")
+        XCTAssertTrue(app.staticTexts["UI test refinement complete"].waitForExistence(timeout: 8))
+        capture("Refinement-preserves-unsent-instructions", app: app)
+
+        // Keeping every prompt forever would pass the preservation assertion.
+        // A successful request still clears text that has not changed.
+        app.buttons["Make this change"].tap()
+        XCTAssertTrue(complete.waitForExistence(timeout: 5))
+        complete.tap()
+        XCTAssertTrue(app.buttons["Make this change"].waitForExistence(timeout: 5))
+        XCTAssertEqual(prompt.value as? String, "", "An unchanged submitted prompt should still clear")
+    }
+
+    @MainActor
+    func testImagesListDoesNotExposeRetainedHistoricalCache() {
+        let app = launchApp(extraArguments: ["--ui-testing-history-images"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        let form = app.descendants(matching: .any)["tapplet-editor-form"]
+        let photos = app.buttons["Choose from Photos"]
+        for _ in 0..<5 {
+            if photos.isHittable { break }
+            form.swipeUp()
+        }
+        XCTAssertTrue(photos.isHittable, "Inspect the actual Images section, not an offscreen empty query")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Remove'")).count, 0,
+                       "History-only cache entries must not appear as current image rows")
+        for index in 1...3 {
+            XCTAssertFalse(app.staticTexts["ui-test-history-\(index)"].exists)
+        }
+        capture("Images-hide-historical-cache", app: app)
+    }
+
+    @MainActor
+    func testImagesListIncludesCurrentReferencesWithoutCachedFiles() {
+        let app = launchApp(extraArguments: ["--ui-testing-history-images", "--ui-testing-uncached-current-images"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitForExistence(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 8))
+        let form = app.descendants(matching: .any)["tapplet-editor-form"]
+        let photos = app.buttons["Choose from Photos"]
+        for _ in 0..<5 {
+            if photos.isHittable { break }
+            form.swipeUp()
+        }
+        XCTAssertTrue(photos.isHittable)
+        XCTAssertTrue(app.buttons["Choose a file"].exists)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Remove'")).count, 3,
+                       "Every current image must remain removable when its cache is missing")
+        for index in 1...3 {
+            XCTAssertTrue(app.staticTexts["ui-test-current-\(index)"].exists)
+            XCTAssertFalse(app.staticTexts["ui-test-history-\(index)"].exists)
+        }
+        capture("Images-include-uncached-current-references", app: app)
     }
 
     @MainActor

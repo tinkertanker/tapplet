@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FixtureModelProvider } from "../src/ai/fixtureProvider";
+import { OpenAiCompatibleProvider } from "../src/ai/openAiCompatibleProvider";
+import { MODERATION_SYSTEM_PROMPT } from "../src/ai/prompts";
 import type { AssetStore, StoredAsset } from "../src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../src/auth";
 import { createStudioApp } from "../src/app";
@@ -74,13 +76,13 @@ describe("Tapplet API registration and public HTML", () => {
     },
   };
 
-  function register(accessCode: string) {
+  function register(accessCode: string, address = "192.0.2.1") {
     return app.fetch(
       new Request("https://api.test/v1/devices/register", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "cf-connecting-ip": "192.0.2.1",
+          "cf-connecting-ip": address,
         },
         body: JSON.stringify({ accessCode }),
       }),
@@ -202,6 +204,44 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.classCodes.get(hash)?.uses).toBe(1);
   });
 
+  it("registers six-digit codes including leading zeroes", async () => {
+    const hash = createHash("sha256").update("class-code:000042").digest("hex");
+    repository.classCodes.set(hash, {
+      maximumUses: 1,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    expect((await register("000041")).status).toBe(403);
+    expect((await register(" 000-042 ")).status).toBe(201);
+    expect((await register("000042")).status).toBe(403);
+  });
+
+  it("shares the remaining activation budget between a legacy code and its last six characters", async () => {
+    const hash = createHash("sha256").update("class-code:1234ABCDEFGH").digest("hex");
+    const shortCodeHash = createHash("sha256").update("class-code:CDEFGH").digest("hex");
+    repository.classCodes.set(hash, {
+      maximumUses: 3,
+      uses: 1,
+      expiresAt: "2026-08-03T00:00:00Z",
+      shortCodeHash,
+    });
+    expect((await register("DEFGHJ")).status).toBe(403);
+    expect((await register(" cde-fgh ")).status).toBe(201);
+    expect((await register("1234ABCDEFGH")).status).toBe(201);
+    expect((await register("CDEFGH")).status).toBe(403);
+    expect((await register("1234ABCDEFGH")).status).toBe(403);
+  });
+
+  it("does not accept a legacy suffix at or after the original expiry", async () => {
+    const hash = createHash("sha256").update("class-code:1234ABCDEFGH").digest("hex");
+    const shortCodeHash = createHash("sha256").update("class-code:CDEFGH").digest("hex");
+    for (const expiresAt of ["2026-08-02T00:00:00.000Z", "2026-08-01T23:59:59.000Z"]) {
+      repository.classCodes.set(hash, { maximumUses: 3, uses: 0, expiresAt, shortCodeHash });
+      expect((await register("CDEFGH")).status).toBe(403);
+      expect((await register("1234ABCDEFGH")).status).toBe(403);
+    }
+  });
+
   it("rejects legacy four-letter codes without consuming them", async () => {
     const hash = createHash("sha256")
       .update("class-code:1234ABCD")
@@ -239,11 +279,17 @@ describe("Tapplet API registration and public HTML", () => {
     expect((await register("1234ABCDEFGH")).status).toBe(201);
   });
 
-  it("caps varied invalid attempts separately without blocking a valid registration", async () => {
+  it("blocks even correct numeric and legacy codes after the network attempt budget is exhausted", async () => {
     const correct = createHash("sha256")
       .update("class-code:1234ABCDEFGH")
       .digest("hex");
     repository.classCodes.set(correct, {
+      maximumUses: 1,
+      uses: 0,
+      expiresAt: "2026-08-03T00:00:00Z",
+    });
+    const numericHash = createHash("sha256").update("class-code:000042").digest("hex");
+    repository.classCodes.set(numericHash, {
       maximumUses: 1,
       uses: 0,
       expiresAt: "2026-08-03T00:00:00Z",
@@ -263,17 +309,41 @@ describe("Tapplet API registration and public HTML", () => {
     expect(
       ((await locked.json()) as { error: { code: string } }).error.code,
     ).toBe("CLASS_CODE_NETWORK_LOCKED");
-    expect((await register("1234ABCDEFGH")).status).toBe(201);
-    expect(repository.classCodes.get(correct)?.uses).toBe(1);
+    expect((await register("000042")).status).toBe(429);
+    expect((await register("1234ABCDEFGH")).status).toBe(429);
+    expect(repository.classCodes.get(correct)?.uses).toBe(0);
+    expect(repository.classCodes.get(numericHash)?.uses).toBe(0);
+  });
+
+  it.each([
+    ["2001:db8:1234:5678::1", "2001:0db8:1234:5678:0000:0000:0000:0002", "2001:db8:1234:5678:ffff:ffff:ffff:ffff", "2001:db8:1235:5678::1"],
+    ["2001:db8:1234:5601::1", "2001:db8:1234:56ab::2", "2001:db8:1234:ffff::3", "2001:db8:1235:ffff::3"],
+    ["192.0.2.9", "::ffff:192.0.2.9", "::ffff:c000:209", "192.0.2.10"],
+  ])("shares attempt limits across an IPv6 /48 or mapped IPv4 address: %s", async (first, second, third, other) => {
+    const hash = createHash("sha256").update("class-code:000042").digest("hex");
+    repository.classCodes.set(hash, { maximumUses: 1, uses: 0, expiresAt: "2026-08-03T00:00:00Z" });
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: { ...config, dailyNetworkClassCodeFailureLimit: 2 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    expect((await register("000001", first)).status).toBe(403);
+    expect((await register("000002", second)).status).toBe(403);
+    expect((await register("000042", third)).status).toBe(429);
+    expect(repository.classCodes.get(hash)?.uses).toBe(0);
+    expect((await register("000042", other)).status).toBe(201);
   });
 
   it("injects one scoped base and one report control without changing the source", () => {
     const source =
       '<!doctype html><html><head></head><body><img src="assets/image-1"></body></html>';
     const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
-    expect(served.match(/<base /g)).toHaveLength(1);
+    expect(served.match(/&lt;base /g)).toHaveLength(1);
     expect(served.match(/data-studio-report/g)).toHaveLength(1);
-    expect(served).toContain('<base href="/ABCDEFGHIJKLMNOPQRST/">');
+    expect(served).toContain('&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;');
+    expect(served).toContain('sandbox="allow-scripts allow-modals"');
     expect(source).not.toContain("<base");
   });
 
@@ -286,14 +356,14 @@ describe("Tapplet API registration and public HTML", () => {
     expect(source).not.toContain("rel=");
   });
 
-  it("injects the report control at the closing body rather than script text", () => {
+  it("keeps report code outside sandboxed script text", () => {
     const source =
       '<!doctype html><html><head></head><body><script>const closing = "</body>";</script></body></html>';
     const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
 
-    expect(served).toContain('const closing = "</body>";');
+    expect(served).toContain('const closing = &quot;&lt;/body&gt;&quot;;');
     expect(served.indexOf("data-studio-report")).toBeGreaterThan(
-      served.indexOf("</script>"),
+      served.indexOf("</iframe>"),
     );
   });
 
@@ -305,7 +375,7 @@ describe("Tapplet API registration and public HTML", () => {
     expect(served.indexOf("data-studio-report")).toBeLessThan(
       served.indexOf("</body>"),
     );
-    expect(served).toContain("<!-- </body> -->");
+    expect(served).toContain("&lt;!-- &lt;/body&gt; --&gt;");
   });
 
   it("imports reviewed seeds into retrieval and uses a selected seed as generation context", async () => {
@@ -581,6 +651,59 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(generated.status).toBe(422);
   });
+
+  it.each(["chat-completions", "responses"] as const)(
+    "keeps OpenCode %s sessions stable across a tapplet's repairs, revisions and review",
+    async (api) => {
+      const sessions: (string | null)[] = [];
+      const html = "<!doctype html><html><head><title>Fractions</title></head><body>Compare fractions</body></html>";
+      const fetch: typeof globalThis.fetch = async (_input, init) => {
+        const headers = new Headers(init?.headers);
+        sessions.push(headers.get("x-opencode-session"));
+        if (!sessions.at(-1)) return Response.json({ error: { message: "MissingSessionID" } }, { status: 400 });
+        const body = JSON.parse(String(init?.body)) as { instructions?: string; messages?: { content: string }[] };
+        const system = body.instructions ?? body.messages?.[0]?.content;
+        const text = JSON.stringify(system === MODERATION_SYSTEM_PROMPT
+          ? { safe: true, categories: [] }
+          : { html: sessions.length === 1 ? "incomplete" : html });
+        return Response.json(api === "responses"
+          ? { output: [{ content: [{ type: "output_text", text }] }] }
+          : { choices: [{ message: { content: text } }] });
+      };
+      // Production constructs a provider per HTTP request, not per conversation.
+      const request = (path: string, body: unknown) => createStudioApp({
+        repository, config, sources,
+        provider: new OpenAiCompatibleProvider({
+          baseUrl: "https://opencode.ai/zen/go/v1", apiKey: "test-key", model: "test-model", api, fetch,
+        }),
+        now: () => new Date("2026-08-02T00:00:00Z"),
+      }).fetch(authenticated(path, "POST", body));
+
+      const generated = await request("/v1/artifacts/generate", creationBrief);
+      expect(generated.status).toBe(201);
+      const first = await generated.json() as { artifact: { id: string }; headRevision: RevisionRecord; html: string };
+      expect(first.html).toBe(html);
+      expect(sessions).toEqual([first.artifact.id, first.artifact.id]);
+
+      const revised = await request(`/v1/artifacts/${first.artifact.id}/revisions`, {
+        instruction: "Add a number line", expectedHeadRevisionId: first.headRevision.id,
+      });
+      expect(revised.status).toBe(201);
+      const revision = await revised.json() as { headRevision: RevisionRecord };
+      const published = await request(`/v1/artifacts/${first.artifact.id}/publish`, {
+        expectedHeadRevisionId: revision.headRevision.id,
+      });
+      expect(published.status).toBe(201);
+      expect(await published.json()).not.toHaveProperty("warnings");
+      expect(sessions).toEqual(Array(4).fill(first.artifact.id));
+
+      const another = await request("/v1/artifacts/generate", creationBrief);
+      expect(another.status).toBe(201);
+      const second = await another.json() as { artifact: { id: string } };
+      expect(second.artifact.id).not.toBe(first.artifact.id);
+      expect(sessions.at(-1)).toBe(second.artifact.id);
+    },
+  );
 
   it("creates immutable revisions, moves the head, and records remix lineage", async () => {
     const generated = await app.fetch(
@@ -1107,7 +1230,7 @@ describe("Tapplet API registration and public HTML", () => {
     expect(queries).toBe(1);
   });
 
-  it("allows sandboxed player origins to preflight anonymous content reports", async () => {
+  it("does not allow opaque activity origins to preflight content reports", async () => {
     const preflight = await app.fetch(
       new Request(
         "https://api.test/v1/publications/ABCDEFGHIJKLMNOPQRSTUV/reports",
@@ -1121,8 +1244,8 @@ describe("Tapplet API registration and public HTML", () => {
         },
       ),
     );
-    expect(preflight.status).toBe(204);
-    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.status).toBe(403);
+    expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("stops expired publications from authorising search, preferred context, or remix", async () => {
@@ -1318,6 +1441,65 @@ describe("Tapplet API registration and public HTML", () => {
     });
     expect(put).toHaveBeenCalledOnce();
   });
+
+  it.each(["generate", "remix"])(
+    "maps concurrent %s capacity losers to the storage-limit error and spends both attempt quotas",
+    async (operation) => {
+      const initial = await app.fetch(
+        authenticated("/v1/artifacts/generate", "POST", creationBrief),
+      );
+      const first = (await initial.json()) as { headRevision: RevisionRecord };
+      const countArtifacts = repository.countArtifacts.bind(repository);
+      let checks = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(repository, "countArtifacts").mockImplementation(
+        async (owner) => {
+          const count = await countArtifacts(owner);
+          if (++checks === 2) release();
+          await gate;
+          return count;
+        },
+      );
+      app = createStudioApp({
+        repository,
+        provider: new FixtureModelProvider(),
+        config: { ...config, maximumDraftsPerOwner: 2 },
+        sources,
+        now: () => new Date("2026-08-02T00:00:00Z"),
+      });
+      const request = () =>
+        operation === "generate"
+          ? authenticated("/v1/artifacts/generate", "POST", creationBrief)
+          : authenticated(
+              `/v1/revisions/${first.headRevision.id}/remix`,
+              "POST",
+              {},
+            );
+      const quota = vi.spyOn(repository, "consumeGeneration");
+      const responses = await Promise.all([
+        app.fetch(request()),
+        app.fetch(request()),
+      ]);
+      expect(responses.map((response) => response.status).sort()).toEqual([
+        201, 429,
+      ]);
+      const denied = responses.find((response) => response.status === 429)!;
+      await expect(denied.json()).resolves.toMatchObject({
+        error: { code: "ARTIFACT_STORAGE_LIMIT_REACHED" },
+      });
+      expect(repository.artifacts.size).toBe(2);
+      expect(repository.revisions.size).toBe(2);
+      expect(
+        quota.mock.calls.filter(([subject]) => subject.startsWith("artifact:")),
+      ).toHaveLength(2);
+      expect(
+        quota.mock.calls.filter(([subject]) => subject.startsWith("network-artifact:")),
+      ).toHaveLength(2);
+    },
+  );
 
   it("enforces the saved-artifact cap for remixes", async () => {
     app = createStudioApp({

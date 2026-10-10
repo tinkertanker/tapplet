@@ -8,6 +8,7 @@ export interface StudioEnv {
   AI_API_KEY?: string;
   OPENCODE_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
   IMAGE_SAFETY_MODEL: string;
   INFERENCE_TRANSPORT?: string;
   TKSLOPPER_CONTROL_PLANE_URL?: string;

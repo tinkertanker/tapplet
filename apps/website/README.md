@@ -3,7 +3,17 @@
 A dependency-free static site: a "coming soon" landing page and the public
 privacy notice. It is deployed as the static assets-only Worker
 `tapplet-preview` and is separate from the API Worker in `services/api`. It
-has no Worker script, routes, bindings, D1/R2 resources or secrets.
+has no Worker script, bindings, D1/R2 resources or secrets, and its only route
+is the `tapplet.tk.sg` custom domain.
+
+Public URLs:
+
+- <https://tapplet.tk.sg/>: landing page
+- <https://tapplet.tk.sg/privacy>: privacy notice
+
+The Worker's workers.dev URL remains available as a fallback. The custom domain
+is attached separately through Cloudflare's supported API without reuploading
+assets; `wrangler.jsonc` retains it so future authorised deployments keep it.
 
 - `public/index.html`: landing page
 - `public/privacy/index.html`: privacy notice, served at `/privacy`
@@ -33,7 +43,7 @@ Run from `apps/website`, using the repository's installed Wrangler:
 # Validate the configuration and bundle without publishing
 ../../node_modules/.bin/wrangler deploy --dry-run
 
-# Publish to workers.dev
+# Publish to tapplet.tk.sg and workers.dev
 CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_KEY_TT" ../../node_modules/.bin/wrangler deploy
 ```
 

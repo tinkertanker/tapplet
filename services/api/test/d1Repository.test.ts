@@ -1,5 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { CloudflareAssetStore } from "../src/assets";
 import { D1StudioRepository } from "../src/storage/d1Repository";
 import {
   CURATED_SEED_OWNER,
@@ -41,8 +43,7 @@ const artifact: ArtifactRecord = {
 };
 
 function sqliteD1Database(
-  schema =
-    "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT);" +
+  schema = "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT,short_code_hash TEXT UNIQUE);" +
     "CREATE TABLE generation_usage(owner_hash TEXT NOT NULL,usage_date TEXT NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_hash,usage_date));",
 ) {
   const sqlite = new DatabaseSync(":memory:");
@@ -94,6 +95,12 @@ function sqliteD1Database(
           ).changes;
           return { results, meta: { changes: after - before } };
         },
+        async all() {
+          return statement.run();
+        },
+        async first() {
+          return (await statement.run()).results[0] ?? null;
+        },
       };
       return statement;
     },
@@ -112,6 +119,182 @@ function sqliteD1Database(
   } as unknown as D1Database;
   return { database, sqlite };
 }
+
+function migratedDatabase() {
+  const directory = new URL("../migrations/", import.meta.url);
+  return sqliteD1Database(
+    readdirSync(directory)
+      .sort()
+      .map((file) => readFileSync(new URL(file, directory), "utf8"))
+      .join("\n"),
+  );
+}
+
+describe("atomic storage admission with migrated SQLite", () => {
+  it("returns expired screenshot references despite FK cascade changes", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      await repository.createArtifact({
+        artifact,
+        revision: {
+          ...revision,
+          parentRevisionId: null,
+          screenshotKey: "screens/expired.jpg",
+        },
+        assetIds: [],
+      });
+      const before = sqlite.prepare("SELECT total_changes() n").get() as {
+        n: number;
+      };
+      const references = await repository.deleteExpiredArtifacts(
+        "2026-08-03",
+        "2026-08-04",
+      );
+      const after = sqlite.prepare("SELECT total_changes() n").get() as {
+        n: number;
+      };
+      expect(after.n - before.n).toBe(2);
+      expect(sqlite.prepare("SELECT * FROM artifacts").all()).toEqual([]);
+      expect(references).toEqual([{ screenshotKeys: ["screens/expired.jpg"] }]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("admits only the final artifact slot without partial revisions or references", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      sqlite
+        .prepare("INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+        .run(
+          "image",
+          "owner-a",
+          "image.jpg",
+          "image/jpeg",
+          1,
+          1,
+          1,
+          "hash",
+          null,
+          1,
+          revision.createdAt,
+        );
+      const input = (id: string) => ({
+        artifact: { ...artifact, id, headRevisionId: `${id}-r` },
+        revision: {
+          ...revision,
+          id: `${id}-r`,
+          artifactId: id,
+          parentRevisionId: null,
+        },
+        assetIds: ["image"],
+      });
+      for (let i = 0; i < 99; i++)
+        await repository.createArtifact(input(`existing-${i}`));
+      // Both callers have passed the same preflight check before either commits.
+      expect(await repository.countArtifacts("owner-a")).toBe(99);
+      expect(await repository.countArtifacts("owner-a")).toBe(99);
+      const winner = await repository.createArtifact(input("winner"), 100);
+      const loser = await repository.createArtifact(input("loser"), 100);
+      for (const table of ["artifacts", "revisions", "revision_assets"])
+        expect(sqlite.prepare(`SELECT count(*) n FROM ${table}`).get()).toEqual(
+          { n: 100 },
+        );
+      expect(winner).toBe(true);
+      expect(loser).toBe(false);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it.each(["count", "bytes"])(
+    "rejects concurrent image admission at the stored %s limit and deletes losing R2 object",
+    async (limit) => {
+      const { database, sqlite } = migratedDatabase();
+      try {
+        const jpeg = Uint8Array.from([
+          255, 216, 255, 192, 0, 11, 8, 0, 1, 0, 1, 1, 1, 17, 0, 255, 218, 0, 8,
+          1, 1, 0, 0, 63, 0, 0, 255, 217,
+        ]);
+        const insert = sqlite.prepare(
+          "INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        );
+        for (let i = 0; i < (limit === "count" ? 49 : 1); i++)
+          insert.run(
+            `existing-${i}`,
+            "owner-a",
+            `existing-${i}.jpg`,
+            "image/jpeg",
+            limit === "count" ? 1 : 50_000_000 - jpeg.length,
+            1,
+            1,
+            "hash",
+            null,
+            1,
+            revision.createdAt,
+          );
+        const objects = new Set<string>();
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const store = new CloudflareAssetStore(
+          database,
+          {
+            async put(key: string) {
+              objects.add(key);
+              if (objects.size === 2) release();
+              await gate;
+            },
+            async delete(key: string) {
+              objects.delete(key);
+            },
+          } as unknown as R2Bucket,
+          {
+            async normalize() {
+              return jpeg;
+            },
+          },
+        );
+        const upload = () =>
+          store.put(
+            new Request("https://api.test/v1/assets", {
+              method: "POST",
+              headers: {
+                "content-type": "image/png",
+                "x-image-width": "1",
+                "x-image-height": "1",
+                "x-image-decorative": "true",
+              },
+              body: Uint8Array.from([1, 2, 3]),
+            }),
+            {
+              ownerHash: "owner-a",
+              networkHash: "network-a",
+              now: revision.createdAt,
+              maximumNetworkCount: 100,
+              maximumNetworkBytes: 10_000_000,
+            },
+          );
+        const results = await Promise.allSettled([upload(), upload()]);
+        expect(
+          results.filter((result) => result.status === "fulfilled"),
+        ).toHaveLength(1);
+        expect(
+          results.find((result) => result.status === "rejected"),
+        ).toMatchObject({ reason: { code: "ASSET_STORAGE_LIMIT_REACHED" } });
+        expect(objects.size).toBe(1);
+        expect(sqlite.prepare("SELECT count(*) n FROM assets").get()).toEqual({
+          n: limit === "count" ? 50 : 2,
+        });
+      } finally {
+        sqlite.close();
+      }
+    },
+  );
+});
 
 describe("D1StudioRepository publication listing", () => {
   it("loads every active publication for an owner in one query", async () => {
@@ -513,8 +696,8 @@ describe("D1StudioRepository conditional revision writes", () => {
       batch(statements: unknown[]) {
         expect(statements).toHaveLength(2);
         return Promise.resolve([
-          { meta: { changes: 1 } },
-          { meta: { changes: 0 } },
+          { meta: { changes: 2 }, results: [{ id: "expired" }] },
+          { meta: { changes: 0 }, results: [] },
         ]);
       },
     } as unknown as D1Database;
@@ -528,6 +711,7 @@ describe("D1StudioRepository conditional revision writes", () => {
     expect(sql[0]).toContain(`owner_hash<>?4`);
     expect(sql[1]).toContain("updated_at<?3");
     expect(sql[1]).toContain("p.expires_at>?4");
+    expect(sql[1]).toContain("RETURNING id");
   });
 });
 
@@ -556,6 +740,24 @@ describe("D1StudioRepository owner token versions", () => {
 });
 
 describe("D1StudioRepository registration transaction", () => {
+  it("shares legacy suffix capacity and expiry while rolling back network-limited activations", async () => {
+    const { database, sqlite } = sqliteD1Database();
+    sqlite.prepare(
+      "INSERT INTO class_codes(code_hash,short_code_hash,label,maximum_uses,use_count,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",
+    ).run("full", "suffix", "Legacy class", 3, 1, "2029-07-04T00:00:00.000Z", "2026-08-01T00:00:00.000Z");
+    const repository = new D1StudioRepository(database);
+    const now = "2026-10-09T00:00:00.000Z";
+    await expect(repository.consumeRegistration("suffix", now, "network-a", "2026-10-09", 1)).resolves.toBe("success");
+    await expect(repository.consumeRegistration("full", now, "network-a", "2026-10-09", 1)).resolves.toBe("network-limit");
+    expect(sqlite.prepare("SELECT use_count,last_used_at FROM class_codes").get()).toEqual({ use_count: 2, last_used_at: now });
+    await expect(repository.consumeRegistration("full", now, "network-b", "2026-10-09", 1)).resolves.toBe("success");
+    await expect(repository.consumeRegistration("suffix", now, "network-c", "2026-10-09", 1)).resolves.toBe("invalid-class-code");
+    sqlite.prepare("UPDATE class_codes SET use_count=0").run();
+    await expect(repository.consumeRegistration("suffix", "2029-07-04T00:00:00.000Z", "network-c", "2029-07-04", 1)).resolves.toBe("invalid-class-code");
+    expect(sqlite.prepare("SELECT COUNT(*) AS rows,SUM(request_count) AS uses FROM generation_usage").get()).toEqual({ rows: 2, uses: 2 });
+    sqlite.close();
+  });
+
   it("spends both counters on success and restores class state at the network limit", async () => {
     const { database, sqlite } = sqliteD1Database();
     sqlite

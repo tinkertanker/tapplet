@@ -62,12 +62,20 @@ function listFiles(directory) {
   });
 }
 
-test('Wrangler config is a static assets-only Worker with no bindings', () => {
+test('Wrangler config is a static assets-only Worker with only its custom domain', () => {
   const config = parseJsonc(readFileSync(path.join(siteDirectory, 'wrangler.jsonc'), 'utf8'));
   assert.equal(config.name, 'tapplet-preview');
   assert.equal(config.account_id, 'b8b1032c61d9475cd00229c74db7ec72');
   assert.equal(config.workers_dev, true);
   assert.equal(config.preview_urls, false);
+  // Exactly one custom-domain route: no wildcard, path or API routes.
+  assert.deepEqual(config.routes, [
+    {
+      pattern: 'tapplet.tk.sg',
+      custom_domain: true,
+      zone_id: 'ea01004f470a0e8078f1b9fdef547273',
+    },
+  ]);
   assert.deepEqual(config.assets, {
     directory: './public',
     html_handling: 'drop-trailing-slash',
@@ -75,7 +83,16 @@ test('Wrangler config is a static assets-only Worker with no bindings', () => {
   });
   assert.deepEqual(
     Object.keys(config).sort(),
-    ['$schema', 'account_id', 'assets', 'compatibility_date', 'name', 'preview_urls', 'workers_dev'],
+    [
+      '$schema',
+      'account_id',
+      'assets',
+      'compatibility_date',
+      'name',
+      'preview_urls',
+      'routes',
+      'workers_dev',
+    ],
   );
 });
 

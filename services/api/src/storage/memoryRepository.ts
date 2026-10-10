@@ -19,7 +19,7 @@ export class MemoryStudioRepository implements StudioRepository {
   readonly contentReports: ContentReportInput[] = [];
   readonly classCodes = new Map<
     string,
-    { maximumUses: number; uses: number; expiresAt: string }
+    { maximumUses: number; uses: number; expiresAt: string; shortCodeHash?: string }
   >();
   private usage = new Map<string, number>();
   private revisionAssets = new Map<string, Set<string>>();
@@ -42,7 +42,8 @@ export class MemoryStudioRepository implements StudioRepository {
     d: string,
     l: number,
   ): Promise<RegistrationResult> {
-    const c = this.classCodes.get(h);
+    const c = this.classCodes.get(h) ??
+      [...this.classCodes.values()].find((code) => code.shortCodeHash === h);
     if (!c || c.expiresAt <= n || c.uses >= c.maximumUses)
       return "invalid-class-code";
     const k = `${s}:${d}`,
@@ -63,10 +64,17 @@ export class MemoryStudioRepository implements StudioRepository {
   async countArtifacts(o: string) {
     return [...this.artifacts.values()].filter((a) => a.ownerHash === o).length;
   }
-  async createArtifact(i: CreateArtifactInput) {
+  async createArtifact(i: CreateArtifactInput, maximum = 100) {
+    if (
+      [...this.artifacts.values()].filter(
+        (a) => a.ownerHash === i.artifact.ownerHash,
+      ).length >= maximum
+    )
+      return false;
     this.artifacts.set(i.artifact.id, structuredClone(i.artifact));
     this.revisions.set(i.revision.id, structuredClone(i.revision));
     this.revisionAssets.set(i.revision.id, new Set(i.assetIds));
+    return true;
   }
   async upsertCuratedSeed(i: CuratedSeedInput) {
     if (i.artifact.ownerHash !== CURATED_SEED_OWNER || i.assetIds.length)

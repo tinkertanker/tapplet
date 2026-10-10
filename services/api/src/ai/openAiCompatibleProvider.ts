@@ -39,7 +39,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     this.name = `${o.providerName ?? "openai-compatible"}:${o.model}`;
     this.f = o.fetch ?? globalThis.fetch.bind(globalThis);
   }
-  generate(b: TeacherBrief, e: Exemplar[], trace?: OperationalTraceContext) {
+  generate(b: TeacherBrief, e: Exemplar[], trace?: OperationalTraceContext, sessionId?: string) {
     return this.complete(
       SYSTEM_PROMPT,
       generationPrompt(b, e, this.o.promptBoundaryMode),
@@ -48,6 +48,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.reasoningOptions,
       "generate",
       trace,
+      sessionId,
     );
   }
   revise(
@@ -56,6 +57,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     i: string,
     b: TeacherBrief,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ) {
     return this.complete(
       SYSTEM_PROMPT,
@@ -65,6 +67,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.reasoningOptions,
       "revise",
       trace,
+      sessionId,
     );
   }
   repair(
@@ -72,6 +75,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     i: string[],
     context?: RepairContext,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ) {
     return this.complete(
       SYSTEM_PROMPT,
@@ -81,20 +85,26 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       this.o.reasoningOptions,
       "repair",
       trace,
+      sessionId,
     );
   }
   async moderate(
     html: string,
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<ModerationDecision> {
     const r = await this.complete(
       MODERATION_SYSTEM_PROMPT,
       html,
-      500,
+      // Reasoning shares the output budget with the moderation JSON.
+      this.o.api === "responses" && new URL(this.o.baseUrl).hostname === "api.openai.com"
+        ? 4096
+        : 500,
       true,
       this.o.moderationReasoningOptions,
       "moderate",
       trace,
+      sessionId,
     );
     if (
       !r ||
@@ -116,8 +126,12 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     reasoningOptions?: Readonly<Record<string, unknown>>,
     operation: ModelOperation = "generate",
     trace?: OperationalTraceContext,
+    sessionId?: string,
   ): Promise<unknown> {
     const responsesApi = this.o.api === "responses";
+    const endpoint = new URL(this.o.baseUrl);
+    const openCodeGo = endpoint.origin === "https://opencode.ai"
+      && endpoint.pathname.replace(/\/$/, "") === "/zen/go/v1";
     const started = performance.now();
     const systemBytes = new TextEncoder().encode(system).byteLength;
     const inputBytes = new TextEncoder().encode(user).byteLength;
@@ -131,6 +145,10 @@ export class OpenAiCompatibleProvider implements ModelProvider {
             authorization: `Bearer ${this.o.apiKey}`,
             "content-type": "application/json",
             ...this.o.headers,
+            ...(openCodeGo ? {
+              "x-opencode-session": sessionId ?? crypto.randomUUID(),
+              "user-agent": "tapplet-studio/0.1",
+            } : {}),
           },
           body: JSON.stringify(
             responsesApi
@@ -140,6 +158,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
                   input: user,
                   text: { format: { type: "json_object" } },
                   max_output_tokens: max_tokens,
+                  ...(new URL(this.o.baseUrl).hostname === "api.openai.com" ? { store: false } : {}),
                   ...reasoningOptions,
                 }
               : {
@@ -197,6 +216,29 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         response.status === 429 || response.status >= 500,
       );
     }
+    const truncated = responsesApi
+      ? body?.incomplete_details?.reason === "max_output_tokens"
+      : body?.choices?.[0]?.finish_reason === "length";
+    // Some compatible providers omit status. An explicit non-completed state
+    // or error is a protocol failure, never a usable content advisory.
+    const protocolFailure = responsesApi && (
+      (body?.status !== undefined && body.status !== "completed")
+      || body?.error != null
+    );
+    if (truncated || protocolFailure) {
+      this.emitTrace(trace, this.traceEvent(
+        operation,
+        "error",
+        started,
+        systemBytes,
+        inputBytes,
+        body,
+      ));
+      throw new ModelProviderError(
+        truncated ? "Model output truncated" : "Model response not completed",
+        true,
+      );
+    }
     const text = responsesApi
       ? body?.output
           ?.flatMap((item) => item.content ?? [])
@@ -214,20 +256,6 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         body,
       ));
       throw new ModelProviderError("No model output", true);
-    }
-    const truncated = responsesApi
-      ? body?.incomplete_details?.reason === "max_output_tokens"
-      : body?.choices?.[0]?.finish_reason === "length";
-    if (truncated) {
-      this.emitTrace(trace, this.traceEvent(
-        operation,
-        "error",
-        started,
-        systemBytes,
-        inputBytes,
-        body,
-      ));
-      throw new ModelProviderError("Model output truncated", true);
     }
     try {
       const result: unknown = JSON.parse(text);

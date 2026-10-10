@@ -13,6 +13,8 @@ DEVICE_TOKEN_SIGNING_SECRET=replace-with-at-least-32-random-characters
 # Inference transport: direct (default) or tkslopper.
 INFERENCE_TRANSPORT=direct
 TKSLOPPER_CONTROL_PLANE_URL=
+# Also the public model-catalogue source for direct/BYOK admin suggestions.
+# Set the gateway HTTPS origin; no credentials are sent for catalogue fetches.
 TKSLOPPER_GATEWAY_URL=
 TKSLOPPER_SERVICE_CREDENTIAL=
 TKSLOPPER_ARTIFACT_ALIAS=
@@ -23,3 +25,6 @@ TKSLOPPER_REVIEW_EFFORT=low
 TKSLOPPER_IMAGE_EFFORT=omit
 TKSLOPPER_ARTIFACT_ENDPOINT=responses
 TKSLOPPER_MAX_REQUEST_BYTES=1048576
+# Native Claude: AI_PROVIDER=anthropic, AI_MODEL=claude-haiku-5-5.
+# This key is separate from AI_API_KEY and the managed service credential.
+ANTHROPIC_API_KEY=

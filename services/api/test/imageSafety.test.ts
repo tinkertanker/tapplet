@@ -2,6 +2,42 @@ import { describe, expect, it, vi } from 'vitest';
 import { OpenCodeGoImageSafetyInspector } from '../src/imageSafety';
 
 describe('image safety review', () => {
+  it.each(['network', 'http', 'empty', 'invalid'] as const)(
+    'keeps pupil content out of %s diagnostics', async (path) => {
+      const marker = 'SYNTHETIC_PUPIL_MARKER';
+      const fetch = vi.fn();
+      if (path === 'network') {
+        const error = new Error(marker);
+        error.name = marker;
+        fetch.mockRejectedValue(error);
+      } else {
+        fetch.mockResolvedValue(Response.json({
+          id: marker,
+          error: { message: marker, code: marker },
+          output: [{ content: [{
+            type: path === 'empty' ? 'refusal' : 'output_text',
+            text: marker,
+          }] }],
+        }, { status: path === 'http' ? 503 : 200 }));
+      }
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await expect(createInspector(fetch).inspect(new Uint8Array([1]), 'image/png'))
+          .resolves.toEqual({ status: 'unavailable' });
+        expect(log).toHaveBeenCalledOnce();
+        expect(JSON.stringify(log.mock.calls)).not.toContain(marker);
+        expect(log.mock.calls[0]).toEqual([{
+          network: 'Image safety review failed: network',
+          http: 'Image safety review failed: HTTP 503',
+          empty: 'Image safety review returned no answer',
+          invalid: 'Image safety review returned an invalid answer',
+        }[path]]);
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
   it('accepts an explicitly safe classroom image classification', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({
       output: [{ content: [{ type: 'output_text', text: 'SAFE\nA labelled force diagram.' }] }],
@@ -16,6 +52,8 @@ describe('image safety review', () => {
       expect.objectContaining({
         headers: expect.objectContaining({
           authorization: 'Bearer secret',
+          'x-opencode-session': expect.any(String),
+          'user-agent': 'tapplet-studio/0.1',
         }),
       }),
     );
@@ -27,6 +65,13 @@ describe('image safety review', () => {
     expect(body.model).toBe('gpt-5.6-luna');
     expect(body.reasoning).toEqual({ effort: 'none' });
     expect(body.input[0]?.content[1]?.image_url).toBe('data:image/png;base64,AQID');
+    fetch.mockResolvedValueOnce(Response.json({
+      output: [{ content: [{ type: 'output_text', text: 'SAFE' }] }],
+    }));
+    await expect(inspector.inspect(new Uint8Array([4, 5]), 'image/png')).resolves.toEqual({ status: 'clear' });
+    const sessions = fetch.mock.calls.map(([, init]) => new Headers(init.headers).get('x-opencode-session'));
+    expect(sessions[0]).toMatch(/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/);
+    expect(sessions[1]).not.toBe(sessions[0]);
   });
 
   it('returns advisory findings for flagged pixels and review outages', async () => {

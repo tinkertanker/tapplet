@@ -23,7 +23,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run verify
       - run: npm run api:build
 
@@ -69,7 +69,28 @@ jobs:
         run: |
           SIMULATOR_SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; version=sys.argv[1].replace(".", "-"); d=json.load(sys.stdin)["devices"]; runtime=next((key for key in d if key.endswith("iOS-" + version)), None); candidates=[] if runtime is None else [x for x in d[runtime] if "iPad" in x["name"]]; assert candidates, f"No available iPad for iOS {sys.argv[1]}"; print(candidates[0]["udid"])' "$SIMULATOR_SDK")
-          xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletTests -only-testing:TappletUITests test
+          echo "TAPPLET_TEST_DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/tapplet-test-evidence"
+          xcrun simctl list devices -j > "$RUNNER_TEMP/tapplet-test-evidence/devices-before.json"
+          vm_stat > "$RUNNER_TEMP/tapplet-test-evidence/memory-before.txt"
+          date -u > "$RUNNER_TEMP/tapplet-test-evidence/test-start.txt"
+          xcodebuild -project apps/ipad/Tapplet.xcodeproj -scheme Tapplet -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -resultBundlePath "$RUNNER_TEMP/tapplet-test-evidence/TappletTests.xcresult" CODE_SIGNING_ALLOWED=NO TAPPLET_API_BASE_URL=http://127.0.0.1:8787 -only-testing:TappletTests -only-testing:TappletUITests test
+      - name: Capture simulator launch diagnostics on failure
+        if: failure() && env.TAPPLET_TEST_DEVICE != ''
+        timeout-minutes: 2
+        run: |
+          date -u > "$RUNNER_TEMP/tapplet-test-evidence/failure-time.txt"
+          xcrun simctl list devices -j > "$RUNNER_TEMP/tapplet-test-evidence/devices-after.json"
+          vm_stat > "$RUNNER_TEMP/tapplet-test-evidence/memory-after.txt"
+          xcrun simctl spawn "$TAPPLET_TEST_DEVICE" log show --last 1h --style compact --predicate 'process == "runningboardd" OR process == "SpringBoard" OR process == "backboardd" OR subsystem BEGINSWITH "com.apple.FrontBoard"' > "$RUNNER_TEMP/tapplet-test-evidence/simulator-launch.log" 2>&1
+      - name: Retain native test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tapplet-native-tests
+          path: ${{ runner.temp }}/tapplet-test-evidence
+          retention-days: 7
+          if-no-files-found: warn
 
   deploy-api:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'

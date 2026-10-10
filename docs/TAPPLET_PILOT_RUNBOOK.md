@@ -170,8 +170,9 @@ them.
    replacing every example argument (including the expiry) with workshop
    values and having a second operator review the UTC expiry. Keep it valid only
    through setup, the workshop and a short contingency period. The activation
-   limit must be 1 to 100. The generated code contains those four numbers followed by eight
-   random letters. Its ignored `.studio-class-codes/1234.txt` file has
+   limit must be 1 to 100. The generated code is six random digits, including
+   any leading zeroes; the four-digit class number is only an operator label.
+   Its ignored `.studio-class-codes/1234.txt` file has
    owner-only permissions. Each successful iPad activation consumes one use;
    the code remains valid until it reaches the configured limit or expires. If
    Wrangler fails, retry the **identical command**: provisioning reuses the
@@ -192,10 +193,11 @@ them.
    workshop code in App Review notes. Verify it immediately before submission
    and keep it valid until review has completed; never put it in source control
    or public metadata.
-7. Install the Release build on a physical A16 iPad. Complete the full flow for
-   at least three representative tapplets, including a simulation: generate,
-   revise, add a classroom image where appropriate, publish, and open each
-   resulting URL on a separate device in Safari. Exercise one advisory warning
+7. Recommended workshop rehearsal, not a TestFlight release prerequisite:
+   exercise the full flow for three representative tapplets, including a
+   simulation: generate, revise, add a classroom image where appropriate,
+   publish, and open each resulting URL on a separate device in Safari.
+   Exercise one advisory warning
    and verify that the work remains available to edit, re-prompt, remove or
    continue. Across the three flows, test VoiceOver, portrait and landscape.
    Revoke every link and verify that the student sees the unavailable state.
@@ -227,10 +229,14 @@ The unsigned CI build is not a distribution check. Before distribution:
    actual API behavior, complete Apple's current age-rating questionnaire, and
    provide beta review contact details, concise testing instructions, and a
    still-valid review class code. Do not put the code in public metadata.
-5. Install the archived build on a physical iPad and repeat the workshop flow
-   on the venue Wi-Fi. Keep the preinstalled, preactivated offline-example path
-   as the class-day fallback; TestFlight review timing is not a workshop
-   dependency.
+
+Physical-iPad testing is recommended for workshop readiness, not required for
+TestFlight submission or distribution. Simulator checks, including Devin's iPad
+simulator, can be used for beta validation; record their limits rather than
+claiming physical-device coverage. Before a workshop, consider rehearsing on an
+iPad using the venue Wi-Fi. Keep the preinstalled, preactivated offline-example
+path as the class-day fallback; TestFlight review timing is not a workshop
+dependency.
 
 If a class code must be replaced, preserve its protected provisioning file, or
 the protected record made when it was minted in the panel, as the audit and
@@ -239,6 +245,54 @@ the exact row's label, limit, expiry and use count, and disable only that hash
 before securely archiving the record and provisioning a replacement. Never
 identify a row only by the non-unique label, and never paste class codes or
 hashes into issues, commits, chat logs or screenshots.
+
+## Short-code rollout and legacy codes
+
+Apply migration `0013_short_class_codes.sql` before deploying the updated API.
+Apply `0014_class_code_allocation_identity.sql` before using the provisioning CLI.
+Use the migration runner; do not reapply migrations already in the remote ledger.
+0014 adds a nullable allocation identity without rewriting existing rows. New
+numeric credential files retain this identity so uncertain retries cannot adopt
+another allocation with the same label, limit and expiry. Retain the complete
+protected file, not just its code. Older numeric files without an allocation
+identity still activate normally, but provisioning fails closed until an operator
+verifies their existing record; never reset usage or silently rotate them.
+
+For each existing twelve-character code whose original file is available, run
+from the repository root:
+
+```sh
+npm run class-access:shorten -- 1234 --remote
+```
+
+This reads `.studio-class-codes/1234.txt` and adds a hash of its last six letters
+to the exact existing row. It does not rewrite the original file, reset usage,
+change limits or extend expiry. Re-running is safe. Missing rows or conflicting
+aliases fail rather than enabling the wrong class. Originals cannot be recovered
+from one-way hashes; retain the files. Use `--local` for local verification.
+
+Deploy the API before distributing the updated iPad app. The updated app accepts
+six-digit codes and the last six letters of older codes. Original full codes
+remain valid for older clients, sharing the same activation budget and expiry.
+Older installed apps cannot enter either short form until updated. Do not rotate
+device-token secrets as part of this rollout.
+
+Six-digit codes have one million possibilities. The existing
+`DAILY_NETWORK_CLASS_CODE_FAILURE_LIMIT` now bounds **all format-valid attempts**
+before checking the credential, including successful guesses; its configured
+500-attempt budget remains separate from the 100 successful registrations per
+IP address. Attempt budgets group IPv6 addresses by /48, and IPv4-mapped IPv6
+addresses share their IPv4 address's budget. Other usage quotas keep their existing
+keys. One /48 budget also bounds rotation across its /56s and /64s. This trades
+some availability for guess resistance: all networks sharing a /48 share the
+500 attempts, and one abusive client can exhaust that budget until midnight UTC.
+It does not prevent guessing across multiple /48s, larger allocations or proxies.
+A locked network cannot bypass this budget with a correct guess; do not clear a
+live budget without investigating the abuse and approving that production change.
+Use workshop-appropriate expiries. Numeric allocation retries confirmed hash
+collisions; uncertain CLI results preserve the protected file for an identical
+retry. The unique legacy-alias index rejects shared suffixes; a conflicting
+legacy class needs a replacement code, not a shared alias.
 
 ## Review public content reports
 

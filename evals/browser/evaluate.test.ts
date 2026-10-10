@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { evaluateHtmlInBrowser } from "./evaluate";
 
@@ -81,6 +82,46 @@ test("browser evaluator rejects inert controls and observes bounded delayed beha
   assert.equal(delayed.viewports[0]?.behavior.scenarios[0]?.stateChanged, true);
   assert.equal(delayed.viewports[0]?.behavior.changedControlCount, 1);
   assert.equal(delayed.viewports[0]?.behavior.passed, true);
+});
+
+test("generic interactions distinguish autonomous timers from synchronous and delayed handlers", async () => {
+  const timer = `<p id="clock"></p><script>let ticks=0;setInterval(()=>{document.getElementById('clock').textContent=String(++ticks)},20)</script>`;
+  const fixtures = [
+    { html: inertFixture, changed: 0, passed: false },
+    { html: goodFixture, changed: 1, passed: true },
+    { html: delayedFixture, changed: 1, passed: true },
+  ];
+  for (const fixture of fixtures) {
+    const result = await evaluateHtmlInBrowser(fixture.html.replace('</body>', `${timer}</body>`), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(result.viewports[0]?.behavior.changedControlCount, fixture.changed);
+    assert.equal(result.viewports[0]?.behavior.passed, fixture.passed);
+    assert.equal(result.passed, fixture.passed);
+  }
+});
+
+test("generic interactions compare randomized starting states without crediting autonomous changes", async () => {
+  const randomTimer = `<p id="question"></p><p id="clock"></p><script>question.textContent=String(Math.random());let ticks=0;setInterval(()=>{clock.textContent=String(++ticks)},20)</script>`;
+  for (const fixture of [
+    { html: goodFixture, changed: 1 },
+    { html: inertFixture, changed: 0 },
+  ]) {
+    const result = await evaluateHtmlInBrowser(fixture.html.replace("</body>", `${randomTimer}</body>`), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(result.viewports[0]?.behavior.changedControlCount, fixture.changed);
+    assert.equal(result.passed, fixture.changed === 1);
+  }
+});
+
+test("generic interactions recognize the randomized times-tables seed", async () => {
+  const html = await readFile(new URL("../../apps/ipad/Resources/Examples/times-tables-lightning.html", import.meta.url), "utf8");
+  const result = await evaluateHtmlInBrowser(html, {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  assert.equal(result.viewports[0]?.behavior.interactionPassRate, 1);
+  assert.equal(result.viewports[0]?.behavior.passed, true);
 });
 
 test("browser evaluator isolates controls and requires most exercised controls to change", async () => {

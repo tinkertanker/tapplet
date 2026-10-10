@@ -284,12 +284,14 @@ export class CloudflareAssetStore implements AssetStore {
     });
 
     try {
-      await this.database
+      const admission = await this.database
         .prepare(
           `INSERT INTO assets
              (id, owner_hash, object_key, content_type, byte_length, width, height,
               sha256, alternative_text, decorative, created_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11
+           WHERE (SELECT COUNT(*) FROM assets WHERE owner_hash = ?2) < ?12
+             AND (SELECT COALESCE(SUM(byte_length), 0) FROM assets WHERE owner_hash = ?2) + ?5 <= ?13`,
         )
         .bind(
           id,
@@ -303,8 +305,16 @@ export class CloudflareAssetStore implements AssetStore {
           alternativeText,
           decorative ? 1 : 0,
           now,
+          MAXIMUM_STORED_ASSETS,
+          MAXIMUM_STORED_ASSET_BYTES,
         )
         .run();
+      if ((admission.meta.changes ?? 0) !== 1)
+        throw new HttpError(
+          429,
+          'ASSET_STORAGE_LIMIT_REACHED',
+          'This device has reached its image storage limit. Remove unused images before uploading more.',
+        );
     } catch (error) {
       await this.bucket.delete(objectKey);
       throw error;

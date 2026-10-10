@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createModelProvider } from "../src/ai/createProvider";
 import {
@@ -74,7 +76,7 @@ function settingsDatabase() {
           } else if (query.startsWith("INSERT INTO class_codes")) {
             classCodeValues = values;
           }
-          return { success: true };
+          return { success: true, meta: { changes: 1 } };
         },
       };
       return statement;
@@ -90,6 +92,23 @@ function settingsDatabase() {
 
 describe("web operations panel", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("migrates existing settings unchanged and permits Anthropic without weakening key constraints", () => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec(readFileSync(new URL("../migrations/0011_admin_settings.sql", import.meta.url), "utf8"));
+      db.prepare("INSERT INTO admin_model_settings VALUES(1,?,?,?,?,?,?)").run(
+        "openai-compatible", "gpt-4.1", "https://api.openai.com/v1", "encrypted", "iv", "original-date",
+      );
+      const saved = db.prepare("SELECT * FROM admin_model_settings").get();
+      db.exec(readFileSync(new URL("../migrations/0012_anthropic_provider.sql", import.meta.url), "utf8"));
+      expect(db.prepare("SELECT * FROM admin_model_settings").get()).toEqual(saved);
+      db.exec("UPDATE admin_model_settings SET provider='anthropic',model='claude-haiku-5-5'");
+      expect(db.prepare("SELECT provider FROM admin_model_settings").get()?.provider).toBe("anthropic");
+      expect(() => db.exec("UPDATE admin_model_settings SET api_key_iv=NULL")).toThrow();
+      expect(() => db.exec("UPDATE admin_model_settings SET provider='unknown'")).toThrow();
+    } finally { db.close(); }
+  });
 
   it("encrypts provider keys with authenticated encryption", async () => {
     const first = await encryptAdminApiKey(
@@ -163,7 +182,7 @@ describe("web operations panel", () => {
     expect(denied?.status).toBe(401);
   });
 
-  it("stores only an encrypted API key and uses the selected model", async () => {
+  it.each(["openai-compatible", "anthropic"])("stores only an encrypted API key and preserves the selected %s model", async (provider) => {
     const { database, row } = settingsDatabase();
     const env = environment(database);
     const response = await handleAdminRequest(
@@ -174,7 +193,7 @@ describe("web operations panel", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          provider: "openai-compatible",
+          provider,
           model: "test-model",
           baseUrl: "https://models.example.test/v1/",
           apiKey: "provider-secret",
@@ -188,7 +207,24 @@ describe("web operations panel", () => {
     expect(row()?.api_key_ciphertext).not.toContain("provider-secret");
     expect(row()?.base_url).toBe("https://models.example.test/v1");
     await expect(loadConfiguredModelProvider(env)).resolves.toMatchObject({
-      name: "openai-compatible:test-model",
+      name: `${provider}:test-model`,
+    });
+  });
+
+  it("gets public catalogue options without forwarding admin, managed, or provider credentials", async () => {
+    const entry = { id: "catalogue-model", provider: "anthropic", display_name: "Catalogue model", tier: "balanced", is_default: true };
+    const fetcher = vi.fn(async () => Response.json({ object: "list", version: 1, data: [entry] }));
+    vi.stubGlobal("fetch", fetcher);
+    const { database, settingsReads } = settingsDatabase();
+    const env = { ...environment(database), TKSLOPPER_GATEWAY_URL: "https://gateway.test", TKSLOPPER_SERVICE_CREDENTIAL: "managed-secret", ANTHROPIC_API_KEY: "provider-secret" };
+    const response = await handleAdminRequest(new Request("https://api.test/v1/admin/model-catalogue", {
+      headers: { authorization: `Bearer ${adminToken}`, cookie: "private=session" },
+    }), env);
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ source: "tkslopper", data: [entry] });
+    expect(settingsReads()).toBe(0);
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL("https://gateway.test/v1/model-catalogue"), {
+      method: "GET", headers: { accept: "application/json" }, credentials: "omit", redirect: "manual", signal: expect.any(AbortSignal),
     });
   });
 
@@ -259,7 +295,7 @@ describe("web operations panel", () => {
     expect(response?.status).toBe(201);
     expect(response?.headers.get("cache-control")).toContain("no-store");
     const body = (await response?.json()) as { code: string };
-    expect(body.code).toMatch(/^0042-[A-HJ-NP-Z]{4}-[A-HJ-NP-Z]{4}$/);
+    expect(body.code).toMatch(/^\d{6}$/);
     const compactCode = body.code.replaceAll("-", "");
     expect(classCodeValues()).toEqual([
       createHash("sha256").update(`class-code:${compactCode}`).digest("hex"),
@@ -269,6 +305,43 @@ describe("web operations panel", () => {
       expect.any(String),
     ]);
     expect(JSON.stringify(classCodeValues())).not.toContain(compactCode);
+  });
+
+  it("allocates another code after a collision without changing the existing class", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec("CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT,maximum_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at TEXT,created_at TEXT)");
+    let occupyFirstCandidate = true;
+    const database = {
+      prepare(query: string) {
+        return {
+          bind(...values: (string | number)[]) {
+            return {
+              async run() {
+                if (occupyFirstCandidate) {
+                  sqlite.prepare("INSERT INTO class_codes VALUES(?,?,?,?,?,?)").run(values[0]!, "Existing class", 9, 7, "2090-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+                  occupyFirstCandidate = false;
+                }
+                return { success: true, meta: { changes: Number(sqlite.prepare(query).run(...values).changes) } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    try {
+      const response = await handleAdminRequest(new Request("https://api.test/v1/admin/class-codes", {
+        method: "POST",
+        headers: { authorization: `Bearer ${adminToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ classNumber: "0042", maximumUses: 30, expiresAt: "2099-08-24T00:00:00.000Z" }),
+      }), environment(database));
+      expect(response?.status).toBe(201);
+      const body = await response!.json() as { code: string };
+      expect(sqlite.prepare("SELECT label,maximum_uses,use_count,expires_at FROM class_codes WHERE label='Existing class'").get()).toEqual({ label: "Existing class", maximum_uses: 9, use_count: 7, expires_at: "2090-01-01T00:00:00.000Z" });
+      expect(sqlite.prepare("SELECT label FROM class_codes WHERE code_hash=?").get(createHash("sha256").update(`class-code:${body.code}`).digest("hex"))).toEqual({ label: "Class 0042" });
+      expect(sqlite.prepare("SELECT COUNT(*) AS count FROM class_codes").get()).toEqual({ count: 2 });
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("uses all fields from a generic admin provider override", async () => {

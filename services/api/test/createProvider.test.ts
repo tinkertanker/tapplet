@@ -22,6 +22,89 @@ function env(values: Partial<StudioEnv>): StudioEnv {
 describe("model provider selection", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each([
+    ["https://opencode.ai/zen/go/v1/", true],
+    ["https://opencode.ai/zen/v1", false],
+    ["https://opencode.ai.example.test/zen/go/v1", false],
+    ["https://models.example.test/v1", false],
+  ])("scopes OpenCode session headers to the native Go endpoint: %s", async (baseUrl, nativeGo) => {
+    const fetch = successfulFetch();
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(env({}), {
+      provider: "opencode-go", model: "kimi-k3", baseUrl, apiKey: "test-key",
+    });
+    await provider.generate(brief, []);
+    const headers = new Headers(fetch.mock.calls[0]?.[1]?.headers);
+    if (nativeGo) {
+      expect(headers.get("x-opencode-session")).toMatch(/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/);
+      expect(headers.get("user-agent")).toBe("tapplet-studio/0.1");
+    } else {
+      expect(headers.has("x-opencode-session")).toBe(false);
+      expect(headers.has("user-agent")).toBe(false);
+    }
+  });
+
+  it("uses native Anthropic Messages with an isolated credential and ignores thinking blocks", async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({
+      stop_reason: "end_turn",
+      content: [
+        { type: "thinking", thinking: "private" },
+        { type: "text", text: '{"html":"test"}' },
+      ],
+    }));
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(env({
+      AI_PROVIDER: "anthropic",
+      AI_MODEL: "claude-haiku-5-5",
+      ANTHROPIC_API_KEY: "anthropic-test-key",
+      AI_API_KEY: "unrelated-test-key",
+    }));
+    await expect(provider.generate(brief, [])).resolves.toEqual({ html: "test" });
+    expect(fetch.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetch.mock.calls[0]?.[1]?.headers).toEqual({
+      "x-api-key": "anthropic-test-key",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    });
+    const body = requestBody(fetch);
+    expect(body).toMatchObject({
+      model: "claude-haiku-5-5", max_tokens: 32000, stream: false,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium", format: { type: "json_schema", schema: { required: ["html", "designCard"] } } },
+      messages: [{ role: "user", content: expect.any(String) }],
+      system: expect.any(String),
+    });
+    for (const field of ["temperature", "top_p", "seed", "response_format", "tools"])
+      expect(body).not.toHaveProperty(field);
+    await expect(createModelProvider(env({ AI_PROVIDER: "anthropic", AI_API_KEY: "wrong-key" }))
+      .generate(brief, [])).rejects.toThrow("ANTHROPIC_API_KEY");
+  });
+
+  it.each(["gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"])("uses Responses without sampling for OpenAI %s", async (model) => {
+    const fetch = successfulResponsesFetch();
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(env({ AI_PROVIDER: "openai-compatible", AI_MODEL: model,
+      AI_BASE_URL: "https://api.openai.com/v1", AI_API_KEY: "openai-test-key" }));
+    await provider.generate(brief, []);
+    expect(fetch.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(requestBody(fetch)).toMatchObject({ model, store: false, max_output_tokens: 32000, reasoning: { effort: "medium" } });
+    expect(requestBody(fetch)).not.toHaveProperty("temperature");
+    fetch.mockClear();
+    fetch.mockResolvedValueOnce(Response.json({ output: [{ content: [{ type: "output_text", text: '{"safe":true,"categories":[]}' }] }] }));
+    await expect(provider.moderate("html")).resolves.toEqual({ safe: true, categories: [] });
+    expect(requestBody(fetch)).toMatchObject({ model, store: false, max_output_tokens: 4096, reasoning: { effort: "low" } });
+  });
+
+  it("preserves an older OpenAI model and its chat dialect", async () => {
+    const fetch = successfulFetch();
+    vi.stubGlobal("fetch", fetch);
+    await createModelProvider(env({ AI_PROVIDER: "openai-compatible", AI_MODEL: "gpt-4.1",
+      AI_BASE_URL: "https://api.openai.com/v1", AI_API_KEY: "test-key" })).generate(brief, []);
+    expect(fetch.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(requestBody(fetch).model).toBe("gpt-4.1");
+    expect(requestBody(fetch)).not.toHaveProperty("reasoning");
+  });
+
   it("uses OpenCode Zen with its dedicated credential", async () => {
     const fetch = successfulFetch();
     vi.stubGlobal("fetch", fetch);

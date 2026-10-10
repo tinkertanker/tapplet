@@ -35,6 +35,8 @@ export class OpenCodeGoImageSafetyInspector implements ImageSafetyInspector {
         headers: {
           authorization: `Bearer ${this.options.apiKey}`,
           'content-type': 'application/json',
+          'x-opencode-session': crypto.randomUUID(),
+          'user-agent': 'tapplet-studio/0.1',
         },
         body: JSON.stringify({
           model: this.options.model,
@@ -53,22 +55,16 @@ export class OpenCodeGoImageSafetyInspector implements ImageSafetyInspector {
         }),
         signal: AbortSignal.timeout(45_000),
       });
-    } catch (error) {
-      const diagnostic = error instanceof Error
-        ? `${error.name}: ${error.message}`
-        : String(error);
-      console.error(`Image safety review failed: ${diagnostic}`);
+    } catch {
+      console.error('Image safety review failed: network');
       return { status: 'unavailable' };
     }
 
     const result = await response.json().catch(() => null) as {
       output?: { content?: { type?: string; text?: string }[] }[];
-      error?: { message?: string };
     } | null;
     if (!response.ok) {
-      console.error(
-        `Image safety review failed: ${result?.error?.message ?? `HTTP ${response.status}`}`,
-      );
+      console.error(`Image safety review failed: HTTP ${response.status}`);
       return { status: 'unavailable' };
     }
     const answer = result?.output
@@ -78,12 +74,12 @@ export class OpenCodeGoImageSafetyInspector implements ImageSafetyInspector {
       .join('')
       .trim();
     if (!answer) {
-      console.error(`Image safety review returned no answer: ${serialiseDiagnostic(result)}`);
+      console.error('Image safety review returned no answer');
       return { status: 'unavailable' };
     }
     const review = parseImageSafetyAnswer(answer);
     if (review) return review;
-    console.error(`Image safety review returned an invalid answer: ${serialiseDiagnostic(result)}`);
+    console.error('Image safety review returned an invalid answer');
     return { status: 'unavailable' };
   }
 }
@@ -108,14 +104,6 @@ export function parseImageSafetyAnswer(answer: string): ImageSafetyReview | null
 
 export function imageDataUrl(bytes: Uint8Array, mediaType: string): string {
   return `data:${mediaType};base64,${base64(bytes)}`;
-}
-
-function serialiseDiagnostic(value: unknown): string {
-  try {
-    return JSON.stringify(value)?.slice(0, 1_000) ?? String(value);
-  } catch {
-    return Object.prototype.toString.call(value);
-  }
 }
 
 function base64(bytes: Uint8Array): string {

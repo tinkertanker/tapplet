@@ -58,7 +58,7 @@ export async function readJson<T>(request: Request, maximumBytes = 256_000): Pro
 }
 
 export async function readBodyBytes(
-  request: Request,
+  request: Request | Response,
   maximumBytes: number,
   tooLarge: () => HttpError = () =>
     new HttpError(413, 'REQUEST_TOO_LARGE', 'The request is too large.'),
@@ -136,21 +136,6 @@ export class HttpError extends Error {
 
 export function corsHeaders(request: Request, config: StudioConfig): HeadersInit {
   const origin = request.headers.get('origin');
-  // Sandboxed public players (opaque origin) report content cross-origin;
-  // the anonymous report endpoint accepts them without an allowlisted origin.
-  if (
-    origin === 'null' &&
-    /^\/v1\/publications\/[A-Za-z0-9_-]+\/reports$/.test(
-      new URL(request.url).pathname,
-    )
-  )
-    return {
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'POST,OPTIONS',
-      'access-control-allow-headers': 'content-type',
-      'access-control-max-age': '86400',
-      vary: 'Origin',
-    };
   if (!origin || !config.allowedOrigins.has(origin)) return {};
 
   return {

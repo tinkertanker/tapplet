@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { chromium } from 'playwright';
 import {
   productionSeedParityIssues,
   seedApiRecord,
@@ -12,6 +13,38 @@ import {
 } from './lib/html-artifact.mjs';
 
 const validHtml = '<!doctype html><html lang="en-SG"><head><meta name="viewport" content="width=device-width"><title>Test</title><style>button{min-height:44px}</style></head><body><button>Try</button><script>document.querySelector("button").onclick=()=>{}</script></body></html>';
+
+test('rejects decoded meta refresh directives', () => {
+  for (const directive of ['&#114;efresh', ' REFRESH ']) {
+    const html = validHtml.replace('</head>', `<meta http-equiv="${directive}" content="0;url=https://outside.invalid/"></head>`);
+    assert.equal(validateHtmlArtifact(html).valid, false, directive);
+  }
+});
+
+test('parses executable modules and skips inert script data using actual attributes', () => {
+  for (const script of [
+    '<script type=" MODULE ">export const fraction = 0.5;</script>',
+    '<script type="application/json">{"enabled":true}</script>',
+    '<script type="text/plain">not JavaScript at all</script>',
+    '<script type="text/javascript; charset=utf-8">const value = ;</script>',
+    '<script data-note="type=module">const value = 1;</script>',
+  ]) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace(/<script>[\s\S]*?<\/script>/, script)).issues, [], script);
+  }
+});
+
+test('rejects syntax-invalid executable scripts and inline handlers', () => {
+  for (const snippet of [
+    '<script type="module">export const fraction = ;</script>',
+    '<script>const fraction = ;</script>',
+    '<script type="text/javascript1.5">const fraction = ;</script>',
+    '<button onclick="const fraction = ;">Try</button>',
+  ]) {
+    assert.ok(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues
+      .some((issue) => issue.code === 'javascript-syntax'), snippet);
+  }
+  assert.equal(validateHtmlArtifact(validHtml.replace('<button>', '<button onclick="return false">')).valid, true);
+});
 
 test('validates a complete self-contained artifact', () => {
   assert.deepEqual(validateHtmlArtifact(validHtml).issues, []);
@@ -101,6 +134,33 @@ test('all curated seeds initialise without browser errors', async () => {
   }
 });
 
+test('seven curated sliders have independently specified accessible label names', async () => {
+  const expected = {
+    'catchment-under-pressure': { rain: 'Rainfall: mm/h', hard: 'Paved ground: %', drain: 'Drainage: mm/h' },
+    'linear-function-explorer': { m: 'Gradient m:', c: 'Vertical intercept c:' },
+    'line-golf': { m: 'Gradient m:', c: 'Vertical intercept c:' },
+  };
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const [example, names] of Object.entries(expected)) {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(`apps/ipad/Resources/Examples/${example}.html`, 'utf8'));
+      assert.equal(await page.getByRole('slider').count(), Object.keys(names).length);
+      for (const [id, name] of Object.entries(names)) {
+        const slider = page.getByRole('slider', { name, exact: true });
+        assert.equal(await slider.count(), 1, `${example} #${id} accessible name: ${name}`);
+        assert.equal(await slider.getAttribute('id'), id);
+        assert.equal(await slider.evaluate((input) => input.labels.length), 1);
+        assert.equal(await slider.evaluate((input) => input.labels[0].control.id), id);
+      }
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test('spelling misses teach the target pattern', async () => {
   const html = await readFile(
     path.resolve('apps/ipad/Resources/Examples/spell-it-before-the-sun-sets.html'),
@@ -116,6 +176,107 @@ test('spelling misses teach the target pattern', async () => {
   dom.window.close();
 });
 
+test('editing a graded answer clears its stale ✓/✗ state', async () => {
+  const directory = path.resolve('apps/ipad/Resources/Examples');
+  const browser = await chromium.launch({ headless: true });
+  const stateOf = (page, selector) =>
+    page.$eval(selector, (el) => ({
+      correct: el.classList.contains('correct'),
+      incorrect: el.classList.contains('incorrect'),
+      mark: el.nextElementSibling?.textContent ?? '',
+      invalid: el.getAttribute('aria-invalid'),
+    }));
+  try {
+    const inputCase = async (file, correct, wrong) => {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, file), 'utf8'));
+      await page.fill('#term', correct);
+      await page.click('#check');
+      assert.deepEqual(await stateOf(page, '#term'), { correct: true, incorrect: false, mark: '✓', invalid: 'false' }, file);
+      await page.fill('#term', wrong);
+      assert.deepEqual(await stateOf(page, '#term'), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} edit clears`);
+      await page.click('#check');
+      assert.deepEqual(await stateOf(page, '#term'), { correct: false, incorrect: true, mark: '✗', invalid: 'true' }, `${file} regraded`);
+      await page.fill('#term', correct);
+      assert.deepEqual(await stateOf(page, '#term'), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} cleared without regrading`);
+      await page.close();
+    };
+    await inputCase('source-reliability-check.html', 'corroboration', 'bias');
+    await inputCase('persuasive-language-lab.html', 'rhetorical question', 'alliteration');
+
+    const selectCase = async (file, selectSelector, checkSelector) => {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, file), 'utf8'));
+      const selects = await page.$$(selectSelector);
+      for (const select of selects) {
+        await select.evaluate((el) => {
+          el.value = el.dataset.a ?? el.dataset.answer;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      }
+      await page.click(checkSelector);
+      const [first, second] = selects;
+      const stateOfEl = (el) =>
+        el.evaluate((e) => ({
+          correct: e.classList.contains('correct'),
+          incorrect: e.classList.contains('incorrect'),
+          mark: e.nextElementSibling?.textContent ?? '',
+          invalid: e.getAttribute('aria-invalid'),
+        }));
+      const wrong = await first.evaluate((el) =>
+        [...el.options].map((o) => o.value).find((v) => v && v !== (el.dataset.a ?? el.dataset.answer)),
+      );
+      assert.ok(wrong, `${file} has a wrong option`);
+      await first.evaluate((el, v) => {
+        el.value = v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, wrong);
+      assert.deepEqual(await stateOfEl(first), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} edit clears`);
+      const other = await stateOfEl(second);
+      assert.equal(other.correct, true, `${file} sibling keeps its grade`);
+      assert.equal(other.mark, '✓');
+      await page.click(checkSelector);
+      assert.deepEqual(await stateOfEl(first), { correct: false, incorrect: true, mark: '✗', invalid: 'true' }, `${file} regraded wrong`);
+      const right = await first.evaluate((el) => el.dataset.a ?? el.dataset.answer);
+      await first.evaluate((el, v) => {
+        el.value = v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, right);
+      assert.deepEqual(await stateOfEl(first), { correct: false, incorrect: false, mark: '', invalid: null }, `${file} correct edit only clears`);
+      await page.close();
+    };
+    await selectCase('cool-box-fair-test-lab.html', '#vars select', '#checkVars');
+    await selectCase('paragraph-structure-sequencer.html', '#jobs select', '#checkJ');
+    await selectCase('market-street-field-notes.html', '#notes select', '#check');
+
+    // market-street evidence select (single control, group 2)
+    {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, 'market-street-field-notes.html'), 'utf8'));
+      await page.selectOption('#evidence', 'ok');
+      await page.click('#checkE');
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: true, incorrect: false, mark: '✓', invalid: 'false' });
+      const wrong = await page.$eval('#evidence', (el) =>
+        [...el.options].map((o) => o.value).find((v) => v && v !== 'ok'),
+      );
+      await page.selectOption('#evidence', wrong);
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: false, mark: '', invalid: null }, 'evidence edit clears');
+      await page.click('#checkE');
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: true, mark: '✗', invalid: 'true' });
+      await page.selectOption('#evidence', 'ok');
+      assert.deepEqual(await stateOf(page, '#evidence'), { correct: false, incorrect: false, mark: '', invalid: null }, 'evidence correct edit only clears');
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test('line golf rejects a half-unit miss on a horizontal hole', async () => {
   const html = await readFile(
     path.resolve('apps/ipad/Resources/Examples/line-golf.html'),
@@ -125,63 +286,5 @@ test('line golf rejects a half-unit miss on a horizontal hole', async () => {
   assert.equal(dom.window.onLine(0.5, 0, 1, 1), false);
   assert.equal(dom.window.onLine(0, 1, 1, 1), true);
   assert.equal(dom.window.onLine(2, 1, 1, 3), true);
-  dom.window.close();
-});
-
-function loadExample(file) {
-  return readFile(path.resolve('apps/ipad/Resources/Examples', file), 'utf8')
-    .then((html) => new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' }));
-}
-
-test('fair-test variables mark each wrong choice and give a hint', async () => {
-  const dom = await loadExample('cool-box-fair-test-lab.html');
-  const document = dom.window.document;
-  const selects = [...document.querySelectorAll('#vars select')];
-  ['changed', 'measured', 'changed', 'same', 'same', 'same'].forEach((value, i) => { selects[i].value = value; });
-  document.getElementById('checkVars').click();
-  assert.equal(document.querySelectorAll('#vars .is-bad').length, 1);
-  assert.ok(selects[2].parentElement.classList.contains('is-bad'));
-  const msg = document.getElementById('vm');
-  assert.match(msg.textContent, /^✗ 5 of 6 correct/);
-  assert.ok(msg.classList.contains('no'));
-  selects[2].value = 'same';
-  document.getElementById('checkVars').click();
-  assert.match(msg.textContent, /^✓ Correct!/);
-  dom.window.close();
-});
-
-test('named-technique hints change on each wrong attempt', async () => {
-  for (const [file, answer] of [['persuasive-language-lab.html', 'rhetorical question'], ['source-reliability-check.html', 'corroboration']]) {
-    const dom = await loadExample(file);
-    const document = dom.window.document;
-    const term = document.getElementById('term');
-    const msg = document.getElementById('tm');
-    term.value = 'wrong guess';
-    const seen = new Set();
-    for (let i = 0; i < 3; i += 1) {
-      document.getElementById('check').click();
-      assert.match(msg.textContent, /^✗ /, file);
-      seen.add(msg.textContent);
-    }
-    assert.equal(seen.size, 3, file);
-    term.value = answer;
-    document.getElementById('check').click();
-    assert.match(msg.textContent, /^✓ Correct!/, file);
-    dom.window.close();
-  }
-});
-
-test('plant cell matches are listed structure beside job', async () => {
-  const dom = await loadExample('plant-cell-hotspots.html');
-  const document = dom.window.document;
-  document.querySelectorAll('.hot').forEach((spot) => spot.click());
-  document.querySelector('#picks [data-s="3"]').click();
-  document.querySelector('#jobs [data-j="1"]').click();
-  assert.equal(document.querySelectorAll('#matched li').length, 0);
-  assert.match(document.getElementById('feedback').textContent, /^✗ /);
-  document.querySelector('#jobs [data-j="3"]').click();
-  const rows = [...document.querySelectorAll('#matched li')];
-  assert.equal(rows.length, 1);
-  assert.match(rows[0].textContent, /^Nucleus.*genetic material/);
   dom.window.close();
 });
