@@ -16,7 +16,7 @@ import type {
   RepairContext,
   TeacherBrief,
 } from "./provider";
-import { ModelProviderError } from "./provider";
+import { MODEL_CALL_TIMEOUT_MS, ModelProviderError } from "./provider";
 import { emitOperationalTrace } from "../operationalTrace";
 import type {
   ModelOperation,
@@ -157,7 +157,7 @@ export class AnthropicProvider implements ModelProvider {
               },
             },
           }),
-          signal: AbortSignal.timeout(45000),
+          signal: AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS),
         },
       );
       if (!response.ok) {

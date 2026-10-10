@@ -14,7 +14,7 @@ import type {
   RepairContext,
   TeacherBrief,
 } from "./provider";
-import { ModelProviderError } from "./provider";
+import { MODEL_CALL_TIMEOUT_MS, ModelProviderError } from "./provider";
 import type {
   ModelOperation,
   OperationalTraceContext,
@@ -176,7 +176,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
                   ...reasoningOptions,
                 },
           ),
-          signal: AbortSignal.timeout(45000),
+          signal: AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS),
         },
       );
     } catch (e) {
