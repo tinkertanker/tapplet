@@ -61,8 +61,9 @@ This does not change inference authorization, routing, or configured aliases.
 - The Worker holds a tkslopper **service credential** (`tksvc_<id>_<secret>`)
   as a Worker secret. iPads never talk to tkslopper: they authenticate to
   Tapplet with class codes and device tokens, and Tapplet keeps prompts,
-  validation and quotas server-side. Join-code device activation and classroom
-  group keys (`tkgk_`) are not used.
+  validation and quotas server-side. Join-code device activation is not used;
+  classroom group keys (`tkgk_`) are used only for
+  [class-scoped access](#class-scoped-access).
 - The credential is exchanged at `POST /v1/token` on the control plane for a
   15-minute grant covering the three capability aliases. Grants are cached per
   isolate, refreshed when less than 60 seconds remain (or halfway through a
@@ -106,6 +107,52 @@ This does not change inference authorization, routing, or configured aliases.
   The operations panel shows "Transport: tkslopper (admin model override
   inactive)" and the configured aliases. Revisions record
   `tkslopper:<artifact alias>` as their model version.
+
+## Class-scoped access
+
+A class code can carry a tkslopper classroom **group key** (`tkgk_…`). iPads
+that join with that code then use the class's tkslopper policy instead of the
+fleet configuration, much like Playground Pal's class access: tkslopper decides
+which aliases the class may use and enforces its budget, rate limits, schedule,
+pause and revocation. The iPad still only talks to Tapplet; the key stays on
+the Worker, encrypted in D1 with `ADMIN_ENCRYPTION_KEY` and bound to its class
+row.
+
+- On registration the Worker records which class row the new device joined
+  (`device_classes`), in the same D1 transaction as the activation. Devices
+  registered before migration `0015` have no class and keep the fleet path.
+- For a device whose class has a key, generation, revision, repair,
+  publication review and uploaded-image review send the key directly as the
+  gateway Bearer credential. There is no grant exchange, no control-plane call
+  and no 401 retry. Devices without a class key use the fleet configuration
+  (direct provider or service credential) unchanged.
+- Class access needs `TKSLOPPER_GATEWAY_URL` (or the `TKSLOPPER_GATEWAY`
+  binding) and the three alias variables, but not the control plane or service
+  credential, and it works while `INFERENCE_TRANSPORT=direct`. An unsupported
+  `INFERENCE_TRANSPORT` value still stops all model calls, including classes.
+- A class never falls back to the fleet configuration. A missing gateway or
+  alias setting, an undecryptable key, or a gateway 401/402/403 fails that
+  request. The iPad shows "Your class has used its AI allowance" (HTTP 429,
+  `CLASS_AI_ALLOWANCE_REACHED`) for a 402, and "AI is not available for your
+  class right now" (HTTP 403, `CLASS_AI_UNAVAILABLE`) for a 401 or 403.
+
+### Operator setup
+
+1. In the tkslopper dashboard, create a class in Tapplet's product and
+   environment with Tapplet's three aliases approved, and one group for the
+   whole Tapplet class. Every iPad in the class shares that group's allocation
+   and per-group RPM, TPM and concurrency, so size them for the class rather
+   than one student. Issue the group's API key.
+2. In Tapplet's operations panel, either paste the key when minting the class
+   code, or use **Class AI access** with an existing code (full or short form)
+   to attach, replace or remove it. Tapplet checks the key against the
+   gateway's `/v1/models`: unknown keys and keys missing any configured alias
+   are rejected. A class that is paused or has not started yet (403), or an
+   unreachable gateway, is saved with a warning.
+3. Pause, top up, extend or revoke the class in tkslopper. To rotate, issue a
+   new key in tkslopper and attach it to the same class code; iPads already in
+   the class pick it up on their next request. Removing the key returns the
+   class to the fleet configuration.
 
 ## Configuration
 

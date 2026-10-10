@@ -246,6 +246,16 @@ before securely archiving the record and provisioning a replacement. Never
 identify a row only by the non-unique label, and never paste class codes or
 hashes into issues, commits, chat logs or screenshots.
 
+## Class AI access
+
+A class code can carry a tkslopper classroom group key so the class's AI is
+governed by its tkslopper class: approved aliases, budget, schedule and pause.
+Set it up and rotate it as described in
+[class-scoped access](TKSLOPPER_TRANSPORT.md#class-scoped-access). Treat the
+key like the class code: paste it only into the operations panel, never into
+issues, commits, chat logs or screenshots. Migration `0015_class_inference.sql`
+must be applied before the updated API is deployed; CI applies it on `master`.
+
 ## Short-code rollout and legacy codes
 
 Apply migration `0013_short_class_codes.sql` before deploying the updated API.
