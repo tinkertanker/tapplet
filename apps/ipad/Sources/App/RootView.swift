@@ -66,7 +66,7 @@ struct TappletRootView: View {
                     }
                     .foregroundStyle(TappletTheme.ink)
                     .accessibilityIdentifier("sidebar-feedback")
-                    .accessibilityHint("Opens an email to the Tapplet Studio team.")
+                    .accessibilityHint("Opens an email to the Tapplet Studio team with a screenshot and any open tapplet attached.")
                 }
             }
             .scrollContentBackground(.hidden)

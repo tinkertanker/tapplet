@@ -49,7 +49,6 @@ enum FeedbackMail {
 
 struct FeedbackMailView: UIViewControllerRepresentable {
     var attachments: [FeedbackAttachment]
-    @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> MFMailComposeViewController {
         let controller = MFMailComposeViewController()
@@ -65,18 +64,16 @@ struct FeedbackMailView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: MFMailComposeViewController, context: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator(dismiss: dismiss) }
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
-    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
-        let dismiss: DismissAction
-        init(dismiss: DismissAction) { self.dismiss = dismiss }
-
+    @MainActor
+    final class Coordinator: NSObject, @preconcurrency MFMailComposeViewControllerDelegate {
         func mailComposeController(
             _ controller: MFMailComposeViewController,
             didFinishWith result: MFMailComposeResult,
             error: Error?
         ) {
-            dismiss()
+            controller.dismiss(animated: true)
         }
     }
 }
