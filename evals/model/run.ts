@@ -103,7 +103,12 @@ export function parseEvaluationPlan(
     BOUNDARY_MODES,
   );
   const efforts = valueList(
-    env.EVAL_REASONING_EFFORTS ?? env.EVAL_REASONING_EFFORT ?? "default",
+    env.EVAL_REASONING_EFFORTS ?? env.EVAL_REASONING_EFFORT
+      // Evaluate the deployed effort when evaluating the deployed provider.
+      ?? (!env.EVAL_PROVIDER || env.EVAL_PROVIDER === env.AI_PROVIDER
+        ? env.AI_REASONING_EFFORT
+        : undefined)
+      ?? "default",
     "reasoning effort",
   );
   const reasoningEfforts = efforts.map((effort) => {
@@ -146,7 +151,7 @@ export async function productionEvaluationEnvironment(
   }
   const vars = configuration?.vars;
   const production = Object.fromEntries(
-    ["AI_PROVIDER", "AI_MODEL", "AI_BASE_URL"]
+    ["AI_PROVIDER", "AI_MODEL", "AI_BASE_URL", "AI_REASONING_EFFORT"]
       .flatMap((name) => typeof vars?.[name] === "string" ? [[name, vars[name]]] : []),
   ) as NodeJS.ProcessEnv;
   return { ...production, ...env };

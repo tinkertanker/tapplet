@@ -75,8 +75,19 @@ test("production plan reads the deployed provider and model source of truth", as
     resolve(import.meta.dirname, "../.."),
     {},
   );
-  assert.equal(environment.AI_PROVIDER, "opencode-go");
-  assert.equal(environment.AI_MODEL, "muse-spark-1.2-contributor");
+  assert.equal(environment.AI_PROVIDER, "openrouter");
+  assert.equal(environment.AI_MODEL, "openai/gpt-6-luna");
+  assert.equal(environment.AI_REASONING_EFFORT, "low");
+  assert.deepEqual(parseEvaluationPlan({
+    ...environment,
+    OPENROUTER_API_KEY: "evaluation-secret",
+    EVAL_BROWSER: "false",
+  }).reasoningEfforts, ["low"]);
+  assert.deepEqual(parseEvaluationPlan({
+    ...environment,
+    EVAL_PROVIDER: "fixture",
+    EVAL_BROWSER: "false",
+  }).reasoningEfforts, [undefined]);
   assert.equal(
     parseEvaluationPlan({
       AI_PROVIDER: "openai-compatible",

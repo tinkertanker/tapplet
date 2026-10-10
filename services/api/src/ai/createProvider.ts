@@ -23,6 +23,10 @@ export type ReasoningEffort =
   | "max"
   | "xhigh";
 
+const REASONING_EFFORTS: ReadonlySet<string> = new Set([
+  "minimal", "low", "medium", "high", "max", "xhigh",
+]);
+
 export class UnavailableModelProvider implements ModelProvider {
   readonly name = "unavailable";
 
@@ -59,11 +63,19 @@ export function createModelProvider(
   const provider = override?.provider ?? env.AI_PROVIDER,
     model = override?.model ?? env.AI_MODEL;
   if (provider === "fixture") return new FixtureModelProvider();
+  const configuredEffort = env.AI_REASONING_EFFORT?.trim();
+  if (configuredEffort && !REASONING_EFFORTS.has(configuredEffort))
+    return new UnavailableModelProvider(
+      "AI_REASONING_EFFORT must be minimal, low, medium, high, xhigh or max.",
+    );
+  // An explicit effort replaces each provider's default artifact effort.
+  const reasoningEffort =
+    override?.reasoningEffort ?? (configuredEffort as ReasoningEffort | undefined);
 
   if (provider === "anthropic") {
     const apiKey = override ? override.apiKey : env.ANTHROPIC_API_KEY;
     if (!apiKey) return new UnavailableModelProvider("The configured model provider has no ANTHROPIC_API_KEY.");
-    const effort = override?.reasoningEffort;
+    const effort = reasoningEffort;
     if (effort && !["low", "medium", "high"].includes(effort))
       return new UnavailableModelProvider("Anthropic reasoning effort must be low, medium or high.");
     return new AnthropicProvider({
@@ -88,8 +100,8 @@ export function createModelProvider(
       "AI_API_KEY",
       undefined,
       openAi
-        ? { reasoning: { effort: override?.reasoningEffort ?? "medium" } }
-        : openAiCompatibleReasoningOptions(baseUrl, override?.reasoningEffort),
+        ? { reasoning: { effort: reasoningEffort ?? "medium" } }
+        : openAiCompatibleReasoningOptions(baseUrl, reasoningEffort),
       openAi ? "responses" : undefined,
       openAi ? { reasoning: { effort: "low" } } : undefined,
       override?.promptBoundaryMode,
@@ -104,7 +116,7 @@ export function createModelProvider(
       "opencode",
       "OPENCODE_API_KEY",
       undefined,
-      openCodeChatReasoningOptions(model, override?.reasoningEffort),
+      openCodeChatReasoningOptions(model, reasoningEffort),
       undefined,
       undefined,
       override?.promptBoundaryMode,
@@ -120,8 +132,8 @@ export function createModelProvider(
       "OPENCODE_API_KEY",
       undefined,
       model === "muse-spark-1.2-contributor"
-        ? { reasoning: { effort: override?.reasoningEffort ?? "xhigh" } }
-        : openCodeChatReasoningOptions(model, override?.reasoningEffort),
+        ? { reasoning: { effort: reasoningEffort ?? "xhigh" } }
+        : openCodeChatReasoningOptions(model, reasoningEffort),
       model === "muse-spark-1.2-contributor"
         ? "responses"
         : "chat-completions",
@@ -144,7 +156,7 @@ export function createModelProvider(
         "X-OpenRouter-Title": "Tapplet Studio",
       },
       {
-        reasoning: { effort: override?.reasoningEffort ?? "xhigh", exclude: true },
+        reasoning: { effort: reasoningEffort ?? "xhigh", exclude: true },
       },
       undefined,
       undefined,
