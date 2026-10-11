@@ -4,11 +4,11 @@
   "workers_dev": true,
   "preview_urls": false,
   // tapplet.tk.sg is the static site's custom domain (apps/website). These
-  // zone routes run in front of it, so only the operations panel and its API
-  // reach this Worker there; every other path stays with the static site.
+  // zone routes run in front of it for the operations panel and its API. The
+  // admin* wildcard also covers query strings; other paths it catches, such as
+  // /administrator, are passed back to the site (belongsToAdminHostSite).
   "routes": [
-    { "pattern": "tapplet.tk.sg/admin", "zone_id": "ea01004f470a0e8078f1b9fdef547273" },
-    { "pattern": "tapplet.tk.sg/admin/", "zone_id": "ea01004f470a0e8078f1b9fdef547273" },
+    { "pattern": "tapplet.tk.sg/admin*", "zone_id": "ea01004f470a0e8078f1b9fdef547273" },
     { "pattern": "tapplet.tk.sg/v1/admin/*", "zone_id": "ea01004f470a0e8078f1b9fdef547273" }
   ],
   "main": "src/index.ts",

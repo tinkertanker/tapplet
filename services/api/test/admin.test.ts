@@ -7,6 +7,7 @@ import {
   createConfiguredModelProvider,
   decryptAdminApiKey,
   encryptAdminApiKey,
+  belongsToAdminHostSite,
   handleAdminRequest,
   loadConfiguredModelProvider,
 } from "../src/admin";
@@ -420,6 +421,17 @@ describe("operations panel origin", () => {
     expect(local?.status).toBe(200);
     const blank = await handleAdminRequest(new Request("https://api.workers.dev/admin"), { ...env, ADMIN_ORIGIN: "" });
     expect(blank?.status).toBe(200);
+  });
+
+  it("passes non-panel paths on the admin host back to the static site", () => {
+    const { database } = settingsDatabase();
+    const env = { ...environment(database), ADMIN_ORIGIN: "https://tapplet.tk.sg" };
+    const check = (url: string, target: StudioEnv = env) => belongsToAdminHostSite(new Request(url), target);
+    expect(check("https://tapplet.tk.sg/administrator")).toBe(true);
+    expect(check("https://tapplet.tk.sg/admin?source=bookmark")).toBe(false);
+    expect(check("https://tapplet.tk.sg/v1/admin/overview")).toBe(false);
+    expect(check("https://api.workers.dev/administrator")).toBe(false);
+    expect(check("https://tapplet.tk.sg/administrator", environment(database))).toBe(false);
   });
 
   it("prices the requested model from OpenRouter's public list without credentials", async () => {

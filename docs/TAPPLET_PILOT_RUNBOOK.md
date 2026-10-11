@@ -11,7 +11,7 @@ The production resources are in Wrangler's `tinkertanker` profile; keep
 
 After migration `0011_admin_settings.sql` and the matching Worker release are
 deployed, the operator panel is available at <https://tapplet.tk.sg/admin>.
-Zone routes in `services/api/wrangler.jsonc` send `tapplet.tk.sg/admin` and
+Zone routes in `services/api/wrangler.jsonc` send `tapplet.tk.sg/admin*` and
 `tapplet.tk.sg/v1/admin/*` to the API Worker ahead of the static site's custom
 domain; `/admin` on any other host redirects to `ADMIN_ORIGIN`. It
 shows stored content and 14-day activity, and can replace the active

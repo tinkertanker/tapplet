@@ -12,6 +12,7 @@ describe("model list prices", () => {
   it("matches OpenRouter IDs exactly and native IDs by name, ignoring variants", () => {
     expect(findModelPricing(list, "openai/gpt-6-luna")).toMatchObject({ inputPerMillion: 0.1, outputPerMillion: 0.5 });
     expect(findModelPricing(list, "claude-haiku-5-5")).toMatchObject({ id: "anthropic/claude-haiku-5.5", inputPerMillion: 1, outputPerMillion: 5 });
+    expect(findModelPricing(list, "anthropic/claude-haiku-5.5:batch")).toMatchObject({ inputPerMillion: 0.5, outputPerMillion: 2.5 });
   });
 
   it.each(["broken", "missing", ""])("returns null for unusable entries: %s", model => {

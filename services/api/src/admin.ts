@@ -292,6 +292,17 @@ export function createConfiguredModelProvider(env: StudioEnv): ModelProvider {
   };
 }
 
+/**
+ * The tapplet.tk.sg/admin* route also matches paths such as /administrator,
+ * which belong to the static site that owns the host's custom domain.
+ */
+export function belongsToAdminHostSite(request: Request, env: StudioEnv): boolean {
+  const adminOrigin = canonicalAdminOrigin(env);
+  const url = new URL(request.url);
+  return !!adminOrigin && url.host === new URL(adminOrigin).host &&
+    !ADMIN_PATHS.has(url.pathname);
+}
+
 function canonicalAdminOrigin(env: StudioEnv): string | null {
   try {
     const url = new URL(env.ADMIN_ORIGIN ?? "");
@@ -760,11 +771,11 @@ async function setClassKey(classKey){const buttons=[$('attach-class-key'),$('rem
 $('class-key-form').onsubmit=event=>{event.preventDefault();void setClassKey($('class-key').value)};
 $('remove-class-key').onclick=()=>{if(!$('class-key-code').reportValidity())return;if(!confirm('Remove this class key? iPads in the class will use the model configuration instead.'))return;void setClassKey(null)};
 const money=value=>new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:value>0&&value<1?4:2,maximumFractionDigits:value>0&&value<1?4:2}).format(value);
-let pricedModel,requestsEdited=false;
+let pricedModel,requestsEdited=false,pricesEdited=false;
 function recentMonthlyRequests(){const total=data.usage.reduce((a,x)=>a+x.generations+x.revisions,0);return Math.round(total/Math.max(1,data.usage.length)*30)}
-function renderCostDefaults(){const recent=recentMonthlyRequests();$('requests-note').innerHTML='';$('requests-note').append('At the last 14 days’ pace: '+number(recent)+' a month. ');const reset=document.createElement('button');reset.type='button';reset.className='link';reset.textContent='Use this';reset.onclick=()=>{requestsEdited=false;$('requests').value=recent;estimate()};$('requests-note').append(reset);if(!requestsEdited)$('requests').value=recent;const model=data.transport==='tkslopper'?'':['openrouter','anthropic','openai-compatible'].includes(data.model.provider)?data.model.model:null;if(model!==pricedModel){pricedModel=model;$('price-in').value='';$('price-out').value='';void loadPricing(model)}estimate()}
-async function loadPricing(model){if(model===''){$('price-source').textContent='Requests go through tkslopper; enter the prices of its configured aliases.';return}if(model===null){$('price-source').textContent='This provider is not priced per token on a public list; enter your plan’s effective prices.';return}$('price-source').textContent='Looking up the list price for '+model+'…';try{const {pricing}=await api('/v1/admin/model-pricing?model='+encodeURIComponent(model),{signal:AbortSignal.timeout(6000)});if(model!==pricedModel)return;if(!pricing){$('price-source').textContent='No public list price found for '+model+'. Enter your provider’s prices.';return}$('price-in').value=pricing.inputPerMillion;$('price-out').value=pricing.outputPerMillion;$('price-source').textContent='OpenRouter list price for '+pricing.name+' ('+pricing.id+').'}catch{if(model===pricedModel)$('price-source').textContent='Could not load list prices. Enter your provider’s prices.'}estimate()}
+function renderCostDefaults(){const recent=recentMonthlyRequests();$('requests-note').innerHTML='';$('requests-note').append('At the last 14 days’ pace: '+number(recent)+' a month. ');const reset=document.createElement('button');reset.type='button';reset.className='link';reset.textContent='Use this';reset.onclick=()=>{requestsEdited=false;$('requests').value=recent;estimate()};$('requests-note').append(reset);if(!requestsEdited)$('requests').value=recent;const model=data.transport==='tkslopper'?'':['openrouter','anthropic','openai-compatible'].includes(data.model.provider)?data.model.model:null;if(model!==pricedModel){pricedModel=model;pricesEdited=false;$('price-in').value='';$('price-out').value='';void loadPricing(model)}estimate()}
+async function loadPricing(model){if(model===''){$('price-source').textContent='Requests go through tkslopper; enter the prices of its configured aliases.';return}if(model===null){$('price-source').textContent='This provider is not priced per token on a public list; enter your plan’s effective prices.';return}$('price-source').textContent='Looking up the list price for '+model+'…';try{const {pricing}=await api('/v1/admin/model-pricing?model='+encodeURIComponent(model),{signal:AbortSignal.timeout(6000)});if(model!==pricedModel||pricesEdited)return;if(!pricing){$('price-source').textContent='No public list price found for '+model+'. Enter your provider’s prices.';return}$('price-in').value=pricing.inputPerMillion;$('price-out').value=pricing.outputPerMillion;$('price-source').textContent='OpenRouter list price for '+pricing.name+' ('+pricing.id+').'}catch{if(model===pricedModel)$('price-source').textContent='Could not load list prices. Enter your provider’s prices.'}estimate()}
 function estimate(){const values=['price-in','price-out','tokens-in','tokens-out','requests'].map(id=>$(id).valueAsNumber);if(values.some(x=>!Number.isFinite(x)||x<0)){['cost-request','cost-month','cost-year'].forEach(id=>$(id).textContent='–');return}const [priceIn,priceOut,tokensIn,tokensOut,requests]=values;const perRequest=(tokensIn*priceIn+tokensOut*priceOut)/1e6;$('cost-request').textContent=money(perRequest);$('cost-month').textContent=money(perRequest*requests);$('cost-year').textContent=money(perRequest*requests*12)}
-$('cost-form').oninput=event=>{if(event.target.id==='requests')requestsEdited=true;estimate()};$('cost-form').onsubmit=event=>event.preventDefault();
+$('cost-form').oninput=event=>{if(event.target.id==='requests')requestsEdited=true;if(event.target.id.startsWith('price-'))pricesEdited=true;estimate()};$('cost-form').onsubmit=event=>event.preventDefault();
 $('sign-out').onclick=()=>{sessionStorage.removeItem('tapplet-admin-token');location.reload()};if(token)load().catch(()=>{sessionStorage.removeItem('tapplet-admin-token');token=''})
 </script></body></html>`;

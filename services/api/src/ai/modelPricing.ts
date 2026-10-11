@@ -23,7 +23,7 @@ function perMillion(value: unknown): number | null {
 
 // Matches "openai/gpt-6-luna" exactly, or a native ID such as
 // "claude-haiku-5-5" against "anthropic/claude-haiku-5.5". Batch and other
-// ":variant" listings are never chosen.
+// ":variant" listings are only chosen when requested exactly.
 function canonical(id: string): string {
   return id.toLowerCase().replace(/\./g, "-");
 }
@@ -34,10 +34,10 @@ export function findModelPricing(value: unknown, model: string): ModelPricing | 
   if (!wanted) return null;
   let suffixMatch: ModelPricing | null = null;
   for (const entry of value.data) {
-    if (!record(entry) || typeof entry.id !== "string" || entry.id.includes(":")) continue;
+    if (!record(entry) || typeof entry.id !== "string") continue;
     const id = canonical(entry.id);
     const exact = id === wanted;
-    if (!exact && id.split("/").pop() !== wanted) continue;
+    if (!exact && (id.includes(":") || id.split("/").pop() !== wanted)) continue;
     const pricing = record(entry.pricing) ? entry.pricing : {};
     const input = perMillion(pricing.prompt);
     const output = perMillion(pricing.completion);

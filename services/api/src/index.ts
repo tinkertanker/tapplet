@@ -1,4 +1,8 @@
-import { createConfiguredModelProvider, handleAdminRequest } from "./admin";
+import {
+  belongsToAdminHostSite,
+  createConfiguredModelProvider,
+  handleAdminRequest,
+} from "./admin";
 import { createStudioApp } from "./app";
 import { FAVICON_SVG, publicationErrorResponse } from "./brand";
 import { CloudflareAssetStore } from "./assets";
@@ -23,6 +27,8 @@ export default {
     const pathname = url.pathname;
     const adminResponse = await handleAdminRequest(request, env);
     if (adminResponse) return adminResponse;
+    // A subrequest to the routed host reaches its custom domain (the site).
+    if (belongsToAdminHostSite(request, env)) return fetch(request);
     if (!pathname.startsWith("/v1/") && pathname !== "/health") {
       if (
         pathname.length > 1 &&
