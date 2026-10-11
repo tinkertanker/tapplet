@@ -308,6 +308,7 @@ struct GuidedMakeView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 4)
             }
+            .scrollClipDisabled()
         }
         .frame(maxWidth: 760, alignment: .leading)
     }
