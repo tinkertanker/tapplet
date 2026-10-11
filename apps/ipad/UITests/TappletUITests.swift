@@ -550,16 +550,20 @@ final class TappletUITests: XCTestCase {
         let showSidebar = app.buttons.matching(
             NSPredicate(format: "label ==[c] 'Show Sidebar'")
         ).firstMatch
-        // Wait for either state without a failing wait: a timed-out wait makes
-        // XCTest collect a slow accessibility snapshot for failure triage.
-        let deadline = Date().addingTimeInterval(8)
-        while !item.exists && !showSidebar.exists && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        // Poll instead of a failing wait: a timed-out wait makes XCTest collect
+        // a slow accessibility snapshot. Just after launch the sidebar can still
+        // be animating open, so a tap may close it; tap again if it stays shut.
+        let deadline = Date().addingTimeInterval(12)
+        var lastTap = Date.distantPast
+        while !item.exists && Date() < deadline {
+            if showSidebar.exists && Date().timeIntervalSince(lastTap) > 1.5 {
+                showSidebar.tap()
+                lastTap = Date()
+            } else {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            }
         }
-        if !item.exists, showSidebar.exists {
-            showSidebar.tap()
-        }
-        XCTAssertTrue(item.waitUntilExists(timeout: 5))
+        XCTAssertTrue(item.exists, "Sidebar item \(label) should be visible")
         item.tap()
     }
 
