@@ -194,9 +194,14 @@ struct ExploreView: View {
             Text(title)
                 .font(TappletTheme.Typography.eyebrow)
                 .foregroundStyle(TappletTheme.mutedInk)
-            FlowLayout(spacing: 8) {
-                content()
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    content()
+                }
+                .padding(.top, 2)
+                .padding(.bottom, 10)
             }
+            .scrollClipDisabled()
         }
     }
 
