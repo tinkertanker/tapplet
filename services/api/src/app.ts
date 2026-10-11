@@ -246,6 +246,7 @@ function revisionResponse(revision: RevisionRecord, origin: string) {
     )[revision.kind],
     instruction: revision.instruction,
     designCard: revision.designCard,
+    comment: revision.comment ?? null,
     // Screenshots are private; the iPad must not receive a URL that AsyncImage
     // cannot authenticate. Upload success remains part of the wire contract.
     screenshotUrl: null,
@@ -777,6 +778,7 @@ export function createStudioApp(d: Deps) {
         ...advisoryWarnings("generated_content", [
           ...inspectHtml(out.html),
           ...inspectUnknownText(out.designCard),
+          ...inspectText(out.comment ?? ""),
         ]),
       );
       const rid = id(),
@@ -792,6 +794,7 @@ export function createStudioApp(d: Deps) {
         kind: "generation",
         instruction: null,
         designCard: out.designCard ? JSON.stringify(out.designCard) : null,
+        comment: out.comment ?? null,
         exemplars: ex.map((x) => x.revisionId),
         modelVersion: provider.name,
         promptVersion: PROMPT_VERSION,
@@ -1096,6 +1099,7 @@ export function createStudioApp(d: Deps) {
             kind: "revision",
             instruction,
             designCard: out.designCard ? JSON.stringify(out.designCard) : null,
+            comment: out.comment ?? null,
             exemplars: [],
             modelVersion: provider.name,
             promptVersion: PROMPT_VERSION,
@@ -1106,6 +1110,7 @@ export function createStudioApp(d: Deps) {
           ...advisoryWarnings("generated_content", [
             ...inspectHtml(out.html),
             ...inspectUnknownText(out.designCard),
+            ...inspectText(out.comment ?? ""),
           ]),
         );
         const assetIds = await assets(out.html, o);

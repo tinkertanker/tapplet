@@ -65,6 +65,22 @@ describe("HTML generation contract", () => {
     },
   );
 
+  it("keeps a trimmed teacher comment alongside the HTML", () => {
+    expect(validateHtmlOutput({ html, comment: "  Added a timer at the top.  " }))
+      .toEqual({ html, comment: "Added a timer at the top." });
+  });
+
+  it.each([null, 1, "", "   ", "x".repeat(601)])(
+    "drops an invalid optional comment without spending repairs: %j", async (comment) => {
+      const provider = {
+        name: "fixed", generate: vi.fn().mockResolvedValue({ html, comment }),
+        moderate: vi.fn(), revise: vi.fn(), repair: vi.fn().mockRejectedValue(new Error("must not repair")),
+      } as unknown as ModelProvider;
+      await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
+      expect(provider.repair).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves valid cards including unknown optional metadata fields", () => {
     const designCard = { title: "Fractions", tags: ["math"], layout: "cards", future: { color: "blue" } };
     expect(validateHtmlOutput({ html, designCard })).toEqual({ html, designCard });
@@ -90,7 +106,7 @@ describe("HTML generation contract", () => {
       },
       [exemplar],
     );
-    expect(PROMPT_VERSION).toBe("html-v8");
+    expect(PROMPT_VERSION).toBe("html-v9");
     expect(SYSTEM_PROMPT).toContain("Honour the activity form");
     expect(prompt).toContain("-----BEGIN UNTRUSTED EXEMPLAR DATA-----");
     expect(prompt).toContain("-----END UNTRUSTED EXEMPLAR DATA-----");

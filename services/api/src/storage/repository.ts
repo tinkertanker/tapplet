@@ -55,6 +55,7 @@ export interface RevisionRecord {
   kind: "generation" | "revision" | "remix" | "import";
   instruction: string | null;
   designCard: string | null;
+  comment?: string | null;
   exemplars: string[];
   modelVersion: string;
   promptVersion: string;

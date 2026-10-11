@@ -35,6 +35,7 @@ export interface RequiredManagedAsset {
   decorative: boolean;
 }
 const MAX_HTML_BYTES = 200_000;
+const MAX_COMMENT_CHARACTERS = 600;
 export const DEFAULT_MAX_MODEL_REPAIRS = 2;
 // The iPad waits 150 seconds. Start a repair only if a full model call still
 // fits in this budget, leaving time for retrieval, moderation and storage.
@@ -66,6 +67,7 @@ const JAVASCRIPT_TYPES = new Set([
 type ParsedHtml = {
   html: string;
   designCard?: DesignCard;
+  comment?: string;
   referencedImages: ReadonlySet<string>;
   bodyEnd?: number;
 };
@@ -217,13 +219,14 @@ function inspect(
     ]);
   const keys = Object.keys(candidate);
   const issues: Issue[] = [];
-  if (keys.some((k) => k !== "html" && k !== "designCard"))
+  if (keys.some((k) => k !== "html" && k !== "designCard" && k !== "comment"))
     issues.push({
       kind: "shape",
-      message: "Only html and designCard are allowed.",
+      message: "Only html, designCard and comment are allowed.",
     });
   const html = Reflect.get(candidate, "html");
   const card = Reflect.get(candidate, "designCard");
+  const comment = teacherComment(Reflect.get(candidate, "comment"));
   let parsed: ParsedHtml | undefined;
   if (typeof html !== "string" || !html.trim())
     issues.push({ kind: "shape", message: "html must be nonempty." });
@@ -246,6 +249,7 @@ function inspect(
       !Array.isArray(card)
         ? { designCard: card as DesignCard }
         : {}),
+      ...(comment ? { comment } : {}),
     };
     parsed = parsedHtml;
     if (new TextEncoder().encode(html).byteLength > MAX_HTML_BYTES)
@@ -393,8 +397,17 @@ function inspect(
     artifact: {
       html: parsed.html,
       ...(parsed.designCard === undefined ? {} : { designCard: parsed.designCard }),
+      ...(parsed.comment === undefined ? {} : { comment: parsed.comment }),
     },
   };
+}
+
+// The teacher-facing note is optional: a missing, blank or oversized comment is
+// dropped rather than discarding valid HTML or spending a model repair.
+function teacherComment(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= MAX_COMMENT_CHARACTERS ? trimmed : undefined;
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -436,6 +449,13 @@ function envelopeAfterInsert(html: string, candidate: unknown) {
     "designCard" in candidate
   )
     next.designCard = Reflect.get(candidate, "designCard");
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    !Array.isArray(candidate) &&
+    "comment" in candidate
+  )
+    next.comment = Reflect.get(candidate, "comment");
   return next;
 }
 

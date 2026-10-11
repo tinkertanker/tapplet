@@ -70,7 +70,7 @@ describe("model provider selection", () => {
     expect(body).toMatchObject({
       model: "claude-haiku-5-5", max_tokens: 32000, stream: false,
       thinking: { type: "adaptive" },
-      output_config: { effort: "medium", format: { type: "json_schema", schema: { required: ["html", "designCard"] } } },
+      output_config: { effort: "medium", format: { type: "json_schema", schema: { required: ["html", "designCard", "comment"] } } },
       messages: [{ role: "user", content: expect.any(String) }],
       system: expect.any(String),
     });

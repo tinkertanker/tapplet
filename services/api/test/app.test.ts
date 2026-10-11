@@ -705,6 +705,33 @@ describe("Tapplet API registration and public HTML", () => {
     },
   );
 
+  it("returns and lists the model's teacher comment for each revision", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string };
+      headRevision: { id: string; comment: string | null };
+    };
+    expect(first.headRevision.comment).toBe("Made a first version from your plan.");
+    const revised = await app.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}/revisions`, "POST", {
+        instruction: "Add a timer",
+        expectedHeadRevisionId: first.headRevision.id,
+      }),
+    );
+    expect(revised.status).toBe(201);
+    const second = (await revised.json()) as { headRevision: { comment: string | null } };
+    expect(second.headRevision.comment).toBe("Applied your change: Add a timer");
+    const listed = (await (
+      await app.fetch(authenticated(`/v1/artifacts/${first.artifact.id}/revisions`))
+    ).json()) as { revisions: { comment: string | null }[] };
+    expect(listed.revisions.map((revision) => revision.comment)).toEqual([
+      "Made a first version from your plan.",
+      "Applied your change: Add a timer",
+    ]);
+  });
+
   it("creates immutable revisions, moves the head, and records remix lineage", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
