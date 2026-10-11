@@ -144,7 +144,7 @@ test('landing page contains the logo, title, description, status, beta and conta
   const document = documentFor('index.html');
   assert.equal(document.querySelector('main img')?.getAttribute('src'), '/AppIcon-1024.png');
   assert.equal(document.querySelector('h1')?.textContent, 'Tapplet');
-  assert.equal(document.querySelectorAll('main p').length, 3);
+  assert.equal(document.querySelectorAll('main p').length, 2);
   assert.match(document.querySelector('.tagline')?.textContent ?? '', /classroom activities/);
   assert.equal(document.querySelector('.status')?.textContent, 'Now in beta for iPad');
   const links = [...document.querySelectorAll('a')];
@@ -152,8 +152,7 @@ test('landing page contains the logo, title, description, status, beta and conta
     links.map((link) => [link.textContent, link.getAttribute('href')]),
     [
       ['Join the TestFlight beta', testFlightUrl],
-      ['Contact us', 'mailto:hello@tk.sg'],
-      ['hello@tk.sg', 'mailto:hello@tk.sg'],
+      ['Contact hello@tk.sg', 'mailto:hello@tk.sg'],
       ['Privacy', '/privacy'],
     ],
   );

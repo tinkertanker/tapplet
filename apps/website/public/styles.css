@@ -142,14 +142,14 @@ a:focus-visible {
   color: var(--ink);
 }
 
-.button:hover {
-  filter: brightness(0.94);
+.button:focus-visible {
+  border-radius: 12px;
 }
 
-.contact-note {
-  margin: 1rem 0 0;
-  color: var(--muted-ink);
-  font-size: 0.9375rem;
+@media (hover: hover) {
+  .button:hover {
+    filter: brightness(0.94);
+  }
 }
 
 .site-footer {
