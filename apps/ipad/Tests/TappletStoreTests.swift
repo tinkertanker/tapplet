@@ -370,6 +370,32 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRegistrationErrorsRequestAccessFromEveryOperation() {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let operations: [TappletOperation] = [
+            .activation, .generation, .refinement, .undo, .directSave, .publish,
+            .unpublish, .extend, .restore, .delete, .image
+        ]
+
+        for operation in operations {
+            store.dismissWorkshopAccess()
+            let presentation = store.present(
+                TappletAPIError.server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again"),
+                during: operation
+            )
+
+            XCTAssertTrue(presentation.requestsWorkshopAccess, "\(operation) should ask for a class code")
+            XCTAssertNotEqual(presentation.title, "Tapplet Studio could not complete this action")
+            XCTAssertTrue(store.showsWorkshopAccess)
+        }
+    }
+
+    @MainActor
     func testSuccessfulCredentialRefreshDoesNotCloseManuallyOpenedAccess() async {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let store = TappletStore(
