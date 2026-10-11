@@ -15,6 +15,8 @@ const sourceIcon = path.join(
   '../ipad/Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png',
 );
 const pages = ['index.html', 'privacy/index.html', '404.html'];
+// The only external link: Tapplet Studio's public TestFlight invitation.
+const testFlightUrl = 'https://testflight.apple.com/join/YxptvvqW';
 
 function read(relativePath) {
   return readFileSync(path.join(publicDirectory, relativePath), 'utf8');
@@ -126,6 +128,7 @@ test('pages are script-free, self-contained and accessible', () => {
         assert.equal(reference, 'mailto:hello@tk.sg', page);
         continue;
       }
+      if (reference === testFlightUrl) continue;
       assert.match(reference, /^\/(?!\/)/, `${page} references ${reference}`);
       const target = reference === '/' ? '/index.html' : reference;
       const candidates = [target, `${target}.html`, `${target}/index.html`];
@@ -137,17 +140,22 @@ test('pages are script-free, self-contained and accessible', () => {
   }
 });
 
-test('landing page contains only the logo, title, description, status and privacy link', () => {
+test('landing page contains the logo, title, description, status, beta and contact links', () => {
   const document = documentFor('index.html');
   assert.equal(document.querySelector('main img')?.getAttribute('src'), '/AppIcon-1024.png');
   assert.equal(document.querySelector('h1')?.textContent, 'Tapplet');
-  assert.equal(document.querySelectorAll('main p').length, 2);
+  assert.equal(document.querySelectorAll('main p').length, 3);
   assert.match(document.querySelector('.tagline')?.textContent ?? '', /classroom activities/);
-  assert.equal(document.querySelector('.status')?.textContent, 'Coming soon');
+  assert.equal(document.querySelector('.status')?.textContent, 'Now in beta for iPad');
   const links = [...document.querySelectorAll('a')];
   assert.deepEqual(
     links.map((link) => [link.textContent, link.getAttribute('href')]),
-    [['Privacy', '/privacy']],
+    [
+      ['Join the TestFlight beta', testFlightUrl],
+      ['Contact us', 'mailto:hello@tk.sg'],
+      ['hello@tk.sg', 'mailto:hello@tk.sg'],
+      ['Privacy', '/privacy'],
+    ],
   );
 });
 
@@ -195,6 +203,6 @@ test('published files contain no access-code-shaped values or external URLs', ()
     if (file.endsWith('.png')) continue;
     const content = readFileSync(file, 'utf8');
     assert.doesNotMatch(content, /\b\d{4}[A-Za-z]{8}\b/, file);
-    assert.doesNotMatch(content, /https?:\/\//, file);
+    assert.doesNotMatch(content.replaceAll(testFlightUrl, ''), /https?:\/\//, file);
   }
 });

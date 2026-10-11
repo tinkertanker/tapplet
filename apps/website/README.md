@@ -1,7 +1,7 @@
 # Tapplet preview website
 
-A dependency-free static site: a "coming soon" landing page and the public
-privacy notice. It is deployed as the static assets-only Worker
+A dependency-free static site: a landing page with the public TestFlight
+invitation and a contact link, and the public privacy notice. It is deployed as the static assets-only Worker
 `tapplet-preview` and is separate from the API Worker in `services/api`. It
 has no Worker script, bindings, D1/R2 resources or secrets, and its only route
 is the `tapplet.tk.sg` custom domain.
