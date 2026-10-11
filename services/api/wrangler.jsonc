@@ -3,14 +3,12 @@
   "name": "classroom-widgets-studio-api",
   "workers_dev": true,
   "preview_urls": false,
-  // tapplet.tk.sg is the static site's custom domain (apps/website). These
-  // zone routes run in front of it for the operations panel and its API. The
-  // admin* wildcard also covers query strings; other paths it catches, such as
-  // /administrator, are passed back to the site (belongsToAdminHostSite).
-  "routes": [
-    { "pattern": "tapplet.tk.sg/admin*", "zone_id": "ea01004f470a0e8078f1b9fdef547273" },
-    { "pattern": "tapplet.tk.sg/v1/admin/*", "zone_id": "ea01004f470a0e8078f1b9fdef547273" }
-  ],
+  // The operations panel is served on tapplet.tk.sg (the static site's custom
+  // domain) by two zone routes on this Worker: tapplet.tk.sg/admin* and
+  // tapplet.tk.sg/v1/admin/*. They are attached through Cloudflare's API, not
+  // here, because the CI deploy token cannot edit zone routes; with no
+  // "routes" key, wrangler deploy leaves them in place. See
+  // docs/TAPPLET_PILOT_RUNBOOK.md.
   "main": "src/index.ts",
   "compatibility_date": "2026-07-18",
   "compatibility_flags": ["nodejs_compat"],
