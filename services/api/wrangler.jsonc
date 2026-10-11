@@ -3,6 +3,14 @@
   "name": "classroom-widgets-studio-api",
   "workers_dev": true,
   "preview_urls": false,
+  // tapplet.tk.sg is the static site's custom domain (apps/website). These
+  // zone routes run in front of it for the operations panel and its API. The
+  // admin* wildcard also covers query strings; other paths it catches, such as
+  // /administrator, are passed back to the site (belongsToAdminHostSite).
+  "routes": [
+    { "pattern": "tapplet.tk.sg/admin*", "zone_id": "ea01004f470a0e8078f1b9fdef547273" },
+    { "pattern": "tapplet.tk.sg/v1/admin/*", "zone_id": "ea01004f470a0e8078f1b9fdef547273" }
+  ],
   "main": "src/index.ts",
   "compatibility_date": "2026-07-18",
   "compatibility_flags": ["nodejs_compat"],
@@ -63,6 +71,8 @@
     // Must not exceed the gateway's effective body limit: the smaller of its
     // MAX_BODY_BYTES and the environment's max_request_bytes.
     "TKSLOPPER_MAX_REQUEST_BYTES": "1048576",
+    // /admin on any other host redirects here (see the routes above).
+    "ADMIN_ORIGIN": "https://tapplet.tk.sg",
     "PUBLIC_PLAYER_ORIGIN": "https://classroom-widgets-studio-api.tinkertanker.workers.dev",
     "ALLOWED_ORIGINS": "https://classroom-widgets-studio-api.tinkertanker.workers.dev",
     "DAILY_GENERATION_LIMIT": "20",
