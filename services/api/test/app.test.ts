@@ -557,6 +557,49 @@ describe("Tapplet API registration and public HTML", () => {
     });
   });
 
+  it("stores the brief locale and defaults to en-SG", async () => {
+    const provider = new FixtureModelProvider();
+    const generate = provider.generate.bind(provider);
+    const received: Array<string | undefined> = [];
+    provider.generate = async (brief, exemplars) => {
+      received.push(brief.locale);
+      return generate(brief, exemplars);
+    };
+    app = createStudioApp({ repository, provider, config, sources });
+
+    const french = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, locale: "fr-FR" },
+      }),
+    );
+    expect(french.status).toBe(201);
+    const frenchBody = (await french.json()) as { artifact: { id: string; locale: string } };
+    expect(frenchBody.artifact.locale).toBe("fr-FR");
+    expect(
+      JSON.parse(repository.artifacts.get(frenchBody.artifact.id)!.generationBrief),
+    ).toMatchObject({ locale: "fr-FR" });
+
+    const unspecified = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(unspecified.status).toBe(201);
+    const unspecifiedBody = (await unspecified.json()) as { artifact: { id: string; locale: string } };
+    expect(unspecifiedBody.artifact.locale).toBe("en-SG");
+    expect(
+      JSON.parse(repository.artifacts.get(unspecifiedBody.artifact.id)!.generationBrief),
+    ).not.toHaveProperty("locale");
+    expect(received).toEqual(["fr-FR", undefined]);
+
+    const invalid = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, locale: "French please" },
+      }),
+    );
+    expect(invalid.status).toBe(422);
+  });
+
   it("infers abbreviated and mother-tongue learner contexts", async () => {
     const cases: Array<[string, string]> = [
       ["P5 Sci", "science"],
