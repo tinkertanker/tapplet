@@ -273,39 +273,42 @@ struct GuidedMakeView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(TappletTheme.accent)
             .accessibilityIdentifier("skip-starter-plans")
-            LazyVGrid(
-                columns: dynamicTypeSize.isAccessibilitySize
-                    ? [GridItem(.flexible())]
-                    : [GridItem(.adaptive(minimum: 200), spacing: 10)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                ForEach(StarterPlan.all) { plan in
-                    Button {
-                        store.applyStarterPlan(plan)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(plan.form.title.uppercased())
-                                .font(TappletTheme.Typography.eyebrow)
-                                .foregroundStyle(TappletTheme.accent)
-                            Text(plan.title)
-                                .font(TappletTheme.Typography.cardTitle)
-                                .foregroundStyle(TappletTheme.ink)
-                                .multilineTextAlignment(.leading)
-                            Text(plan.summary)
-                                .font(.subheadline)
-                                .foregroundStyle(TappletTheme.mutedInk)
-                                .multilineTextAlignment(.leading)
-                                .lineLimit(3)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(StarterPlan.all) { plan in
+                        Button {
+                            store.applyStarterPlan(plan)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(plan.form.title.uppercased())
+                                    .font(TappletTheme.Typography.eyebrow)
+                                    .foregroundStyle(TappletTheme.accent)
+                                Text(plan.title)
+                                    .font(TappletTheme.Typography.cardTitle)
+                                    .foregroundStyle(TappletTheme.ink)
+                                    .multilineTextAlignment(.leading)
+                                Text(plan.summary)
+                                    .font(.subheadline)
+                                    .foregroundStyle(TappletTheme.mutedInk)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(3)
+                            }
+                            .padding(14)
+                            .frame(
+                                width: dynamicTypeSize.isAccessibilitySize ? 320 : 230,
+                                alignment: .topLeading
+                            )
+                            .frame(maxHeight: .infinity, alignment: .topLeading)
+                            .tappletCard()
                         }
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .tappletCard()
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("starter-plan-\(plan.id)")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("starter-plan-\(plan.id)")
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 4)
             }
+            .scrollClipDisabled()
         }
         .frame(maxWidth: 760, alignment: .leading)
     }
