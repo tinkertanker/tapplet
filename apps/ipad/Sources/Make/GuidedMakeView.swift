@@ -273,7 +273,7 @@ struct GuidedMakeView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(TappletTheme.accent)
             .accessibilityIdentifier("skip-starter-plans")
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(StarterPlan.all) { plan in
                         Button {
@@ -306,7 +306,8 @@ struct GuidedMakeView: View {
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 4)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
             }
             .scrollClipDisabled()
         }
