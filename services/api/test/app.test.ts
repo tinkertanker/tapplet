@@ -452,6 +452,7 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(generated.status).toBe(201);
     expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    expect(((await generated.json()) as { warnings?: unknown }).warnings).toBeUndefined();
     expect(trace.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "retrieval",
@@ -583,7 +584,7 @@ describe("Tapplet API registration and public HTML", () => {
     }
   });
 
-  it("does not substitute retrieval when a preferred example cannot be resolved", async () => {
+  it("falls back to retrieval and warns when a preferred example cannot be resolved", async () => {
     const seed = {
       seedId: "fraction-equivalence-diagnostic",
       title: "Fraction Equivalence Detective",
@@ -639,7 +640,15 @@ describe("Tapplet API registration and public HTML", () => {
       }),
     );
     expect(generated.status).toBe(201);
-    expect(receivedExemplars).toEqual([]);
+    expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    await expect(generated.json()).resolves.toMatchObject({
+      warnings: [
+        expect.objectContaining({
+          source: "prompt",
+          code: "PREFERRED_EXAMPLE_UNAVAILABLE",
+        }),
+      ],
+    });
   });
 
   it("rejects an unknown activity form", async () => {

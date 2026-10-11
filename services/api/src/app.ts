@@ -721,11 +721,17 @@ export function createStudioApp(d: Deps) {
             ),
           ])
         : [null, false];
-      const preferredAllowed = !!(preferred && (ownedPreferred || retrievablePreferred));
-      const found = request.preferredExampleRevisionId
-        ? preferredAllowed && preferred
-          ? [{ revisionId: preferred.id, descriptor: "Teacher-selected example" }]
-          : []
+      const usePreferred = !!(preferred && (ownedPreferred || retrievablePreferred));
+      // An unavailable teacher choice falls back to automatic retrieval.
+      if (request.preferredExampleRevisionId && !usePreferred)
+        warnings.push({
+          source: "prompt",
+          code: "PREFERRED_EXAMPLE_UNAVAILABLE",
+          message:
+            "The example you chose was unavailable, so it was not used. Tapplet Studio looked for similar examples instead.",
+        });
+      const found = usePreferred && preferred
+        ? [{ revisionId: preferred.id, descriptor: "Teacher-selected example" }]
         : query
           ? await d.repository.searchRetrieval(query, 2, now().toISOString())
           : [];
@@ -749,7 +755,7 @@ export function createStudioApp(d: Deps) {
         emitOperationalTrace(trace.sink, {
           kind: "retrieval",
           requestId: trace.requestId,
-          mode: request.preferredExampleRevisionId
+          mode: usePreferred
             ? "preferred"
             : query
               ? "automatic"
