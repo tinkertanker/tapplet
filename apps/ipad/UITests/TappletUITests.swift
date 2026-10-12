@@ -207,6 +207,8 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(code.waitUntilExists(timeout: 5))
         code.tap()
         code.typeText("SHORT")
+        let hint = app.staticTexts["Enter your six-digit code. For an older code, use its last six letters."]
+        XCTAssertEqual(hint.value as? String, "Code too short", "A short code must not be signalled by colour alone")
 
         let activate = app.buttons["activate-workshop-access"]
         XCTAssertTrue(activate.isEnabled)
