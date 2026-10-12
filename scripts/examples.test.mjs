@@ -240,6 +240,9 @@ test('spelling misses teach the target pattern', async () => {
   const msg = dom.window.document.getElementById('msg').textContent;
   assert.match(msg, /silent/i);
   assert.doesNotMatch(msg, /^No Z in this word\. A ray is added\.$/);
+  // A y guess is for the long i sound that opens "island", not a vowel the silent s replaces.
+  dom.window.document.querySelector('[data-ch="y"]').click();
+  assert.match(dom.window.document.getElementById('msg').textContent, /^No y\. The long i sound at the start is spelled with just i/);
   dom.window.close();
 });
 
