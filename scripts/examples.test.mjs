@@ -719,6 +719,19 @@ test('every curated control has an accessible name', async () => {
   }
 });
 
+test('no curated control sits inside an image, whose children assistive tech hides', async () => {
+  const directory = path.resolve('apps/ipad/Resources/Examples');
+  const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
+  for (const file of files) {
+    const dom = new JSDOM(await readFile(path.join(directory, file), 'utf8'));
+    const hidden = [...dom.window.document.querySelectorAll(
+      '[role="img"] :is(button, input, select, textarea, a[href], [tabindex], [role="button"])',
+    )].map((control) => control.outerHTML.slice(0, 60));
+    assert.deepEqual(hidden, [], file);
+    dom.window.close();
+  }
+});
+
 test('tap-to-select corpus controls expose their pressed state', async () => {
   const pressed = (document) => [...document.querySelectorAll('[aria-pressed="true"]')].map((el) => el.textContent);
   const load = async (file) => new JSDOM(
