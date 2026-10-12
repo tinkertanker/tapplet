@@ -322,7 +322,8 @@ function inspect(
         message: "Network APIs are not allowed.",
       });
     if (
-      /\b(?:localStorage|sessionStorage|indexedDB|caches)\b|document\.cookie/i.test(
+      // "caches" is also an ordinary word, so match only Cache API calls.
+      /\b(?:localStorage|sessionStorage|indexedDB)\b|\bcaches\.(?:open|match|matchAll|has|keys|delete)\b|document\.cookie/i.test(
         html,
       )
     )

@@ -35,6 +35,21 @@ describe("HTML generation contract", () => {
     expect(() => validateHtmlOutput({ html: candidate })).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts the word caches in content while rejecting storage APIs", () => {
+    const prose = html.replace("Hello", "<p>Squirrels bury acorns in caches. Caches help CPUs.</p>");
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const script of [
+      'caches.open("v1")',
+      "window.caches.match(event)",
+      'localStorage.setItem("score", "1")',
+      "indexedDB.open('db')",
+    ]) {
+      expect(() =>
+        validateHtmlOutput({ html: html.replace('document.body.dataset.ok="1"', script) }),
+      ).toThrow(InvalidModelOutputError);
+    }
+  });
+
   it("normalizes surrounding ASCII whitespace in managed URL references", () => {
     const candidate = html.replace("assets/asset-one", " \t\nassets/asset-one\r\f ")
       .replace("</style>", '.image{background:url(" \tassets/css-image\n ")}</style>');
