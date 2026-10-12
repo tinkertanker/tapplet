@@ -93,6 +93,49 @@ final class AppletPreviewSecurityTests: XCTestCase {
         withExtendedLifetime(webView) {}
     }
 
+    @MainActor
+    func testDismissedProtectionFailureIsNotPresentedAgainForTheSameRevision() async throws {
+        let storageDirectory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: storageDirectory) }
+        let store = TappletStore(
+            storageDirectory: storageDirectory,
+            bundle: Bundle(for: TappletStore.self)
+        )
+        let source = try XCTUnwrap(store.examples.first?.source)
+        var loadState = PreviewLoadState.loading
+        var presentableError: String?
+        let failed = expectation(description: "Protection fails when its content controller is gone")
+        failed.assertForOverFulfill = false
+        let coordinator = AppletPreviewWebView.Coordinator(
+            state: Binding(
+                get: { loadState },
+                set: {
+                    loadState = $0
+                    if case .failed = $0 { failed.fulfill() }
+                }
+            ),
+            presentableError: Binding(
+                get: { presentableError },
+                set: { presentableError = $0 }
+            ),
+            onSnapshot: nil,
+            assets: []
+        )
+
+        // The controller is released at once, so installing the rule list fails closed.
+        coordinator.installProtection(in: WKUserContentController())
+        coordinator.load(source)
+        await fulfillment(of: [failed], timeout: 10)
+        XCTAssertNotNil(presentableError)
+
+        presentableError = nil // The teacher dismisses the alert, which updates the view.
+        coordinator.load(source)
+
+        XCTAssertNil(presentableError, "A dismissed preview error must not reappear for the same revision")
+        if case .failed = loadState {} else { XCTFail("The preview must stay blocked") }
+    }
+
     func testProtectionReadinessFailsClosedUntilRuleListIsInstalled() {
         XCTAssertFalse(PreviewProtectionReadiness.compiling.permitsLoading)
         XCTAssertTrue(PreviewProtectionReadiness.installed.permitsLoading)
