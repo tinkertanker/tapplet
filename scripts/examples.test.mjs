@@ -78,6 +78,23 @@ test('allows comments but rejects overlooked network and resource paths', () => 
   }
 });
 
+test('accepts custom attributes and script variables the production validator accepts', () => {
+  for (const snippet of [
+    '<button data-action="check" data-src="pool-1" data-href="x">Go</button>',
+    '<script>const action = event.target.dataset.action; let src = card.dataset.src; var poster = 1;</script>',
+  ]) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);
+  }
+  for (const snippet of [
+    '<img alt=""\nsrc="https://outside.invalid/a.png">',
+    '<svg><use\nxlink:href="https://outside.invalid/a.svg#i"/></svg>',
+    '<script>const image = new Image(); image.src = "https://outside.invalid/a.png";</script>',
+    '<script>box.innerHTML = \'<img src="https://outside.invalid/a.png">\';</script>',
+  ]) {
+    assert.equal(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).valid, false, snippet);
+  }
+});
+
 test('validates manifest uniqueness and required metadata', () => {
   const seed = { id: 'stable-id', filename: 'stable-id.html', title: 'Title', summary: 'Summary', subject: 'science', level: 'secondary', locale: 'en-SG', learningObjective: 'Learn', tags: ['a', 'b', 'c'], interactionPattern: 'quiz', descriptor: 'Card', designCard: { layout: 'one screen' } };
   assert.deepEqual(validateSeedManifest({ schemaVersion: '1.0', seeds: [seed] }), []);
@@ -293,6 +310,22 @@ test('line golf rejects a half-unit miss on a horizontal hole', async () => {
   dom.window.close();
 });
 
+test('line golf ignores a second check while the next hole loads', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/line-golf.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  document.getElementById('m').value = '2';
+  document.getElementById('c').value = '1';
+  document.getElementById('check').click();
+  document.getElementById('check').click();
+  assert.match(document.getElementById('msg').textContent, /^All flags hit in 1 stroke,/);
+  assert.equal(document.getElementById('strokes').textContent, '1');
+  dom.window.close();
+});
+
 test('fair-test variables and confounds give choice-specific feedback', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -365,6 +398,21 @@ test('named-technique hints change on each wrong attempt', async () => {
     }
   } finally {
     await browser.close();
+  }
+});
+
+test('named techniques accept a trailing full stop and doubled spaces', async () => {
+  for (const [file, answer] of [
+    ['persuasive-language-lab.html', 'Rhetorical  question. '],
+    ['source-reliability-check.html', 'Corroboration. '],
+  ]) {
+    const html = await readFile(path.resolve(`apps/ipad/Resources/Examples/${file}`), 'utf8');
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+    const { document } = dom.window;
+    document.getElementById('term').value = answer;
+    document.getElementById('check').click();
+    assert.match(document.getElementById('tm').textContent, /^✓ Correct!/, file);
+    dom.window.close();
   }
 });
 
@@ -452,6 +500,26 @@ test('town budget shares never go negative while dragging sliders', async () => 
   drag('lifts', 0);
   drag('youth', 100);
   drag('youth', 0);
+  dom.window.close();
+});
+
+test('town budget accepts either group when two are hit equally hard', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/town-council-budget.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  // 50 min clinic wait and 50% lift breakdown risk are the joint worst outcomes.
+  dom.window.eval('values.splice(0, 4, 33, 15, 30, 22); draw();');
+  assert.equal(document.getElementById('waitText').textContent, '50 min');
+  assert.equal(document.getElementById('riskText').textContent, '50%');
+  for (const group of ['clinic', 'lifts']) {
+    document.querySelector(`[data-group="${group}"]`).click();
+    assert.match(document.getElementById('feedback').textContent, /^✓ Correct!/, group);
+  }
+  document.querySelector('[data-group="youth"]').click();
+  assert.match(document.getElementById('feedback').textContent, /^✗ Try again\./);
   dom.window.close();
 });
 

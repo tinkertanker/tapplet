@@ -54,7 +54,15 @@ export function validateHtmlArtifact(html, options = {}) {
     if (pattern.test(html)) add(code, message);
   });
 
+  const document = parseHtml(html, { sourceCodeLocationInfo: true });
+  const attributeOffsets = urlAttributeOffsets(document);
   for (const match of html.matchAll(/\b(?:src|srcset|href|xlink:href|action|formaction|poster)\s*=\s*(?:(["'])(.*?)\1|([^\s>]+))/gi)) {
+    const index = match.index ?? 0;
+    // Match production: data-src and similar custom attributes load nothing,
+    // and neither does a script variable named src, href, action or poster.
+    if (html[index - 1] === '-') continue;
+    const line = html.slice(Math.max(html.lastIndexOf('\n', index - 1) + 1, index - 200), index);
+    if (!attributeOffsets.has(index) && /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)) continue;
     const value = (match[2] ?? match[3] ?? '').trim();
     if (value && !value.startsWith('#') && !value.startsWith('data:') && !/^assets\/[A-Za-z0-9_-]+$/.test(value)) {
       add('external-resource', `External resource reference is not allowed: ${value}.`);
@@ -67,7 +75,6 @@ export function validateHtmlArtifact(html, options = {}) {
     }
   }
 
-  const document = parseHtml(html, { sourceCodeLocationInfo: true });
   function validateJavaScript(source, sourceType) {
     try {
       parseJavaScript(source, { ecmaVersion: 'latest', sourceType });
@@ -101,6 +108,24 @@ export function validateHtmlArtifact(html, options = {}) {
   visit(document);
 
   return { valid: issues.length === 0, bytes, issues };
+}
+
+// Source offsets of real URL-bearing attributes, including xlink:href.
+function urlAttributeOffsets(root) {
+  const offsets = new Set();
+  function visit(node) {
+    if ('tagName' in node) {
+      for (const attribute of node.attrs) {
+        const qualified = attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name;
+        const start = node.sourceCodeLocation?.attrs?.[qualified]?.startOffset;
+        if (start !== undefined && /^(?:src|srcset|href|xlink:href|action|formaction|poster)$/.test(qualified)) offsets.add(start);
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(root);
+  return offsets;
 }
 
 export function validateSeedManifest(manifest, options = {}) {
