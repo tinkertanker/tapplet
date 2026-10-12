@@ -110,6 +110,8 @@ private enum RestoreFetch: Sendable {
         guidedMakePinnedPlanID = nil
     }
     func applyStarterPlan(_ plan: StarterPlan) {
+        // Make shows the answers being made, and clears them when it finishes.
+        guard !isCreatingGuidedDraft else { openMake(); return }
         guidedMakeDraft = plan.draft
         guidedMakePreferredExampleRevisionId = plan.exampleRevisionID
         guidedMakePinnedPlanID = plan.id

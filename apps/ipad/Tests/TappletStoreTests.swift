@@ -120,6 +120,27 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStarterPlanDoesNotReplaceTheBriefBeingMade() throws {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let submitted = try XCTUnwrap(StarterPlan.matching(exampleID: "times-tables-lightning"))
+        let later = try XCTUnwrap(StarterPlan.matching(exampleID: "line-golf"))
+        store.applyStarterPlan(submitted)
+        store.isCreatingGuidedDraft = true
+        store.selectedSection = .explore
+
+        store.applyStarterPlan(later)
+
+        XCTAssertEqual(store.guidedMakeDraft, submitted.draft, "Make must keep showing the answers being made")
+        XCTAssertEqual(store.guidedMakePinnedPlanID, submitted.id)
+        XCTAssertEqual(store.selectedSection, .make)
+    }
+
+    @MainActor
     func testRefinementUsesCurrentExpectedHeadAndReplacesSourceAfterSuccess() async throws {
         let original = makeProject(revisionID: "r1", html: "<html>Original</html>")
         let revised = makeProject(
