@@ -321,7 +321,13 @@ private enum RestoreFetch: Sendable {
     func restoreFromTapplet() async throws -> Int {
         isRestoringFromTapplet = true
         defer { isRestoringFromTapplet = false }
-        let artifacts = try await api.listArtifacts()
+        let artifacts: [Artifact]
+        do {
+            artifacts = try await api.listArtifacts()
+        } catch let error as TappletAPIError where error.requiresRegistration {
+            _ = present(error, during: .restore)
+            throw error
+        }
         let fetched = await fetchRestoreProjects(artifacts)
         var count = 0
         var failures = 0
