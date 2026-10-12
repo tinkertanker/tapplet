@@ -382,6 +382,7 @@ test('plant-cell matches are listed as structure beside job', async () => {
     await page.click('#jobs [data-j="3"]');
     assert.equal(await page.locator('#matchedList .match-row').count(), 1);
     assert.match(await page.textContent('#matchedList .match-row'), /^Nucleus→Contains genetic material/);
+    assert.equal(await page.getAttribute('#panel', 'aria-live'), 'polite', 'tapped structure names are announced');
     await page.close();
   } finally {
     await browser.close();
