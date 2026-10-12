@@ -174,7 +174,8 @@ function visitJavaScript(value: unknown, visit: (node: AnyNode) => void) {
 
 // Source ranges of inline scripts and event handlers, their cooked string and
 // template literal text, where markup such as innerHTML can still load URLs,
-// and the source offsets of script variables named like URL attributes.
+// the source offsets of script variables named like URL attributes, and the
+// literal URLs scripts pass to setAttribute.
 function scriptSources(
   node: DefaultTreeAdapterTypes.Node,
   html: string,
@@ -182,10 +183,12 @@ function scriptSources(
   ranges: Array<readonly [number, number]>;
   strings: string[];
   declarations: Set<number>;
+  attributeWrites: Array<{ attribute: string; value: string }>;
 } {
   const ranges: Array<readonly [number, number]> = [];
   const strings: string[] = [];
   const declarations = new Set<number>();
+  const attributeWrites: Array<{ attribute: string; value: string }> = [];
   // offset is where source starts in html when html holds it verbatim.
   function collect(
     source: string,
@@ -205,13 +208,31 @@ function scriptSources(
     } catch {
       // Invalid syntax is reported by validateScripts.
     }
-    if (offset === undefined) return;
     let program: unknown;
     try {
       program = parseJavaScript(source, { ecmaVersion: "latest", sourceType });
     } catch {
       return;
     }
+    // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
+    visitJavaScript(program, (current) => {
+      if (
+        current.type !== "CallExpression" ||
+        current.callee.type !== "MemberExpression" ||
+        current.callee.property.type !== "Identifier" ||
+        !/^setAttribute(?:NS)?$/.test(current.callee.property.name)
+      )
+        return;
+      const [name, value] = current.callee.property.name === "setAttributeNS"
+          ? current.arguments.slice(1)
+          : current.arguments,
+        attribute = name && literalText(name),
+        url = value && literalText(value),
+        match = attribute && /^(?:[\w-]+:)?(src|href|action|formaction)$/i.exec(attribute);
+      if (match?.[1] && url !== undefined)
+        attributeWrites.push({ attribute: match[1].toLowerCase(), value: url });
+    });
+    if (offset === undefined) return;
     // A script variable loads nothing, but in an event handler or a with
     // statement a bare name such as src can assign the element's property.
     const found: number[] = [];
@@ -282,7 +303,14 @@ function scriptSources(
     if ("content" in current) visit(current.content);
   }
   visit(node);
-  return { ranges, strings, declarations };
+  return { ranges, strings, declarations, attributeWrites };
+}
+
+function literalText(node: AnyNode): string | undefined {
+  if (node.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node.type === "TemplateLiteral" && node.expressions.length === 0)
+    return node.quasis[0]?.value.cooked ?? undefined;
+  return undefined;
 }
 
 function checkUrl(attribute: string, value: string, issues: Issue[]) {
@@ -474,6 +502,8 @@ function inspect(
       if (!urlAttributes.has(index) && scripts.declarations.has(index)) continue;
       checkUrl(attribute, value, issues);
     }
+    for (const { attribute, value } of scripts.attributeWrites)
+      checkUrl(attribute, normalizeAssetUrl(value), issues);
     // Markup in script strings can start a line or follow punctuation, so check
     // its URL attributes regardless of the variable heuristic above.
     for (const string of scripts.strings)

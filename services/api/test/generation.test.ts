@@ -129,6 +129,24 @@ describe("HTML generation contract", () => {
       ).toThrow(InvalidModelOutputError);
   });
 
+  it("checks URLs that scripts pass to setAttribute as literals", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'const image = document.images[0]; image.setAttribute("src", "assets/asset-one"); image.setAttribute("href", `#top`); image.setAttribute("src", image.dataset.src); image.setAttribute("alt", "https://outside.invalid/")',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<script>document.images[0].setAttribute("src", "https://outside.invalid/x.png")</script>',
+      "<script>document.images[0].setAttribute('SRC', `https://outside.invalid/x.png`)</script>",
+      `<button onclick="document.forms[0]?.setAttribute('action', 'https://outside.invalid/')">Go</button>`,
+      '<button onclick="this.setAttribute(&quot;formaction&quot;, &quot;https://outside.invalid/&quot;)">Go</button>',
+      '<script>document.links[0].setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "https://outside.invalid/")</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("checks src written from expressions, element scopes and literals", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
