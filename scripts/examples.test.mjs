@@ -514,4 +514,16 @@ test('tap-to-select corpus controls expose their pressed state', async () => {
   cut.window.document.getElementById('reset').click();
   assert.deepEqual(pressed(cut.window.document), []);
   cut.window.close();
+
+  const shadow = await load('where-the-shadow-falls.html');
+  const { document } = shadow.window;
+  const choice = (question, value) => document.querySelector(`[data-question="${question}"] [data-value="${value}"]`);
+  assert.ok([...document.querySelectorAll('.choices button')].every((button) => button.getAttribute('aria-pressed') === 'false'));
+  choice('direction', 'left').click();
+  choice('direction', 'right').click();
+  choice('length', 'long').click();
+  assert.deepEqual(pressed(document), ['right', 'long']);
+  document.getElementById('reset').click();
+  assert.deepEqual(pressed(document), []);
+  shadow.window.close();
 });
