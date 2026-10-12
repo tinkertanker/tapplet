@@ -700,7 +700,9 @@ export function createStudioApp(d: Deps) {
       );
     if (r.method === "POST" && u.pathname === "/v1/artifacts/generate") {
       const o = await owner(r),
-        request = brief(obj(await readJson(r, 16000))),
+        // Field limits count characters; Chinese or Tamil text takes three
+        // UTF-8 bytes each, and the creation brief repeats the answers.
+        request = brief(obj(await readJson(r, 64_000))),
         b = request.brief,
         warnings = advisoryWarnings("prompt", [
           ...inspectTeacherBrief(b),
@@ -957,7 +959,8 @@ export function createStudioApp(d: Deps) {
         return new Response(null, { status: 204 });
       }
       if (s.length === 3 && r.method === "PATCH") {
-        const b = obj(await readJson(r, 10000));
+        // Room for every field at its character limit in three-byte UTF-8.
+        const b = obj(await readJson(r, 40_000));
         if (typeof b.title === "string" && b.headRevisionId === undefined) {
           // Accept everything creation stores: a generated title can fall back
           // to the learning objective and the level is the learner context.

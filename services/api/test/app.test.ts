@@ -1093,6 +1093,37 @@ describe("Tapplet API registration and public HTML", () => {
     expect(own.artifact.creationBrief).toContain("row 3");
   });
 
+  it("accepts briefs and details within their character limits in Chinese", async () => {
+    const passage = "小明和妈妈去菜市场买菜，他们买了三斤青菜和两条鱼。".repeat(160).slice(0, 3_500);
+    const brief = {
+      ...creationBrief.brief,
+      learnerContext: "Primary 4 Chinese",
+      sourceContent: passage,
+    };
+    const text = `学生\n${brief.learnerContext}\n\n阅读材料\n${passage}`;
+    expect(passage.length).toBeLessThanOrEqual(4_000);
+    expect(text.length).toBeLessThanOrEqual(6_000);
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        creationBrief: text,
+        brief,
+      }),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: { id: string; title: string; summary: string; creationBrief: string };
+    };
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: "比较词语",
+        summary: passage.slice(0, 1_000),
+        creationBrief: `${text}\n\n${passage.slice(0, 2_000)}`,
+      }),
+    );
+    expect(saved.status).toBe(200);
+  });
+
   it("saves details that echo the metadata generation stored", async () => {
     const learnerContext = `Primary 5 Mathematics, mixed-ability class of 38 pupils ${"who need extra visual support ".repeat(4)}`.trim();
     const learningObjective = `Compare fractions with unlike denominators ${"by reasoning about equivalent fractions and benchmarks ".repeat(4)}`.trim();
