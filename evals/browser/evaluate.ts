@@ -427,16 +427,18 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
         .map((id) => document.getElementById(id)?.textContent ?? "")
         .join(" ")
         .trim();
-      const labels = element instanceof HTMLInputElement
+      const formField = element instanceof HTMLInputElement
         || element instanceof HTMLSelectElement
-        || element instanceof HTMLTextAreaElement
+        || element instanceof HTMLTextAreaElement;
+      const labels = formField
         ? [...(element.labels ?? [])].map((label) => label.textContent ?? "").join(" ").trim()
         : "";
+      // Option text and default textarea text are values, not names.
       return element.getAttribute("aria-label")?.trim()
         || labelledBy
         || labels
         || element.getAttribute("alt")?.trim()
-        || element.textContent?.trim()
+        || (formField ? "" : element.textContent?.trim())
         || element.getAttribute("title")?.trim()
         || (element instanceof HTMLInputElement
           && ["button", "submit", "reset"].includes(element.type)

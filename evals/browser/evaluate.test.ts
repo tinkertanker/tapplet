@@ -208,3 +208,19 @@ test("browser evaluator blocks same-origin API-shaped requests and rejects unrea
   assert.equal(unreachable.viewports[0]?.behavior.passed, false);
   assert.equal(unreachable.passed, false);
 });
+
+test("browser evaluator does not name an unlabelled select after its options", async () => {
+  const fixture = (select: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Select name fixture</title><style>body{font:16px system-ui}select{min-width:120px;min-height:48px}</style></head><body><main><h1>Select name fixture</h1><p id="question">Which evidence tests the claim?</p>${select}</main></body></html>`;
+  const unlabelled = await evaluateHtmlInBrowser(
+    fixture('<select><option value="">Choose…</option><option>Temperatures</option></select>'),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(unlabelled.viewports[0]?.accessibilityBasic.unnamedControlCount, 1);
+  assert.equal(unlabelled.viewports[0]?.accessibilityBasic.passed, false);
+
+  const labelled = await evaluateHtmlInBrowser(
+    fixture('<select aria-labelledby="question"><option value="">Choose…</option><option>Temperatures</option></select>'),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(labelled.viewports[0]?.accessibilityBasic.unnamedControlCount, 0);
+});
