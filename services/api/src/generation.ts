@@ -1,4 +1,4 @@
-import { parse as parseJavaScript, tokenizer, tokTypes } from "acorn";
+import { parse as parseJavaScript, tokenizer, tokTypes, type AnyNode } from "acorn";
 import { parse as parseHtml, type DefaultTreeAdapterTypes } from "parse5";
 import type {
   DesignCard,
@@ -162,15 +162,37 @@ function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
   return offsets;
 }
 
-// Source ranges of inline scripts and event handlers, and their cooked string
-// and template literal text, where markup such as innerHTML can still load URLs.
-function scriptSources(node: DefaultTreeAdapterTypes.Node): {
+const EVENT_HANDLER_PREFIX = "function eventHandler(event) {\n";
+
+function visitJavaScript(value: unknown, visit: (node: AnyNode) => void) {
+  if (Array.isArray(value)) value.forEach((item) => visitJavaScript(item, visit));
+  else if (value && typeof value === "object" && typeof Reflect.get(value, "type") === "string") {
+    visit(value as AnyNode);
+    Object.values(value).forEach((item) => visitJavaScript(item, visit));
+  }
+}
+
+// Source ranges of inline scripts and event handlers, their cooked string and
+// template literal text, where markup such as innerHTML can still load URLs,
+// and the source offsets of script variables named like URL attributes.
+function scriptSources(
+  node: DefaultTreeAdapterTypes.Node,
+  html: string,
+): {
   ranges: Array<readonly [number, number]>;
   strings: string[];
+  declarations: Set<number>;
 } {
   const ranges: Array<readonly [number, number]> = [];
   const strings: string[] = [];
-  function collect(source: string, sourceType: "script" | "module") {
+  const declarations = new Set<number>();
+  // offset is where source starts in html when html holds it verbatim.
+  function collect(
+    source: string,
+    sourceType: "script" | "module",
+    offset?: number,
+    handler = false,
+  ) {
     try {
       for (const token of tokenizer(source, { ecmaVersion: "latest", sourceType })) {
         const value: unknown = Reflect.get(token, "value");
@@ -183,14 +205,57 @@ function scriptSources(node: DefaultTreeAdapterTypes.Node): {
     } catch {
       // Invalid syntax is reported by validateScripts.
     }
+    if (offset === undefined) return;
+    let program: unknown;
+    try {
+      program = parseJavaScript(source, { ecmaVersion: "latest", sourceType });
+    } catch {
+      return;
+    }
+    // A script variable loads nothing, but in an event handler or a with
+    // statement a bare name such as src can assign the element's property.
+    const found: number[] = [];
+    let usesWith = false;
+    visitJavaScript(program, (current) => {
+      if (current.type === "WithStatement") usesWith = true;
+      const name =
+        current.type === "VariableDeclarator"
+          ? current.id
+          : current.type === "AssignmentExpression" && !handler
+            ? current.left
+            : undefined;
+      if (name?.type === "Identifier" && /^(?:src|href|action)$/i.test(name.name))
+        found.push(offset + name.start);
+    });
+    if (!usesWith) for (const start of found) declarations.add(start);
+  }
+  // The html text from start to end when it is exactly the parsed value.
+  function verbatim(start: number, end: number, value: string): string | undefined {
+    const source = html.slice(start, end);
+    return source.replace(/\r\n?/g, "\n") === value ? source : undefined;
   }
   function visit(current: DefaultTreeAdapterTypes.Node) {
     if ("tagName" in current) {
       for (const attribute of current.attrs)
         if (/^on[a-z]+$/.test(attribute.name)) {
           const location = current.sourceCodeLocation?.attrs?.[attribute.name];
+          const prefix = location
+            ? /^[^=]*=\s*(["']?)/.exec(html.slice(location.startOffset, location.endOffset))
+            : null;
+          const start = location && prefix ? location.startOffset + prefix[0].length : undefined;
+          const source =
+            location && start !== undefined
+              ? verbatim(start, location.endOffset - (prefix?.[1] ? 1 : 0), attribute.value)
+              : undefined;
           if (location) ranges.push([location.startOffset, location.endOffset]);
-          collect(`function eventHandler(event) {\n${attribute.value}\n}`, "script");
+          if (source !== undefined && start !== undefined)
+            collect(
+              `${EVENT_HANDLER_PREFIX}${source}\n}`,
+              "script",
+              start - EVENT_HANDLER_PREFIX.length,
+              true,
+            );
+          else collect(`${EVENT_HANDLER_PREFIX}${attribute.value}\n}`, "script");
         }
       const type = (
         current.attrs.find((attribute) => attribute.name === "type")?.value ?? ""
@@ -203,17 +268,21 @@ function scriptSources(node: DefaultTreeAdapterTypes.Node): {
         for (const child of text)
           if (child.sourceCodeLocation)
             ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
-        collect(
-          text.map((child) => child.value).join(""),
-          type === "module" ? "module" : "script",
-        );
+        const sourceType = type === "module" ? "module" : "script",
+          location = text.length === 1 ? text[0]?.sourceCodeLocation : undefined,
+          source =
+            location && text[0]
+              ? verbatim(location.startOffset, location.endOffset, text[0].value)
+              : undefined;
+        if (location && source !== undefined) collect(source, sourceType, location.startOffset);
+        else collect(text.map((child) => child.value).join(""), sourceType);
       }
     }
     if ("childNodes" in current) current.childNodes.forEach(visit);
     if ("content" in current) visit(current.content);
   }
   visit(node);
-  return { ranges, strings };
+  return { ranges, strings, declarations };
 }
 
 function checkUrl(attribute: string, value: string, issues: Issue[]) {
@@ -377,7 +446,7 @@ function inspect(
         kind: "policy",
         message: "Embedded documents and base URLs are not allowed.",
       });
-    const scripts = scriptSources(document);
+    const scripts = scriptSources(document, html);
     // Check real attributes, markup in script strings and property writes; a
     // script variable named poster (for a poster-design activity) loads nothing.
     if (
@@ -396,18 +465,9 @@ function inspect(
       if (html[index - 1] === "-") continue;
       const attribute = (match[1] ?? "").toLowerCase(),
         value = normalizeAssetUrl(attributeValue(match));
-      // A script variable named src, href or action loads nothing. Markup in
-      // script strings, other text and property writes are still checked.
-      const line = html.slice(
-        Math.max(html.lastIndexOf("\n", index - 1) + 1, index - 200),
-        index,
-      );
-      if (
-        !urlAttributes.has(index) &&
-        scripts.ranges.some(([start, end]) => start <= index && index < end) &&
-        /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)
-      )
-        continue;
+      // A script variable named src, href or action loads nothing.
+      // Markup in script strings, other text and property writes are checked.
+      if (!urlAttributes.has(index) && scripts.declarations.has(index)) continue;
       checkUrl(attribute, value, issues);
     }
     // Markup in script strings can start a line or follow punctuation, so check

@@ -127,6 +127,25 @@ describe("HTML generation contract", () => {
       ).toThrow(InvalidModelOutputError);
   });
 
+  it("checks src written from expressions, element scopes and literals", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      '\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src',
+    ).replace("Hello", `<button onclick="const href = this.dataset.href; void href">Go</button>`);
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    const url = 'const u = "https://outside.invalid/x.png";';
+    for (const capability of [
+      `<script>${url} document.body.innerHTML = \`<img\n  src="\${u}" alt="">\`</script>`,
+      `<script>${url} document.body.innerHTML = "<img \\\nsrc=" + u + ">"</script>`,
+      '<script>document.body.innerHTML = /<img let src="https:\\/\\/outside.invalid\\/x.png">/.source</script>',
+      `<img src="assets/a" onerror="0;src='https://outside.invalid/x.png'">`,
+      '<script>with (document.images[0]) { var src = "https://outside.invalid/x.png" }</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts a script variable named poster", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
