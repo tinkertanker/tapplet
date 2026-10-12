@@ -1,7 +1,11 @@
-import { parse as parseJavaScript } from 'acorn';
+import { parse as parseJavaScript, tokenizer, tokTypes } from 'acorn';
 import { parse as parseHtml } from 'parse5';
 
 export const MAX_HTML_BYTES = 200_000;
+
+// formaction is checked here as well as src, href and action.
+const URL_ATTRIBUTE = /\b(src|href|action|formaction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
+const MANAGED_ASSET = /^assets\/[A-Za-z0-9_-]+$/;
 
 const JAVASCRIPT_TYPES = new Set([
   '', 'application/ecmascript', 'application/javascript',
@@ -45,34 +49,59 @@ export function validateHtmlArtifact(html, options = {}) {
   if (!/<script\b[^>]*>[\s\S]*<\/script>/i.test(html)) add('inline-js', 'Include inline JavaScript for the interaction.');
 
   const forbidden = [
-    [/<script\b[^>]*\bsrc\s*=/i, 'external-script', 'External script sources are not allowed.'],
-    [/<link\b[^>]*\brel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
-    [/@import\s|\bimport\s*(?:\(|["'{*])|\brequire\s*\(/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
-    [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(|\bnavigator\.sendBeacon\s*\(/i, 'network', 'Network APIs are not allowed.'],
+    [/<link\b[^>]*(?<![\w-])rel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
+    [/@import\b|\bimport\s*(?:\(|["'{*])|\bimport\b[^;]*?from\s*["']|\brequire\s*\(/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
+    [/\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i, 'network', 'Network APIs are not allowed.'],
   ];
   forbidden.forEach(([pattern, code, message]) => {
     if (pattern.test(html)) add(code, message);
   });
 
+  // URL rules match the API's validateHtmlOutput so evaluations and live
+  // checks accept and reject the same tapplets production does.
   const document = parseHtml(html, { sourceCodeLocationInfo: true });
+  if (/<(?:base|iframe|object|embed)\b/i.test(html)) add('external-resource', 'Embedded documents and base URLs are not allowed.');
+  const scripts = scriptSources(document);
+  if (
+    hasMultiSourceAttribute(document)
+    || scripts.strings.some((value) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value))
+    || /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
+  ) add('external-resource', 'Redirecting and multi-source URLs are not allowed.');
+  const checkUrl = (attribute, value) => {
+    const allowed = MANAGED_ASSET.test(value)
+      || (attribute === 'href' && value.startsWith('#'))
+      || (attribute === 'src' && /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(value));
+    if (!allowed) add('external-resource', `External resource reference is not allowed: ${attribute}="${value}".`);
+  };
   const attributeOffsets = urlAttributeOffsets(document);
-  for (const match of html.matchAll(/\b(?:src|srcset|href|xlink:href|action|formaction|poster)\s*=\s*(?:(["'])(.*?)\1|([^\s>]+))/gi)) {
+  for (const match of html.matchAll(URL_ATTRIBUTE)) {
     const index = match.index ?? 0;
-    // Match production: data-src and similar custom attributes load nothing,
-    // and neither does a script variable named src, href, action or poster.
+    // data-action, data-src and similar custom attributes load nothing.
     if (html[index - 1] === '-') continue;
+    // A script variable named src, href or action loads nothing; markup in
+    // script strings, other text and property writes are still checked.
     const line = html.slice(Math.max(html.lastIndexOf('\n', index - 1) + 1, index - 200), index);
-    if (!attributeOffsets.has(index) && /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)) continue;
-    const value = (match[2] ?? match[3] ?? '').trim();
-    if (value && !value.startsWith('#') && !value.startsWith('data:') && !/^assets\/[A-Za-z0-9_-]+$/.test(value)) {
-      add('external-resource', `External resource reference is not allowed: ${value}.`);
+    if (
+      !attributeOffsets.has(index)
+      && scripts.ranges.some(([start, end]) => start <= index && index < end)
+      && /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)
+    ) continue;
+    checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
+  }
+  for (const string of scripts.strings) {
+    for (const match of string.matchAll(URL_ATTRIBUTE)) {
+      if (string[(match.index ?? 0) - 1] !== '-') checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
     }
   }
-  for (const match of html.matchAll(/\burl\(\s*(?:(["'])(.*?)\1|([^\s)]+))\s*\)/gi)) {
-    const value = (match[2] ?? match[3] ?? '').trim();
-    if (value && !value.startsWith('#') && !value.startsWith('data:') && !/^assets\/[A-Za-z0-9_-]+$/.test(value)) {
-      add('external-resource', `External CSS resource is not allowed: ${value}.`);
-    }
+  if (
+    /\b(?:localStorage|sessionStorage|indexedDB)\b|\bcaches\.(?:open|match|matchAll|has|keys|delete)\b|document\.cookie/i.test(html)
+    // "caches" is also an ordinary word in visible text, but any reference
+    // in a script or event handler can reach the Cache API.
+    || scripts.ranges.some(([start, end]) => /\bcaches\b/i.test(html.slice(start, end)))
+  ) add('storage', 'Storage APIs are not allowed; tapplets must keep all state in memory.');
+  for (const match of html.matchAll(/\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis)) {
+    const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+    if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value)) add('external-resource', `External CSS resource is not allowed: ${value}.`);
   }
 
   function validateJavaScript(source, sourceType) {
@@ -110,15 +139,21 @@ export function validateHtmlArtifact(html, options = {}) {
   return { valid: issues.length === 0, bytes, issues };
 }
 
-// Source offsets of real URL-bearing attributes, including xlink:href.
+function attributeValue(match) {
+  return match[2] ?? match[3] ?? match[4] ?? '';
+}
+
+// Source offsets of the src, href and action names in real attributes,
+// including prefixed names such as xlink:href.
 function urlAttributeOffsets(root) {
   const offsets = new Set();
   function visit(node) {
     if ('tagName' in node) {
       for (const attribute of node.attrs) {
         const qualified = attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name;
+        const name = /(?:^|:)(src|href|action|formaction)$/.exec(qualified)?.[1];
         const start = node.sourceCodeLocation?.attrs?.[qualified]?.startOffset;
-        if (start !== undefined && /^(?:src|srcset|href|xlink:href|action|formaction|poster)$/.test(qualified)) offsets.add(start);
+        if (name && start !== undefined) offsets.add(start + qualified.length - name.length);
       }
     }
     if ('childNodes' in node) node.childNodes.forEach(visit);
@@ -126,6 +161,51 @@ function urlAttributeOffsets(root) {
   }
   visit(root);
   return offsets;
+}
+
+function hasMultiSourceAttribute(node) {
+  if ('tagName' in node && node.attrs.some(({ name }) => name === 'srcset' || name === 'poster')) return true;
+  if ('childNodes' in node && node.childNodes.some(hasMultiSourceAttribute)) return true;
+  return 'content' in node && hasMultiSourceAttribute(node.content);
+}
+
+// Source ranges of inline scripts and event handlers, and their cooked string
+// and template literal text, where markup such as innerHTML can still load URLs.
+function scriptSources(root) {
+  const ranges = [];
+  const strings = [];
+  function collect(source, sourceType) {
+    try {
+      for (const token of tokenizer(source, { ecmaVersion: 'latest', sourceType })) {
+        if ((token.type === tokTypes.string || token.type === tokTypes.template) && typeof token.value === 'string') strings.push(token.value);
+      }
+    } catch {
+      // Invalid syntax is reported separately.
+    }
+  }
+  function visit(node) {
+    if ('tagName' in node) {
+      for (const attribute of node.attrs) {
+        if (/^on[a-z]+$/.test(attribute.name)) {
+          const location = node.sourceCodeLocation?.attrs?.[attribute.name];
+          if (location) ranges.push([location.startOffset, location.endOffset]);
+          collect(`function eventHandler(event) {\n${attribute.value}\n}`, 'script');
+        }
+      }
+      const type = (node.attrs.find(({ name }) => name === 'type')?.value ?? '').trim().toLowerCase();
+      if (node.tagName === 'script' && (type === 'module' || JAVASCRIPT_TYPES.has(type))) {
+        const text = node.childNodes.filter((child) => child.nodeName === '#text');
+        for (const child of text) {
+          if (child.sourceCodeLocation) ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
+        }
+        collect(text.map((child) => child.value).join(''), type === 'module' ? 'module' : 'script');
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(root);
+  return { ranges, strings };
 }
 
 export function validateSeedManifest(manifest, options = {}) {

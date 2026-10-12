@@ -72,6 +72,11 @@ test('allows comments but rejects overlooked network and resource paths', () => 
     '<img srcset="small.png 1x, large.png 2x">',
     '<style>.hero{background:url(/image.png)}</style>',
     '<script>navigator.sendBeacon("/collect")</script>',
+    '<script>navigator.serviceWorker.register("worker.js")</script>',
+    '<script type="module">import confetti from "https://outside.invalid/confetti.js";</script>',
+    '<style>@import"https://outside.invalid/a.css";</style>',
+    '<script>const Request = XMLHttpRequest; new Request();</script>',
+    '<script>const beacon = navigator; beacon.sendBeacon("/collect")</script>',
   ]) {
     const result = validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`));
     assert.equal(result.valid, false, snippet);
@@ -81,6 +86,8 @@ test('allows comments but rejects overlooked network and resource paths', () => 
 test('accepts custom attributes and script variables the production validator accepts', () => {
   for (const snippet of [
     '<button data-action="check" data-src="pool-1" data-href="x">Go</button>',
+    '<script data-src="pool-1">const pool = 1;</script>',
+    '<link data-rel="stylesheet">',
     '<script>const action = event.target.dataset.action; let src = card.dataset.src; var poster = 1;</script>',
   ]) {
     assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);
@@ -92,6 +99,49 @@ test('accepts custom attributes and script variables the production validator ac
     '<script>box.innerHTML = \'<img src="https://outside.invalid/a.png">\';</script>',
   ]) {
     assert.equal(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).valid, false, snippet);
+  }
+});
+
+test('rejects the URLs, multi-source and embedded markup the production validator rejects', () => {
+  for (const snippet of [
+    '<a href="">Empty</a>',
+    '<a href="data:text/html,hi">Data document</a>',
+    '<img alt="" src="data:image/svg+xml,<svg></svg>">',
+    '<form action="#"></form>',
+    '<video poster="assets/image-1"></video>',
+    '<template><video poster="assets/image-1"></video></template>',
+    '<script>el.setAttribute("srcset", "assets/image-1 1x");</script>',
+    '<script>box.innerHTML = \'<video poster="assets/image-1">\';</script>',
+    '<script>box.innerHTML = `<img\n  src="https://outside.invalid/a.png">`;</script>',
+    '<script>document.body.innerHTML = `<img\nsrc="https://outside.invalid/x.png">`;</script>',
+    '<p>\nhref="https://outside.invalid"</p>',
+    '<iframe srcdoc="hi"></iframe>',
+    '<style>.a{fill:url(#gradient)}</style>',
+  ]) {
+    assert.equal(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).valid, false, snippet);
+  }
+  for (const snippet of [
+    '<a href="#top">Top</a>',
+    '<img alt="" src="data:image/png;base64,AAAA">',
+    '<script>box.innerHTML = \'<button data-src="x"><img alt="" src="assets/image-1"></button>\';</script>',
+    '<script>const poster = "Poster"; if (poster == "x") {}</script>',
+  ]) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);
+  }
+});
+
+test('rejects storage and Cache API references the production validator rejects', () => {
+  for (const snippet of [
+    '<script>localStorage.setItem("score", "1");</script>',
+    '<script>const store = caches;</script>',
+    '<button onclick="caches.keys()">Save</button>',
+    '<template><script>caches.open("x")</script></template>',
+    '<p>document.cookie</p>',
+  ]) {
+    assert.ok(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues.some((issue) => issue.code === 'storage'), snippet);
+  }
+  for (const snippet of ['<p>A plant cell caches energy.</p>', '<script type="application/json">{"caches":1}</script>']) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);
   }
 });
 
@@ -414,6 +464,22 @@ test('named techniques accept a trailing full stop and doubled spaces', async ()
     assert.match(document.getElementById('tm').textContent, /^✓ Correct!/, file);
     dom.window.close();
   }
+});
+
+test('source check feedback explains the wrong option the student chose', async () => {
+  const html = await readFile(path.resolve('apps/ipad/Resources/Examples/source-reliability-check.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  const [copy, rumour] = [...document.querySelectorAll('[data-kind="check"] button:not([data-ok])')];
+  const feedback = () => document.querySelector('[data-kind="check"]').nextElementSibling.textContent;
+  rumour.click();
+  assert.match(feedback(), /^✗ Try again\. An anonymous rumour/);
+  assert.doesNotMatch(feedback(), /copy/);
+  copy.click();
+  assert.match(feedback(), /^✗ Try again\. A bigger copy/);
+  document.querySelector('[data-kind="check"] [data-ok]').click();
+  assert.match(feedback(), /^✓ Correct!/);
+  dom.window.close();
 });
 
 test('plant-cell matches are listed as structure beside job', async () => {
