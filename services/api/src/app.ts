@@ -434,6 +434,15 @@ export function createStudioApp(d: Deps) {
     await validateAssetReferences(ids, o, allowReferenced);
     return ids;
   }
+  async function usableAssets(html: string, o: string): Promise<boolean> {
+    try {
+      await assets(html, o);
+      return true;
+    } catch (error) {
+      if (error instanceof HttpError) return false;
+      throw error;
+    }
+  }
   async function projectResponse(
     a: ArtifactRecord,
     o: string,
@@ -738,7 +747,9 @@ export function createStudioApp(d: Deps) {
           found.map(async (e) => {
             const rv = await d.repository.getRevision(e.revisionId),
               html = rv && (await d.sources.getSource(rv.sourceHash));
-            return rv && html
+            // A model may copy an exemplar's images, which this device could
+            // not save; offer only exemplars whose images it can use.
+            return rv && html && (await usableAssets(html, o))
               ? {
                   revisionId: rv.id,
                   html,

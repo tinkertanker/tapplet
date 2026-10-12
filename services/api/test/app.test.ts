@@ -814,6 +814,100 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.revisions.size).toBe(1);
   });
 
+  it("does not offer exemplars whose images this device cannot use", async () => {
+    const html = (body: string) =>
+      `<!doctype html><html lang="en"><head><title>Fractions</title></head><body>${body}</body></html>`;
+    const foreign = html('<img src="assets/foreign-image" alt="A fraction wall">');
+    const sourceHash = "foreign-source";
+    await sources.putSource(sourceHash, foreign);
+    const timestamp = "2026-08-01T00:00:00Z";
+    const otherArtifact = {
+      id: "other-artifact",
+      ownerHash: "other-owner",
+      title: "Fraction wall",
+      summary: "Compare fractions on a fraction wall",
+      subject: "mathematics",
+      level: "Primary 5",
+      locale: "en-SG",
+      learningObjective: "Compare fractions",
+      tags: ["fractions"],
+      creationBrief: "Private brief",
+      generationBrief: "{}",
+      headRevisionId: "other-revision",
+      remixedFromRevisionId: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const otherRevision: RevisionRecord = {
+      id: "other-revision",
+      artifactId: otherArtifact.id,
+      parentRevisionId: null,
+      sourceHash,
+      sourceBytes: foreign.length,
+      kind: "generation",
+      instruction: null,
+      designCard: null,
+      exemplars: [],
+      modelVersion: "fixture",
+      promptVersion: "test",
+      screenshotKey: null,
+      createdAt: timestamp,
+    };
+    await repository.createArtifact({
+      artifact: otherArtifact,
+      revision: otherRevision,
+      assetIds: ["foreign-image"],
+    });
+    expect(
+      await repository.publish(
+        "other-publication-slug",
+        otherArtifact,
+        otherRevision,
+        "2026-12-01T00:00:00Z",
+        timestamp,
+        "Fraction wall fractions mathematics",
+      ),
+    ).not.toBeNull();
+
+    // A model that reuses its exemplars' images.
+    const provider = new FixtureModelProvider();
+    const offered: string[][] = [];
+    vi.spyOn(provider, "generate").mockImplementation(async (brief, exemplars) => {
+      offered.push(exemplars.map((exemplar) => exemplar.revisionId));
+      const images = exemplars
+        .flatMap((exemplar) => exemplar.html.match(/<img[^>]*>/g) ?? [])
+        .join("");
+      return { html: html(`<h1>${brief.learningObjective}</h1>${images}`) };
+    });
+    const getRecord = vi.fn().mockResolvedValue({
+      id: "foreign-image",
+      ownerHash: "other-owner",
+      objectKey: "assets/other/foreign-image.jpg",
+      contentType: "image/jpeg",
+      byteLength: 3,
+      width: 1,
+      height: 1,
+      sha256: "hash",
+      alternativeText: "A fraction wall",
+      decorative: false,
+      createdAt: timestamp,
+    });
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      assets: { get: vi.fn(), getRecord } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const response = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(response.status).toBe(201);
+    expect(offered).toEqual([[]]);
+  });
+
   it("inserts an owned required image when the model repair still omits it", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
