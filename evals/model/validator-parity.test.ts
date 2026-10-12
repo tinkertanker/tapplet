@@ -59,6 +59,7 @@ const snippets = [
   '<script type="module">import/**/("https://outside.invalid/c.js");</script>',
   '<script type="module">export const a = 1; export { a as b };</script>',
   '<p>Countries import "rice" and {beans}; we require (care).</p>',
+  "<p>Countries import (and export) rice.</p>",
   // Script variables are exempt only where parsing finds a declaration or a
   // script assignment, not anywhere a name starts a line or follows punctuation.
   '<script>\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src</script>',
