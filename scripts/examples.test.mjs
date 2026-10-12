@@ -122,6 +122,21 @@ test('rejects the URLs, multi-source and embedded markup the production validato
   }
 });
 
+test('rejects storage and Cache API references the production validator rejects', () => {
+  for (const snippet of [
+    '<script>localStorage.setItem("score", "1");</script>',
+    '<script>const store = caches;</script>',
+    '<button onclick="caches.keys()">Save</button>',
+    '<template><script>caches.open("x")</script></template>',
+    '<p>document.cookie</p>',
+  ]) {
+    assert.ok(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues.some((issue) => issue.code === 'storage'), snippet);
+  }
+  for (const snippet of ['<p>A plant cell caches energy.</p>', '<script type="application/json">{"caches":1}</script>']) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);
+  }
+});
+
 test('validates manifest uniqueness and required metadata', () => {
   const seed = { id: 'stable-id', filename: 'stable-id.html', title: 'Title', summary: 'Summary', subject: 'science', level: 'secondary', locale: 'en-SG', learningObjective: 'Learn', tags: ['a', 'b', 'c'], interactionPattern: 'quiz', descriptor: 'Card', designCard: { layout: 'one screen' } };
   assert.deepEqual(validateSeedManifest({ schemaVersion: '1.0', seeds: [seed] }), []);

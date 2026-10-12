@@ -94,6 +94,12 @@ export function validateHtmlArtifact(html, options = {}) {
       if (string[(match.index ?? 0) - 1] !== '-') checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
     }
   }
+  if (
+    /\b(?:localStorage|sessionStorage|indexedDB)\b|\bcaches\.(?:open|match|matchAll|has|keys|delete)\b|document\.cookie/i.test(html)
+    // "caches" is also an ordinary word in visible text, but any reference
+    // in a script or event handler can reach the Cache API.
+    || scripts.ranges.some(([start, end]) => /\bcaches\b/i.test(html.slice(start, end)))
+  ) add('storage', 'Storage APIs are not allowed; tapplets must keep all state in memory.');
   for (const match of html.matchAll(/\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis)) {
     const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
     if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value)) add('external-resource', `External CSS resource is not allowed: ${value}.`);
