@@ -722,6 +722,16 @@ test('every curated control has an accessible name', async () => {
   }
 });
 
+test('cutting part of the reason is called out as cutting a key fact', async () => {
+  const html = await readFile(path.resolve('apps/ipad/Resources/Examples/cut-extra-words.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  [...document.querySelectorAll('#editor .token')].find((token) => token.textContent === 'it keeps tables clear').click();
+  document.getElementById('check').click();
+  assert.match(document.getElementById('feedback').textContent, /^A key fact was cut\..*\bwhy the rule helps\.$/);
+  dom.window.close();
+});
+
 test('no curated control sits inside an image, whose children assistive tech hides', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
