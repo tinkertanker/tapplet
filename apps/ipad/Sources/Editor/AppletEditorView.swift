@@ -48,6 +48,8 @@ struct AppletEditorView: View {
                     .accessibilityIdentifier("latest-revision-comment")
                 }
                 TextEditor(text: $prompt).frame(height: 90)
+                    .accessibilityLabel("Change to make")
+                    .accessibilityHint("Describe what Tapplet Studio should change in this tapplet.")
                 if ProcessInfo.processInfo.arguments.contains("--ui-testing-reset"),
                    ProcessInfo.processInfo.arguments.contains("--ui-testing-held-refinement"),
                    store.uiTestingRefinementIsWaiting {

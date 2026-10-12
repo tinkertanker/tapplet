@@ -313,6 +313,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         let prompt = app.textViews.firstMatch
         XCTAssertTrue(prompt.waitUntilExists(timeout: 3))
+        XCTAssertEqual(prompt.label, "Change to make", "VoiceOver must name the refinement field")
         app.buttons["refine-suggestion-timer"].tap()
         let submitted = prompt.value as? String ?? ""
         XCTAssertFalse(submitted.isEmpty)
