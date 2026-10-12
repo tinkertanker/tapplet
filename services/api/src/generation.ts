@@ -139,6 +139,20 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
   return "content" in node && hasMultiSourceAttribute(node.content);
 }
 
+function actionAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
+  const offsets = new Set<number>();
+  function visit(current: DefaultTreeAdapterTypes.Node) {
+    if ("tagName" in current) {
+      const offset = current.sourceCodeLocation?.attrs?.action?.startOffset;
+      if (offset !== undefined) offsets.add(offset);
+    }
+    if ("childNodes" in current) current.childNodes.forEach(visit);
+    if ("content" in current) visit(current.content);
+  }
+  visit(node);
+  return offsets;
+}
+
 function rejected(
   candidate: unknown,
   issues: Issue[],
@@ -290,11 +304,21 @@ function inspect(
         kind: "policy",
         message: "Redirecting and multi-source URLs are not allowed.",
       });
+    const actionAttributes = actionAttributeOffsets(document);
     for (const match of html.matchAll(URL_ATTRIBUTE)) {
+      const index = match.index ?? 0;
       // data-action, data-src and similar custom attributes load nothing.
-      if (html[(match.index ?? 0) - 1] === "-") continue;
+      if (html[index - 1] === "-") continue;
       const attribute = (match[1] ?? "").toLowerCase(),
         value = normalizeAssetUrl(attributeValue(match));
+      // A script variable named action loads nothing; check form action
+      // attributes and property writes only.
+      if (
+        attribute === "action" &&
+        !actionAttributes.has(index) &&
+        !/\.\s*$/.test(html.slice(Math.max(0, index - 20), index))
+      )
+        continue;
       const allowed =
         MANAGED_ASSET.test(value) ||
         (attribute === "href" && value.startsWith("#")) ||

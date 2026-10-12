@@ -78,6 +78,22 @@ describe("HTML generation contract", () => {
     ).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts a script variable named action", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'document.body.onclick = (event) => { const action = event.target.dataset.action; let next = action; next = "reset"; }',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<FORM ACTION="https://outside.invalid/"></FORM>',
+      '<template><form action="/submit"></form></template>',
+      '<script>document.forms[0].action = "https://outside.invalid/"</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts a script variable named poster", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
