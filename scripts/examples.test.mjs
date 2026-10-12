@@ -466,6 +466,22 @@ test('named techniques accept a trailing full stop and doubled spaces', async ()
   }
 });
 
+test('source check feedback explains the wrong option the student chose', async () => {
+  const html = await readFile(path.resolve('apps/ipad/Resources/Examples/source-reliability-check.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  const [copy, rumour] = [...document.querySelectorAll('[data-kind="check"] button:not([data-ok])')];
+  const feedback = () => document.querySelector('[data-kind="check"]').nextElementSibling.textContent;
+  rumour.click();
+  assert.match(feedback(), /^✗ Try again\. An anonymous rumour/);
+  assert.doesNotMatch(feedback(), /copy/);
+  copy.click();
+  assert.match(feedback(), /^✗ Try again\. A bigger copy/);
+  document.querySelector('[data-kind="check"] [data-ok]').click();
+  assert.match(feedback(), /^✓ Correct!/);
+  dom.window.close();
+});
+
 test('plant-cell matches are listed as structure beside job', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
