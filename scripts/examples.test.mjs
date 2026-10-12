@@ -73,6 +73,8 @@ test('allows comments but rejects overlooked network and resource paths', () => 
     '<style>.hero{background:url(/image.png)}</style>',
     '<script>navigator.sendBeacon("/collect")</script>',
     '<script>navigator.serviceWorker.register("worker.js")</script>',
+    '<script type="module">import confetti from "https://outside.invalid/confetti.js";</script>',
+    '<style>@import"https://outside.invalid/a.css";</style>',
     '<script>const Request = XMLHttpRequest; new Request();</script>',
     '<script>const beacon = navigator; beacon.sendBeacon("/collect")</script>',
   ]) {
