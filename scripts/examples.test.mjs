@@ -570,6 +570,28 @@ test('shadow rays never pass through the opaque object', async () => {
   dom.window.close();
 });
 
+test('shadow readout names the side the shadow actually falls on', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/where-the-shadow-falls.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document, KeyboardEvent } = dom.window;
+  document.querySelector('[data-value="right"]').click();
+  document.querySelector('[data-value="long"]').click();
+  document.getElementById('check').click();
+  const lamp = document.getElementById('lamp');
+  const moveRight = (presses) => {
+    for (let press = 0; press < presses; press += 1) lamp.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    return document.getElementById('direction').textContent;
+  };
+  // The lamp starts at x 180; the object spans x 335 to 395.
+  assert.equal(moveRight(10), 'right', 'lamp at 330, left of the object');
+  assert.equal(moveRight(1), 'under', 'lamp at 345, above the object');
+  assert.equal(moveRight(4), 'left', 'lamp at 405, right of the object');
+  dom.window.close();
+});
+
 test('ordering feedback marks each step, clears on moves, and counts correct positions', async () => {
   const cases = [
     { file: 'cool-box-fair-test-lab.html', list: '#steps', check: '#checkSteps', message: '#sm', move: 1, marks: ['✓', '✗', '✗', '✗', '✗'], count: '1 of 5' },
