@@ -8,6 +8,7 @@ struct AppletEditorView: View {
     @State private var prompt = ""; @State private var working = false; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
     @State private var previewLoadState: PreviewLoadState = .loading
     @State private var previewError: String?
+    @State private var isMovingHead = false
     @State private var shareAccessError: TappletAPIError?
     @State private var sharePresentationID = UUID()
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } ?? store.examples.first { $0.id == projectID } }
@@ -83,12 +84,14 @@ struct AppletEditorView: View {
                 }
                 .disabled(working || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Undo") {
+                    isMovingHead = true
                     Task {
+                        defer { isMovingHead = false }
                         do { try await store.undo(projectID: project.id) }
                         catch { showOperationError(error, during: .undo) }
                     }
                 }
-                .disabled(project.source.revision.parentRevisionId == nil)
+                .disabled(isMovingHead || project.source.revision.parentRevisionId == nil)
             }
             Section("Details") { DetailsFields(store: store, project: project) }
             Section("Images") {
@@ -112,12 +115,14 @@ struct AppletEditorView: View {
                                 .frame(width: 64, height: 44).clipped()
                         }
                         Button("Restore") {
+                            isMovingHead = true
                             Task {
+                                defer { isMovingHead = false }
                                 do { try await store.restore(revision: revision, projectID: project.id) }
                                 catch { showOperationError(error, during: .restore) }
                             }
                         }
-                        .disabled(revision.id == project.artifact.headRevisionId)
+                        .disabled(isMovingHead || revision.id == project.artifact.headRevisionId)
                     }
                 }
             }
