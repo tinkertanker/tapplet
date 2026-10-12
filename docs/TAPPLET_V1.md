@@ -40,7 +40,8 @@ recreating the tapplet from scratch.
 2. Run/remix an example, start from a plan, or answer the guided questions and approve the brief.
 3. Generate the tapplet and interact with it directly in the iPad preview.
 4. Ask Tapplet Studio for a change. The working preview remains visible while
-   the new revision loads.
+   the new revision loads, then Tapplet Studio replies with a short note about
+   what it changed.
 5. Restore any earlier revision if the change is not useful.
 6. Edit project details such as title, summary, subject, level and tags without
    making a model request.
@@ -78,9 +79,11 @@ continue.
 
 The generation prompt asks for a compact, touch-first classroom applet, one
 coherent interaction system and simple readable JavaScript. The model returns
-the full HTML document plus an optional design card. The card and project
-metadata help future revision, retrieval and remixing; failure to parse the
-optional card does not discard otherwise valid HTML.
+the full HTML document plus an optional design card and a short comment to
+the teacher. The card and project metadata help future revision, retrieval and
+remixing. The comment is stored on the revision and shown in the editor and its
+history; it is never used for retrieval. Failure to parse either optional field
+does not discard otherwise valid HTML.
 
 Generated JavaScript runs only in the tapplet's front end. It has no Tapplet
 credentials, cookies or server-side execution path. Student interaction state

@@ -150,6 +150,28 @@ describe("atomic storage admission with migrated SQLite", () => {
     }
   });
 
+  it("round-trips teacher comments on created and conditional revisions", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      await repository.createArtifact({
+        artifact: { ...artifact, headRevisionId: "r1" },
+        revision: { ...revision, id: "r1", parentRevisionId: null, kind: "generation", comment: "Made a first version." },
+        assetIds: [],
+      });
+      await expect(
+        repository.createRevision({ ...revision, comment: "Added a timer." }, "owner-a", "r1", []),
+      ).resolves.toBe(true);
+      const revisions = await repository.listRevisions("a1", "owner-a");
+      expect(revisions.map((entry) => [entry.id, entry.comment])).toEqual([
+        ["r1", "Made a first version."],
+        ["r2", "Added a timer."],
+      ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("returns expired screenshot references despite FK cascade changes", async () => {
     const { database, sqlite } = migratedDatabase();
     try {

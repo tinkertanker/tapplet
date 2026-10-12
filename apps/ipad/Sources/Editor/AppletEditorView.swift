@@ -35,6 +35,17 @@ struct AppletEditorView: View {
     private func editor(_ project: ArtifactProject) -> some View {
         Form {
             Section("Ask Tapplet Studio") {
+                if !working, let comment = project.source.revision.comment {
+                    Label {
+                        Text(comment)
+                            .foregroundStyle(TappletTheme.ink)
+                    } icon: {
+                        Image(systemName: "text.bubble")
+                            .foregroundStyle(TappletTheme.mutedInk)
+                    }
+                    .font(.callout)
+                    .accessibilityIdentifier("latest-revision-comment")
+                }
                 TextEditor(text: $prompt).frame(height: 90)
                 if ProcessInfo.processInfo.arguments.contains("--ui-testing-reset"),
                    ProcessInfo.processInfo.arguments.contains("--ui-testing-held-refinement"),
@@ -90,6 +101,9 @@ struct AppletEditorView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(revision.instruction ?? revision.kind.rawValue.capitalized)
+                            if let comment = revision.comment {
+                                Text(comment).font(.callout).foregroundStyle(TappletTheme.mutedInk)
+                            }
                             Text(revision.createdAt).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()

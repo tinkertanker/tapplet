@@ -359,7 +359,7 @@ describe("tkslopper request shape", () => {
       expect(call.body.text).toMatchObject({ format: {
         type: "json_schema", strict: true,
         schema: { type: "object", additionalProperties: false,
-          required: index === 3 ? ["safe", "categories", "reason"] : ["html", "designCard"] },
+          required: index === 3 ? ["safe", "categories", "reason"] : ["html", "designCard", "comment"] },
       } });
       for (const field of ["temperature", "top_p", "seed", "thinking", "tools"])
         expect(call.body).not.toHaveProperty(field);
@@ -417,7 +417,7 @@ describe("tkslopper request shape", () => {
         { role: "user", content: generationPrompt(brief, []) },
       ],
       response_format: { type: "json_schema", json_schema: {
-        name: "artifact", strict: true, schema: expect.objectContaining({ required: ["html", "designCard"], additionalProperties: false }),
+        name: "artifact", strict: true, schema: expect.objectContaining({ required: ["html", "designCard", "comment"], additionalProperties: false }),
       } },
       max_tokens: 32000,
       reasoning_effort: "high",

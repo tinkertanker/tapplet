@@ -1,5 +1,5 @@
 import type { DesignCard, Exemplar, RepairContext, TeacherBrief } from "./provider";
-export const PROMPT_VERSION = "html-v8";
+export const PROMPT_VERSION = "html-v9";
 export type PromptBoundaryMode = "bounded" | "legacy-unbounded";
 // Shared structured-output contracts for native Claude and managed capabilities.
 // An empty object represents omitted design metadata in strict JSON schemas.
@@ -37,8 +37,9 @@ export const ARTIFACT_OUTPUT_SCHEMA = {
         },
       ],
     },
+    comment: { type: "string" },
   },
-  required: ["html", "designCard"],
+  required: ["html", "designCard", "comment"],
   additionalProperties: false,
 };
 export const MODERATION_OUTPUT_SCHEMA = {
@@ -82,7 +83,7 @@ Honour the activity form the brief asks for — game, quiz, simulation or practi
 
 Make the idea visible and hands-on. Draw the concept itself with inline SVG, or canvas when continuous animation needs it: the circuit, the number line, the forces, the fraction bars, the sentence being edited. Let students act on that picture directly by tapping, dragging or sliding its parts, and have it respond immediately. Prefer this to rows of text buttons; use buttons for discrete choices, checking and reset. Animate changes briefly (CSS transitions or short animations under 400 ms) and respect prefers-reduced-motion. Give the applet a deliberate visual design: a calm background, two or three accent colours with WCAG AA contrast, consistent rounded shapes, clear hierarchy and touch targets of at least 44 px. Use drawn shapes rather than emoji or text alone as the main graphics. Use pointer events so finger, pen and mouse all work, and set touch-action on draggable areas.
 
-Return exactly JSON {"html":"...","designCard":{"title":"...","description":"...","tags":["..."],"interactionPattern":"...","structureNotes":"...","namedElementIds":["..."]}}. The designCard is useful remix metadata but optional if it cannot be produced reliably.
+Return exactly JSON {"html":"...","designCard":{"title":"...","description":"...","tags":["..."],"interactionPattern":"...","structureNotes":"...","namedElementIds":["..."]},"comment":"..."}. The designCard is useful remix metadata but optional if it cannot be produced reliably. The comment is a brief note to the teacher, one or two short sentences and under 40 words: say what you made or changed, and name anything requested that you could not do or interpreted differently. Write for a teacher who never sees the code: do not mention code, scripts, HTML or technical details, repeat the request or ask questions.
 
 HTML must be one readable complete document with inline CSS and plain JavaScript. Write simple, robust JavaScript that initialises after the document exists, makes every visible control work, keeps displayed state consistent, provides an obvious reset where appropriate and produces no console errors. Include all content needed to run offline. Do not use network requests, external packages or resources, credentials, analytics, authentication, student identity or submissions. Managed teacher images use only relative paths assets/<assetId>. Use British English unless the brief requests another locale.`;
 export function generationPrompt(
@@ -120,7 +121,7 @@ export function repairPrompt(
   boundaryMode: PromptBoundaryMode = "bounded",
 ) {
   return [
-    "Return corrected exact JSON {html, designCard?}.",
+    "Return corrected exact JSON {html, designCard?, comment?}.",
     context?.final
       ? context.instruction
         ? "Final attempt. Keep the existing applet. Make the smallest change that fixes the issues; do not rebuild from the creation brief."

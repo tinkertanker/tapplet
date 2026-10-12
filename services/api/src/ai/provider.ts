@@ -29,6 +29,8 @@ export interface Exemplar {
 export interface GeneratedArtifact {
   html: string;
   designCard?: DesignCard;
+  // Short note to the teacher about what was made or changed.
+  comment?: string;
 }
 export interface ModerationDecision {
   safe: boolean;
