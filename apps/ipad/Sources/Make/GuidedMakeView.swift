@@ -3,7 +3,6 @@ import SwiftUI
 struct GuidedMakeView: View {
     let store: TappletStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var creationError: TappletErrorPresentation?
     @State private var hidesStarterPlans = false
     @FocusState private var responseIsFocused: Bool
 
@@ -221,7 +220,7 @@ struct GuidedMakeView: View {
                 .font(.footnote)
                 .foregroundStyle(TappletTheme.mutedInk)
 
-            if let creationError {
+            if let creationError = store.guidedMakeCreationError {
                 VStack(alignment: .leading, spacing: 4) {
                     Label(creationError.title, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout.weight(.semibold))
@@ -467,7 +466,7 @@ struct GuidedMakeView: View {
 
     private func editAnswer(at questionIndex: Int) {
         guard !store.isCreatingGuidedDraft else { return }
-        creationError = nil
+        store.guidedMakeCreationError = nil
         store.guidedMakeShowsSummary = false
         store.guidedMakeQuestionIndex = questionIndex
         store.guidedMakeResponse = store.guidedMakeDraft.answer(at: questionIndex)
@@ -475,13 +474,13 @@ struct GuidedMakeView: View {
     }
 
     private func createDraft() {
-        creationError = nil
+        store.guidedMakeCreationError = nil
         Task {
             do {
                 _ = try await store.createApprovedBrief(store.guidedMakeDraft)
                 if store.advisoryNotice == nil { store.resetGuidedMake() }
             } catch {
-                creationError = store.present(error, during: .generation)
+                store.guidedMakeCreationError = store.present(error, during: .generation)
             }
         }
     }
