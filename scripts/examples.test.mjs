@@ -382,6 +382,7 @@ test('plant-cell matches are listed as structure beside job', async () => {
     await page.click('#jobs [data-j="3"]');
     assert.equal(await page.locator('#matchedList .match-row').count(), 1);
     assert.match(await page.textContent('#matchedList .match-row'), /^Nucleus→Contains genetic material/);
+    assert.equal(await page.getAttribute('#panel', 'aria-live'), 'polite', 'tapped structure names are announced');
     await page.close();
   } finally {
     await browser.close();
@@ -425,4 +426,119 @@ test('ordering feedback marks each step, clears on moves, and counts correct pos
   } finally {
     await browser.close();
   }
+});
+
+test('town budget shares never go negative while dragging sliders', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/town-council-budget.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document, Event } = dom.window;
+  const shares = () => ['estate', 'clinic', 'youth', 'lifts']
+    .map((id) => Number.parseInt(document.getElementById(`${id}Value`).textContent, 10));
+  const drag = (id, to) => {
+    const input = document.getElementById(id);
+    const step = to > +input.value ? 1 : -1;
+    for (let value = +input.value; value !== to;) {
+      value += step;
+      input.value = String(value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const values = shares();
+      assert.ok(values.every((share) => share >= 0), `${id} ${value}: ${values.join(', ')}`);
+      assert.equal(values.reduce((sum, share) => sum + share, 0), 100, `${id} ${value}`);
+    }
+  };
+  drag('lifts', 0);
+  drag('youth', 100);
+  drag('youth', 0);
+  dom.window.close();
+});
+
+test('conductor sort feedback uses the right article for each bin', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/conductor-or-insulator.html'),
+    'utf8',
+  );
+  for (const [item, wrongBin, miss, expected] of [
+    ['Copper coin', 'insulator', /^Not an insulator\./, /Copper coin is a conductor\./],
+    ['Rubber band', 'conductor', /^Not a conductor\./, /Rubber band is an insulator\./],
+  ]) {
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+    const { document } = dom.window;
+    for (let life = 0; life < 3; life += 1) {
+      [...document.querySelectorAll('#items button')].find((button) => button.textContent === item).click();
+      document.querySelector(`[data-bin="${wrongBin}"]`).click();
+      if (life === 0) assert.match(document.getElementById('msg').textContent, miss);
+    }
+    assert.match(document.getElementById('msg').textContent, expected);
+    dom.window.close();
+  }
+});
+
+test('every curated control has an accessible name', async () => {
+  const directory = path.resolve('apps/ipad/Resources/Examples');
+  const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const file of files) {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, file), 'utf8'));
+      const unnamed = (await page.locator('body').ariaSnapshot())
+        .split('\n')
+        .filter((line) => /^\s*- (?:button|checkbox|combobox|listbox|radio|slider|spinbutton|textbox)(?: \[[^\]]*\])*:?$/.test(line));
+      assert.deepEqual(unnamed, [], file);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('tap-to-select corpus controls expose their pressed state', async () => {
+  const pressed = (document) => [...document.querySelectorAll('[aria-pressed="true"]')].map((el) => el.textContent);
+  const load = async (file) => new JSDOM(
+    await readFile(path.resolve(`apps/ipad/Resources/Examples/${file}`), 'utf8'),
+    { runScripts: 'dangerously', url: 'https://artifact.invalid/' },
+  );
+
+  const cut = await load('cut-extra-words.html');
+  const tokens = [...cut.window.document.querySelectorAll('#editor .token')];
+  assert.ok(tokens.every((token) => token.getAttribute('aria-pressed') === 'false'));
+  const padding = tokens.find((token) => token.textContent === 'very important and useful');
+  padding.click();
+  assert.deepEqual(pressed(cut.window.document), ['very important and useful']);
+  padding.click();
+  assert.deepEqual(pressed(cut.window.document), []);
+  padding.click();
+  cut.window.document.getElementById('reset').click();
+  assert.deepEqual(pressed(cut.window.document), []);
+  cut.window.close();
+
+  const shadow = await load('where-the-shadow-falls.html');
+  const { document } = shadow.window;
+  const choice = (question, value) => document.querySelector(`[data-question="${question}"] [data-value="${value}"]`);
+  assert.ok([...document.querySelectorAll('.choices button')].every((button) => button.getAttribute('aria-pressed') === 'false'));
+  choice('direction', 'left').click();
+  choice('direction', 'right').click();
+  choice('length', 'long').click();
+  assert.deepEqual(pressed(document), ['right', 'long']);
+  document.getElementById('reset').click();
+  assert.deepEqual(pressed(document), []);
+  shadow.window.close();
+
+  const cell = await load('plant-cell-hotspots.html');
+  const cellDocument = cell.window.document;
+  cellDocument.querySelectorAll('.hot').forEach((spot) => spot.click());
+  assert.ok([...cellDocument.querySelectorAll('#picks button')].every((button) => button.getAttribute('aria-pressed') === 'false'));
+  cellDocument.querySelector('#picks [data-s="4"]').click();
+  cellDocument.querySelector('#picks [data-s="3"]').click();
+  assert.deepEqual(pressed(cellDocument), ['Nucleus']);
+  cellDocument.querySelector('#jobs [data-j="3"]').click();
+  assert.deepEqual(pressed(cellDocument), []);
+  cellDocument.querySelector('#picks [data-s="0"]').click();
+  cellDocument.getElementById('reset').click();
+  assert.deepEqual(pressed(cellDocument), []);
+  cell.window.close();
 });
