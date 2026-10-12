@@ -174,8 +174,9 @@ function visitJavaScript(value: unknown, visit: (node: AnyNode) => void) {
 
 // Source ranges of inline scripts and event handlers, their cooked string and
 // template literal text, where markup such as innerHTML can still load URLs,
-// the source offsets of script variables named like URL attributes, and the
-// literal URLs scripts pass to setAttribute.
+// the source offsets of script variables named like URL attributes, the
+// literal URLs scripts pass to setAttribute, and whether any script imports or
+// re-exports another module.
 function scriptSources(
   node: DefaultTreeAdapterTypes.Node,
   html: string,
@@ -184,11 +185,13 @@ function scriptSources(
   strings: string[];
   declarations: Set<number>;
   attributeWrites: Array<{ attribute: string; value: string }>;
+  imports: boolean;
 } {
   const ranges: Array<readonly [number, number]> = [];
   const strings: string[] = [];
   const declarations = new Set<number>();
   const attributeWrites: Array<{ attribute: string; value: string }> = [];
+  let imports = false;
   // offset is where source starts in html when html holds it verbatim.
   function collect(
     source: string,
@@ -212,10 +215,20 @@ function scriptSources(
     try {
       program = parseJavaScript(source, { ecmaVersion: "latest", sourceType });
     } catch {
+      // Invalid syntax, including a module statement in a classic script, is
+      // rejected by validateScripts.
       return;
     }
     // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
     visitJavaScript(program, (current) => {
+      // import "https://...", export * from "https://...", import(url).
+      if (
+        current.type === "ImportDeclaration" ||
+        current.type === "ImportExpression" ||
+        current.type === "ExportAllDeclaration" ||
+        (current.type === "ExportNamedDeclaration" && current.source)
+      )
+        imports = true;
       if (
         current.type !== "CallExpression" ||
         current.callee.type !== "MemberExpression" ||
@@ -303,7 +316,7 @@ function scriptSources(
     if ("content" in current) visit(current.content);
   }
   visit(node);
-  return { ranges, strings, declarations, attributeWrites };
+  return { ranges, strings, declarations, attributeWrites, imports };
 }
 
 function literalText(node: AnyNode): string | undefined {
@@ -523,6 +536,7 @@ function inspect(
         });
     }
     if (
+      scripts.imports ||
       /@import\b/i.test(html) ||
       /\b(?:import\b\s*(?:\(|[^;]*?from\s*)|require\s*\()["']/i.test(html)
     )

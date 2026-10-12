@@ -53,6 +53,12 @@ const snippets = [
   '<script>localStorage.setItem("a", "b")</script>',
   "<script>navigator.serviceWorker</script>",
   '<script type="module">import confetti from "https://outside.invalid/c.js";</script>',
+  '<script type="module">import "https://outside.invalid/c.js";</script>',
+  '<script type="module">export * from "https://outside.invalid/c.js";</script>',
+  '<script type="module">export { a } from "https://outside.invalid/c.js";</script>',
+  '<script type="module">import/**/("https://outside.invalid/c.js");</script>',
+  '<script type="module">export const a = 1; export { a as b };</script>',
+  '<p>Countries import "rice" and {beans}; we require (care).</p>',
   // Script variables are exempt only where parsing finds a declaration or a
   // script assignment, not anywhere a name starts a line or follows punctuation.
   '<script>\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src</script>',

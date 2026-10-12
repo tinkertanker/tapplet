@@ -74,6 +74,23 @@ describe("HTML generation contract", () => {
         validateHtmlOutput({ html: html.replace('document.body.dataset.ok="1"', script) }),
       ).toThrow(InvalidModelOutputError);
     }
+    const module = html.replace("<script>", '<script type="module">');
+    const local = module.replace(
+      'document.body.dataset.ok="1"',
+      "export const ok = 1; export { ok as ready }",
+    );
+    expect(validateHtmlOutput({ html: local })).toEqual({ html: local });
+    for (const script of [
+      'import "https://outside.invalid/x.js"',
+      'export * from "https://outside.invalid/x.js"',
+      'export * as x from "https://outside.invalid/x.js"',
+      'export { a } from "https://outside.invalid/x.js"',
+      'import/**/("https://outside.invalid/x.js")',
+    ]) {
+      expect(() =>
+        validateHtmlOutput({ html: module.replace('document.body.dataset.ok="1"', script) }),
+      ).toThrow(InvalidModelOutputError);
+    }
   });
 
   it("accepts custom data attributes named like URL attributes", () => {

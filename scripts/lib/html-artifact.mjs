@@ -50,7 +50,7 @@ export function validateHtmlArtifact(html, options = {}) {
 
   const forbidden = [
     [/<link\b[^>]*(?<![\w-])rel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
-    [/@import\b|\bimport\s*(?:\(|["'{*])|\bimport\b[^;]*?from\s*["']|\brequire\s*\(/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
+    [/@import\b|\bimport\b\s*(?:\(|[^;]*?from\s*)["']|\brequire\s*\(["']/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
     [/\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i, 'network', 'Network APIs are not allowed.'],
   ];
   forbidden.forEach(([pattern, code, message]) => {
@@ -62,6 +62,7 @@ export function validateHtmlArtifact(html, options = {}) {
   const document = parseHtml(html, { sourceCodeLocationInfo: true });
   if (/<(?:base|iframe|object|embed)\b/i.test(html)) add('external-resource', 'Embedded documents and base URLs are not allowed.');
   const scripts = scriptSources(document, html);
+  if (scripts.imports) add('package-import', 'Package and stylesheet imports are not allowed.');
   // Check real attributes, markup in script strings, stored markup such as
   // data attributes and property writes; a script variable named poster (for
   // a poster-design activity) loads nothing.
@@ -187,13 +188,15 @@ function literalText(node) {
 
 // Source ranges of inline scripts and event handlers, their cooked string and
 // template literal text, where markup such as innerHTML can still load URLs,
-// the source offsets of script variables named like URL attributes, and the
-// literal URLs scripts pass to setAttribute.
+// the source offsets of script variables named like URL attributes, the
+// literal URLs scripts pass to setAttribute, and whether any script imports or
+// re-exports another module.
 function scriptSources(root, html) {
   const ranges = [];
   const strings = [];
   const declarations = new Set();
   const attributeWrites = [];
+  let imports = false;
   // offset is where source starts in html when html holds it verbatim.
   function collect(source, sourceType, offset, handler = false) {
     try {
@@ -207,10 +210,19 @@ function scriptSources(root, html) {
     try {
       program = parseJavaScript(source, { ecmaVersion: 'latest', sourceType });
     } catch {
+      // Invalid syntax, including a module statement in a classic script, is
+      // reported separately.
       return;
     }
     // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
     visitJavaScript(program, (current) => {
+      // import "https://...", export * from "https://...", import(url).
+      if (
+        current.type === 'ImportDeclaration'
+        || current.type === 'ImportExpression'
+        || current.type === 'ExportAllDeclaration'
+        || (current.type === 'ExportNamedDeclaration' && current.source)
+      ) imports = true;
       if (
         current.type !== 'CallExpression'
         || current.callee.type !== 'MemberExpression'
@@ -272,7 +284,7 @@ function scriptSources(root, html) {
     if ('content' in node) visit(node.content);
   }
   visit(root);
-  return { ranges, strings, declarations, attributeWrites };
+  return { ranges, strings, declarations, attributeWrites, imports };
 }
 
 export function validateSeedManifest(manifest, options = {}) {
