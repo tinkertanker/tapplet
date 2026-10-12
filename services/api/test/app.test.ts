@@ -1072,10 +1072,17 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(crossOwner.status).toBe(201);
     const remixed = (await crossOwner.json()) as {
-      artifact: { creationBrief: string };
+      artifact: { id: string; creationBrief: string };
+      headRevision: { comment: string | null };
     };
     expect(remixed.artifact.creationBrief).not.toContain("row 3");
     expect(remixed.artifact.creationBrief).toContain(first.artifact.title);
+    // The source teacher's note is private to their own revision history.
+    expect(remixed.headRevision.comment).toBeNull();
+    const saved = (await (
+      await asOther(`/v1/artifacts/${remixed.artifact.id}/revisions`)
+    ).json()) as { revisions: { comment: string | null }[] };
+    expect(saved.revisions.map((revision) => revision.comment)).toEqual([null]);
 
     const ownRemix = await app.fetch(
       authenticated(`/v1/revisions/${first.headRevision.id}/remix`, "POST", {}),

@@ -1299,6 +1299,8 @@ export function createStudioApp(d: Deps) {
             parentRevisionId: null,
             kind: "remix" as const,
             instruction: "Remix",
+            // Comments address the source revision's teacher; never copy them.
+            comment: null,
             createdAt: timestamp,
             screenshotKey: null,
           },
