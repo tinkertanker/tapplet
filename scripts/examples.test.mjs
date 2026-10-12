@@ -72,6 +72,9 @@ test('allows comments but rejects overlooked network and resource paths', () => 
     '<img srcset="small.png 1x, large.png 2x">',
     '<style>.hero{background:url(/image.png)}</style>',
     '<script>navigator.sendBeacon("/collect")</script>',
+    '<script>navigator.serviceWorker.register("worker.js")</script>',
+    '<script>const Request = XMLHttpRequest; new Request();</script>',
+    '<script>const beacon = navigator; beacon.sendBeacon("/collect")</script>',
   ]) {
     const result = validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`));
     assert.equal(result.valid, false, snippet);

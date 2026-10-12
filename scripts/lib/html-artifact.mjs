@@ -52,7 +52,7 @@ export function validateHtmlArtifact(html, options = {}) {
     [/<script\b[^>]*\bsrc\s*=/i, 'external-script', 'External script sources are not allowed.'],
     [/<link\b[^>]*\brel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
     [/@import\s|\bimport\s*(?:\(|["'{*])|\brequire\s*\(/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
-    [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(|\bnavigator\.sendBeacon\s*\(/i, 'network', 'Network APIs are not allowed.'],
+    [/\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i, 'network', 'Network APIs are not allowed.'],
   ];
   forbidden.forEach(([pattern, code, message]) => {
     if (pattern.test(html)) add(code, message);
