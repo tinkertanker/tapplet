@@ -526,4 +526,18 @@ test('tap-to-select corpus controls expose their pressed state', async () => {
   document.getElementById('reset').click();
   assert.deepEqual(pressed(document), []);
   shadow.window.close();
+
+  const cell = await load('plant-cell-hotspots.html');
+  const cellDocument = cell.window.document;
+  cellDocument.querySelectorAll('.hot').forEach((spot) => spot.click());
+  assert.ok([...cellDocument.querySelectorAll('#picks button')].every((button) => button.getAttribute('aria-pressed') === 'false'));
+  cellDocument.querySelector('#picks [data-s="4"]').click();
+  cellDocument.querySelector('#picks [data-s="3"]').click();
+  assert.deepEqual(pressed(cellDocument), ['Nucleus']);
+  cellDocument.querySelector('#jobs [data-j="3"]').click();
+  assert.deepEqual(pressed(cellDocument), []);
+  cellDocument.querySelector('#picks [data-s="0"]').click();
+  cellDocument.getElementById('reset').click();
+  assert.deepEqual(pressed(cellDocument), []);
+  cell.window.close();
 });

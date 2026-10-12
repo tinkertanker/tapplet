@@ -26,7 +26,7 @@ const why=[
 const jobOrder=[2,4,0,3,1];
 const picks=document.getElementById('picks'),jobsBox=document.getElementById('jobs'),match=document.getElementById('match'),matchedList=document.getElementById('matchedList');
 const seen=new Set;const paired=new Set;let chosen=null;
-picks.innerHTML=names.map((n,i)=>`<button type="button" data-s="${i}">${n}</button>`).join('');
+picks.innerHTML=names.map((n,i)=>`<button type="button" data-s="${i}" aria-pressed="false">${n}</button>`).join('');
 jobsBox.innerHTML=jobOrder.map(i=>`<button type="button" data-j="${i}">${jobs[i]}</button>`).join('');
 function progress(){document.getElementById('progress').textContent=`${seen.size} / 5 explored`}
 function unlock(){
@@ -49,8 +49,9 @@ document.querySelectorAll('.hot').forEach(btn=>{
 });
 picks.onclick=e=>{
   if(seen.size<5||e.target.tagName!=='BUTTON'||e.target.classList.contains('paired'))return;
-  picks.querySelectorAll('button').forEach(b=>b.classList.remove('selected'));
+  picks.querySelectorAll('button').forEach(b=>{b.classList.remove('selected');b.setAttribute('aria-pressed','false')});
   e.target.classList.add('selected');
+  e.target.setAttribute('aria-pressed','true');
   chosen=+e.target.dataset.s;
 };
 jobsBox.onclick=e=>{
@@ -59,7 +60,9 @@ jobsBox.onclick=e=>{
   const j=+e.target.dataset.j;
   if(j===chosen){
     paired.add(chosen);
-    picks.querySelector(`[data-s="${chosen}"]`).className='paired';
+    const pick=picks.querySelector(`[data-s="${chosen}"]`);
+    pick.className='paired';
+    pick.setAttribute('aria-pressed','false');
     e.target.className='paired';
     addMatchRow(chosen);
     chosen=null;
@@ -79,7 +82,7 @@ function addMatchRow(i){
 document.getElementById('reset').onclick=()=>{
   seen.clear();paired.clear();chosen=null;
   document.querySelectorAll('.hot').forEach(x=>x.classList.remove('done'));
-  picks.querySelectorAll('button').forEach(b=>b.className='');
+  picks.querySelectorAll('button').forEach(b=>{b.className='';b.setAttribute('aria-pressed','false')});
   jobsBox.querySelectorAll('button').forEach(b=>b.className='');
   document.getElementById('panel').textContent='Choose a numbered structure.';
   document.getElementById('feedback').textContent='';
