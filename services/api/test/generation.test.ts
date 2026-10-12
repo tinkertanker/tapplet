@@ -110,6 +110,8 @@ describe("HTML generation contract", () => {
       '<script>document.body.innerHTML = `<img\n  src="https://outside.invalid/x.png" alt="">`</script>',
       "<script>document.body.innerHTML = '<img alt=a; src=https://outside.invalid/x.png>'</script>",
       `<button onclick="this.innerHTML = '<img alt=a; src=https://outside.invalid/x.png>'">Go</button>`,
+      '<script type="text/template">\n<img\n  src="https://outside.invalid/x.png">\n</script>',
+      `<div data-markup='<img\nsrc="https://outside.invalid/x.png">'></div>`,
     ])
       expect(() =>
         validateHtmlOutput({ html: html.replace("Hello", capability) }),

@@ -162,9 +162,13 @@ function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
   return offsets;
 }
 
-// Cooked string and template literal text in inline scripts and event
-// handlers, where markup such as innerHTML can still load URLs.
-function scriptStrings(node: DefaultTreeAdapterTypes.Node): string[] {
+// Source ranges of inline scripts and event handlers, and their cooked string
+// and template literal text, where markup such as innerHTML can still load URLs.
+function scriptSources(node: DefaultTreeAdapterTypes.Node): {
+  ranges: Array<readonly [number, number]>;
+  strings: string[];
+} {
+  const ranges: Array<readonly [number, number]> = [];
   const strings: string[] = [];
   function collect(source: string, sourceType: "script" | "module") {
     try {
@@ -183,28 +187,33 @@ function scriptStrings(node: DefaultTreeAdapterTypes.Node): string[] {
   function visit(current: DefaultTreeAdapterTypes.Node) {
     if ("tagName" in current) {
       for (const attribute of current.attrs)
-        if (/^on[a-z]+$/.test(attribute.name))
+        if (/^on[a-z]+$/.test(attribute.name)) {
+          const location = current.sourceCodeLocation?.attrs?.[attribute.name];
+          if (location) ranges.push([location.startOffset, location.endOffset]);
           collect(`function eventHandler(event) {\n${attribute.value}\n}`, "script");
+        }
       const type = (
         current.attrs.find((attribute) => attribute.name === "type")?.value ?? ""
       ).trim().toLowerCase();
-      if (current.tagName === "script" && (type === "module" || JAVASCRIPT_TYPES.has(type)))
+      if (current.tagName === "script" && (type === "module" || JAVASCRIPT_TYPES.has(type))) {
+        const text = current.childNodes.filter(
+          (child): child is DefaultTreeAdapterTypes.TextNode =>
+            child.nodeName === "#text",
+        );
+        for (const child of text)
+          if (child.sourceCodeLocation)
+            ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
         collect(
-          current.childNodes
-            .filter(
-              (child): child is DefaultTreeAdapterTypes.TextNode =>
-                child.nodeName === "#text",
-            )
-            .map((child) => child.value)
-            .join(""),
+          text.map((child) => child.value).join(""),
           type === "module" ? "module" : "script",
         );
+      }
     }
     if ("childNodes" in current) current.childNodes.forEach(visit);
     if ("content" in current) visit(current.content);
   }
   visit(node);
-  return strings;
+  return { ranges, strings };
 }
 
 function checkUrl(attribute: string, value: string, issues: Issue[]) {
@@ -368,12 +377,12 @@ function inspect(
         kind: "policy",
         message: "Embedded documents and base URLs are not allowed.",
       });
-    const strings = scriptStrings(document);
+    const scripts = scriptSources(document);
     // Check real attributes, markup in script strings and property writes; a
     // script variable named poster (for a poster-design activity) loads nothing.
     if (
       hasMultiSourceAttribute(document) ||
-      strings.some((value) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value)) ||
+      scripts.strings.some((value) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value)) ||
       /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
     )
       issues.push({
@@ -388,13 +397,14 @@ function inspect(
       const attribute = (match[1] ?? "").toLowerCase(),
         value = normalizeAssetUrl(attributeValue(match));
       // A script variable named src, href or action loads nothing. Markup in
-      // script strings and property writes are still checked.
+      // script strings, other text and property writes are still checked.
       const line = html.slice(
         Math.max(html.lastIndexOf("\n", index - 1) + 1, index - 200),
         index,
       );
       if (
         !urlAttributes.has(index) &&
+        scripts.ranges.some(([start, end]) => start <= index && index < end) &&
         /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)
       )
         continue;
@@ -402,7 +412,7 @@ function inspect(
     }
     // Markup in script strings can start a line or follow punctuation, so check
     // its URL attributes regardless of the variable heuristic above.
-    for (const string of strings)
+    for (const string of scripts.strings)
       for (const match of string.matchAll(URL_ATTRIBUTE))
         if (string[(match.index ?? 0) - 1] !== "-")
           checkUrl(
