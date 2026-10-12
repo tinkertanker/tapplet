@@ -141,6 +141,7 @@ private struct ImageManagementView: View {
     @State private var decorative = false
     @State private var importsFile = false
     @State private var showsCamera = false
+    @State private var isWorking = false
     @State private var error: String?
 
     var body: some View {
@@ -149,11 +150,14 @@ private struct ImageManagementView: View {
                 Label(assetID, systemImage: "photo")
                 Spacer()
                 Button("Remove", role: .destructive) {
+                    isWorking = true
                     Task {
+                        defer { isWorking = false }
                         do { try await store.removeImage(assetID: assetID, projectID: projectID) }
                         catch { show(error) }
                     }
                 }
+                .disabled(isWorking)
             }
         }
         PhotosPicker("Choose from Photos", selection: $photo, matching: .images)
@@ -163,7 +167,7 @@ private struct ImageManagementView: View {
             TextField("Describe this image", text: $description, axis: .vertical)
             Toggle("Decorative image", isOn: $decorative)
             Button("Upload and ask Tapplet Studio to insert") { upload() }
-                .disabled(!decorative && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isWorking || (!decorative && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
         }
         if let error { Text(error).foregroundStyle(TappletTheme.danger) }
         Text("Images are prepared and checked on this iPad. AI review warnings do not block uploads; check flagged images before sharing.")
@@ -182,9 +186,11 @@ private struct ImageManagementView: View {
     }
 
     private func upload() {
-        guard let pendingData else { return }
+        guard let pendingData, !isWorking else { return }
         error = nil
+        isWorking = true
         Task {
+            defer { isWorking = false }
             do {
                 try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
                 self.pendingData = nil; description = ""; decorative = false; photo = nil
