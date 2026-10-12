@@ -474,3 +474,23 @@ test('conductor sort feedback uses the right article for each bin', async () => 
     dom.window.close();
   }
 });
+
+test('every curated control has an accessible name', async () => {
+  const directory = path.resolve('apps/ipad/Resources/Examples');
+  const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const file of files) {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(path.join(directory, file), 'utf8'));
+      const unnamed = (await page.locator('body').ariaSnapshot())
+        .split('\n')
+        .filter((line) => /^\s*- (?:button|checkbox|combobox|listbox|radio|slider|spinbutton|textbox)(?: \[[^\]]*\])*:?$/.test(line));
+      assert.deepEqual(unnamed, [], file);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
