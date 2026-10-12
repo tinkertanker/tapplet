@@ -276,6 +276,8 @@ function inspect(
         message: "Redirecting and multi-source URLs are not allowed.",
       });
     for (const match of html.matchAll(URL_ATTRIBUTE)) {
+      // data-action, data-src and similar custom attributes load nothing.
+      if (html[(match.index ?? 0) - 1] === "-") continue;
       const attribute = (match[1] ?? "").toLowerCase(),
         value = normalizeAssetUrl(attributeValue(match));
       const allowed =

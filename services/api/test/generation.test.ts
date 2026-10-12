@@ -67,6 +67,17 @@ describe("HTML generation contract", () => {
     }
   });
 
+  it("accepts custom data attributes named like URL attributes", () => {
+    const candidate = html.replace(
+      "Hello",
+      '<button data-action="check">Check</button><div data-src="pool-1"></div>',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(() =>
+      validateHtmlOutput({ html: html.replace("Hello", '<form action="https://outside.invalid/"></form>') }),
+    ).toThrow(InvalidModelOutputError);
+  });
+
   it("normalizes surrounding ASCII whitespace in managed URL references", () => {
     const candidate = html.replace("assets/asset-one", " \t\nassets/asset-one\r\f ")
       .replace("</style>", '.image{background:url(" \tassets/css-image\n ")}</style>');
