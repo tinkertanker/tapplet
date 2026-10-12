@@ -1,4 +1,4 @@
-import { parse as parseJavaScript } from "acorn";
+import { parse as parseJavaScript, tokenizer, tokTypes } from "acorn";
 import { parse as parseHtml, type DefaultTreeAdapterTypes } from "parse5";
 import type {
   DesignCard,
@@ -162,6 +162,71 @@ function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
   return offsets;
 }
 
+// Cooked string and template literal text in inline scripts and event
+// handlers, where markup such as innerHTML can still load URLs.
+function scriptStrings(node: DefaultTreeAdapterTypes.Node): string[] {
+  const strings: string[] = [];
+  function collect(source: string, sourceType: "script" | "module") {
+    try {
+      for (const token of tokenizer(source, { ecmaVersion: "latest", sourceType })) {
+        const value: unknown = Reflect.get(token, "value");
+        if (
+          (token.type === tokTypes.string || token.type === tokTypes.template) &&
+          typeof value === "string"
+        )
+          strings.push(value);
+      }
+    } catch {
+      // Invalid syntax is reported by validateScripts.
+    }
+  }
+  function visit(current: DefaultTreeAdapterTypes.Node) {
+    if ("tagName" in current) {
+      for (const attribute of current.attrs)
+        if (/^on[a-z]+$/.test(attribute.name))
+          collect(`function eventHandler(event) {\n${attribute.value}\n}`, "script");
+      const type = (
+        current.attrs.find((attribute) => attribute.name === "type")?.value ?? ""
+      ).trim().toLowerCase();
+      if (current.tagName === "script" && (type === "module" || JAVASCRIPT_TYPES.has(type)))
+        collect(
+          current.childNodes
+            .filter(
+              (child): child is DefaultTreeAdapterTypes.TextNode =>
+                child.nodeName === "#text",
+            )
+            .map((child) => child.value)
+            .join(""),
+          type === "module" ? "module" : "script",
+        );
+    }
+    if ("childNodes" in current) current.childNodes.forEach(visit);
+    if ("content" in current) visit(current.content);
+  }
+  visit(node);
+  return strings;
+}
+
+function checkUrl(attribute: string, value: string, issues: Issue[]) {
+  const allowed =
+    MANAGED_ASSET.test(value) ||
+    (attribute === "href" && value.startsWith("#")) ||
+    (attribute === "src" &&
+      /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(
+        value,
+      ));
+  if (!allowed)
+    issues.push({
+      kind: "policy",
+      message: `Unsupported ${attribute} URL.`,
+    });
+  if (/^javascript:/i.test(value))
+    issues.push({
+      kind: "policy",
+      message: "JavaScript URLs are not allowed.",
+    });
+}
+
 function rejected(
   candidate: unknown,
   issues: Issue[],
@@ -303,10 +368,12 @@ function inspect(
         kind: "policy",
         message: "Embedded documents and base URLs are not allowed.",
       });
-    // Check real attributes and property writes; a script variable named
-    // poster (for a poster-design activity) loads nothing.
+    const strings = scriptStrings(document);
+    // Check real attributes, markup in script strings and property writes; a
+    // script variable named poster (for a poster-design activity) loads nothing.
     if (
       hasMultiSourceAttribute(document) ||
+      strings.some((value) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value)) ||
       /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
     )
       issues.push({
@@ -331,24 +398,18 @@ function inspect(
         /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)
       )
         continue;
-      const allowed =
-        MANAGED_ASSET.test(value) ||
-        (attribute === "href" && value.startsWith("#")) ||
-        (attribute === "src" &&
-          /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(
-            value,
-          ));
-      if (!allowed)
-        issues.push({
-          kind: "policy",
-          message: `Unsupported ${attribute} URL.`,
-        });
-      if (/^javascript:/i.test(value))
-        issues.push({
-          kind: "policy",
-          message: "JavaScript URLs are not allowed.",
-        });
+      checkUrl(attribute, value, issues);
     }
+    // Markup in script strings can start a line or follow punctuation, so check
+    // its URL attributes regardless of the variable heuristic above.
+    for (const string of strings)
+      for (const match of string.matchAll(URL_ATTRIBUTE))
+        if (string[(match.index ?? 0) - 1] !== "-")
+          checkUrl(
+            (match[1] ?? "").toLowerCase(),
+            normalizeAssetUrl(attributeValue(match)),
+            issues,
+          );
     for (const match of html.matchAll(CSS_URL)) {
       const value = normalizeAssetUrl(match[1] ?? match[2] ?? match[3] ?? "");
       if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value))

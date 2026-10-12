@@ -107,6 +107,9 @@ describe("HTML generation contract", () => {
       "<script>document.images[0].src = window.name</script>",
       `<script>document.body.innerHTML = '<img src="https://outside.invalid/x.png">'</script>`,
       `<script>document.body.innerHTML = '<form action="https://outside.invalid/">'</script>`,
+      '<script>document.body.innerHTML = `<img\n  src="https://outside.invalid/x.png" alt="">`</script>',
+      "<script>document.body.innerHTML = '<img alt=a; src=https://outside.invalid/x.png>'</script>",
+      `<button onclick="this.innerHTML = '<img alt=a; src=https://outside.invalid/x.png>'">Go</button>`,
     ])
       expect(() =>
         validateHtmlOutput({ html: html.replace("Hello", capability) }),
@@ -119,6 +122,13 @@ describe("HTML generation contract", () => {
       'let poster = document.getElementById("poster"); poster.dataset.ready = "1"',
     );
     expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      `<script>document.body.innerHTML = '<img src="assets/a" srcset="https://outside.invalid/x.png 2x">'</script>`,
+      "<script>document.body.innerHTML = `<video\n  poster=\"https://outside.invalid/x.png\"></video>`</script>",
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
   });
 
   it("normalizes surrounding ASCII whitespace in managed URL references", () => {
