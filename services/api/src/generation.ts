@@ -249,20 +249,38 @@ function scriptSources(
         attributeWrites.push({ attribute: match[1].toLowerCase(), value: url });
     });
     if (offset === undefined) return;
+    const base = offset;
     // A script variable loads nothing, but in an event handler or a with
     // statement a bare name such as src can assign the element's property.
     const found: number[] = [];
     let usesWith = false;
+    // Names bound through destructuring and defaults count; a member target
+    // such as img.src is still checked.
+    function bind(target: AnyNode | null | undefined) {
+      if (target?.type === "Identifier") {
+        if (/^(?:src|href|action|formaction|srcset|poster)$/i.test(target.name))
+          found.push(base + target.start);
+      } else if (target?.type === "ObjectPattern")
+        target.properties.forEach((property) =>
+          bind(property.type === "Property" ? property.value : property),
+        );
+      else if (target?.type === "ArrayPattern") target.elements.forEach(bind);
+      else if (target?.type === "AssignmentPattern") bind(target.left);
+      else if (target?.type === "RestElement") bind(target.argument);
+    }
     visitJavaScript(program, (current) => {
       if (current.type === "WithStatement") usesWith = true;
-      const name =
-        current.type === "VariableDeclarator"
-          ? current.id
-          : current.type === "AssignmentExpression" && !handler
-            ? current.left
-            : undefined;
-      if (name?.type === "Identifier" && /^(?:src|href|action|formaction|srcset|poster)$/i.test(name.name))
-        found.push(offset + name.start);
+      if (current.type === "VariableDeclarator") bind(current.id);
+      else if (current.type === "AssignmentExpression" && !handler) bind(current.left);
+      else if (
+        current.type === "FunctionDeclaration" ||
+        current.type === "FunctionExpression" ||
+        current.type === "ArrowFunctionExpression"
+      )
+        current.params.forEach(bind);
+      else if (current.type === "CatchClause") bind(current.param);
+      // A class field defines its own property and runs no element setter.
+      else if (current.type === "PropertyDefinition" && !current.computed) bind(current.key);
     });
     if (!usesWith) for (const start of found) declarations.add(start);
   }

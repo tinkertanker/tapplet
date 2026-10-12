@@ -185,6 +185,33 @@ describe("HTML generation contract", () => {
       ).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts URL-named parameters, destructuring and class fields", () => {
+    for (const script of [
+      "function handleAction(action = 'check') { return action; }",
+      "const pick = (action = 'check') => action; pick();",
+      "const {src = 'placeholder'} = {}; void src;",
+      "const { card: { href = 'none' }, list: [poster = 'blank', ...action] } = { card: {}, list: [] };",
+      "let formaction; [formaction = 'next'] = []; ({ src = 'later' } = {});",
+      "try { void 0 } catch ({ href = 'none' }) {}",
+      "class Game { action = 'idle'; static src = 'none'; }",
+    ]) {
+      const candidate = html.replace('document.body.dataset.ok="1"', script);
+      expect(validateHtmlOutput({ html: candidate }), script).toEqual({ html: candidate });
+    }
+    const handler = `<button onclick="const go = (action = 'check') => action; const {href = 'none'} = {}; go()">Go</button>`;
+    expect(validateHtmlOutput({ html: html.replace("Hello", handler) })).toEqual({
+      html: html.replace("Hello", handler),
+    });
+    for (const capability of [
+      `<img src="assets/a" onerror="({src = 'https://outside.invalid/x.png'} = {})">`,
+      `<img src="assets/a" onerror="const f = (a = src = 'https://outside.invalid/x.png') => a; f()">`,
+      `<script>const { a = document.images[0].src = 'https://outside.invalid/x.png' } = {};</script>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts a script variable named poster", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',

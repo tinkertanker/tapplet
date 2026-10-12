@@ -70,6 +70,18 @@ const snippets = [
   '<script>document.body.innerHTML = /<img let src="https:\\/\\/outside.invalid\\/x.png">/.source;</script>',
   `<img alt="" src="assets/image-1" onerror="0;src='https://outside.invalid/x.png'">`,
   '<script>with (document.images[0]) { var src = "https://outside.invalid/x.png" }</script>',
+  // Parameters, destructuring defaults and class fields bind names too, but a
+  // destructuring assignment in a handler can still set the element's URL.
+  "<script>function handleAction(action = 'check') { return action; }</script>",
+  "<script>const pick = (action = 'check') => action;</script>",
+  "<script>const {src = 'placeholder'} = {};</script>",
+  "<script>const { card: { href = 'none' }, list: [poster = 'blank', ...action] } = { card: {}, list: [] };</script>",
+  "<script>let formaction; [formaction = 'next'] = []; ({ src = 'later' } = {});</script>",
+  "<script>try { void 0 } catch ({ href = 'none' }) {}</script>",
+  "<script>class Game { action = 'idle'; static src = 'none'; }</script>",
+  `<button onclick="const go = (action = 'check') => action; const {href = 'none'} = {}; go()">Go</button>`,
+  `<img alt="" src="assets/image-1" onerror="({src = 'https://outside.invalid/x.png'} = {})">`,
+  `<img alt="" src="assets/image-1" onerror="const f = (a = src = 'https://outside.invalid/x.png') => a; f()">`,
   // An exempt name never hides a later one, nor does text before a real attribute.
   `<a onclick="var action = href = 'https://outside.invalid/'">Go</a>`,
   "<script>var action = href = 'https://outside.invalid/';</script>",

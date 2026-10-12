@@ -242,12 +242,25 @@ function scriptSources(root, html) {
     // statement a bare name such as src can assign the element's property.
     const found = [];
     let usesWith = false;
+    // Names bound through destructuring and defaults count; a member target
+    // such as img.src is still checked.
+    function bind(target) {
+      if (target?.type === 'Identifier') {
+        if (/^(?:src|href|action|formaction|srcset|poster)$/i.test(target.name)) found.push(offset + target.start);
+      } else if (target?.type === 'ObjectPattern') {
+        target.properties.forEach((property) => bind(property.type === 'Property' ? property.value : property));
+      } else if (target?.type === 'ArrayPattern') target.elements.forEach(bind);
+      else if (target?.type === 'AssignmentPattern') bind(target.left);
+      else if (target?.type === 'RestElement') bind(target.argument);
+    }
     visitJavaScript(program, (current) => {
       if (current.type === 'WithStatement') usesWith = true;
-      const name = current.type === 'VariableDeclarator'
-        ? current.id
-        : current.type === 'AssignmentExpression' && !handler ? current.left : undefined;
-      if (name?.type === 'Identifier' && /^(?:src|href|action|formaction|srcset|poster)$/i.test(name.name)) found.push(offset + name.start);
+      if (current.type === 'VariableDeclarator') bind(current.id);
+      else if (current.type === 'AssignmentExpression' && !handler) bind(current.left);
+      else if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(current.type)) current.params.forEach(bind);
+      else if (current.type === 'CatchClause') bind(current.param);
+      // A class field defines its own property and runs no element setter.
+      else if (current.type === 'PropertyDefinition' && !current.computed) bind(current.key);
     });
     if (!usesWith) for (const start of found) declarations.add(start);
   }
