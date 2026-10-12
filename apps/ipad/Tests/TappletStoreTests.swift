@@ -28,6 +28,28 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testGenerationCachesAnImageReusedFromAnExemplar() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assetID = "exemplar-\(UUID().uuidString)"
+        let generated = makeProject(revisionID: "r1", html: "<html><img src=\"assets/\(assetID)\"></html>")
+        let api = ArtifactAPIStub(generated: generated, revised: generated)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        var brief = GuidedBriefDraft()
+        brief.learningObjective = "Explain balanced forces"
+        brief.studentAction = "Choose and explain"
+
+        let project = try await store.createApprovedBrief(brief)
+        defer { project.localAssets.forEach { LocalAppletAssetStorage.remove($0) } }
+
+        let reloaded = try XCTUnwrap(TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self)).projects.first)
+        for candidate in [project, reloaded] {
+            let cached = candidate.localAssets.first { $0.id == assetID }
+            XCTAssertNotNil(cached.flatMap { LocalAppletAssetStorage.url(for: $0) }, "The generated image must be available to the offline preview")
+        }
+    }
+
+    @MainActor
     func testSuccessfulGenerationPresentsAdvisoryWithoutDiscardingTheProject() async throws {
         let generated = makeProject(revisionID: "r1", html: "<html><h1>Generated</h1></html>")
         let warning = AdvisoryWarning(
