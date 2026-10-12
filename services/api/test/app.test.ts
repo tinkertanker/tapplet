@@ -1124,6 +1124,48 @@ describe("Tapplet API registration and public HTML", () => {
     expect(saved.status).toBe(200);
   });
 
+  it("accepts the Studio creation brief when every answer is within its limit", async () => {
+    const answers = {
+      learnerContext: "L".repeat(300),
+      learningObjective: "O".repeat(600),
+      studentAction: "A".repeat(600),
+      sourceContent: "S".repeat(4_000),
+      feedback: "F".repeat(1_000),
+      classroomFit: "C".repeat(1_000),
+    };
+    // Tapplet Studio joins each question with its answer.
+    const text = [
+      ["Who are you teaching?", answers.learnerContext],
+      ["What should they understand or be able to do?", answers.learningObjective],
+      ["What should students do on screen?", answers.studentAction],
+      ["What must the tapplet include?", answers.sourceContent],
+      ["How should the tapplet respond?", answers.feedback],
+      ["How will this fit into the lesson?", answers.classroomFit],
+    ]
+      .map(([question, answer]) => `${question}\n${answer}`)
+      .join("\n\n");
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        creationBrief: text,
+        brief: answers,
+      }),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: { id: string; title: string; summary: string; creationBrief: string };
+    };
+    expect(artifact.creationBrief).toBe(text);
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: "Renamed",
+        summary: artifact.summary,
+        creationBrief: artifact.creationBrief,
+      }),
+    );
+    expect(saved.status).toBe(200);
+  });
+
   it("saves details that echo the metadata generation stored", async () => {
     const learnerContext = `Primary 5 Mathematics, mixed-ability class of 38 pupils ${"who need extra visual support ".repeat(4)}`.trim();
     const learningObjective = `Compare fractions with unlike denominators ${"by reasoning about equivalent fractions and benchmarks ".repeat(4)}`.trim();

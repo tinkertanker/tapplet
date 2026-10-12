@@ -168,7 +168,8 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
   const format = optionalForm(guided.format);
   const sourceContent = optionalStr(guided.sourceContent, "Source content", 4000);
   return {
-    creationBrief: str(b.creationBrief, "Creation brief", 6000),
+    // Studio joins every answer (up to 7,500 characters) with its question.
+    creationBrief: str(b.creationBrief, "Creation brief", 8000),
     preferredExampleRevisionId:
       b.preferredExampleRevisionId == null
         ? null
@@ -976,7 +977,7 @@ export function createStudioApp(d: Deps) {
             tags: Array.isArray(b.tags)
               ? b.tags.map((x) => str(x, "Tag", 60)).slice(0, 20)
               : [],
-            creationBrief: str(b.creationBrief, "Creation brief", 6000),
+            creationBrief: str(b.creationBrief, "Creation brief", 8000),
           };
           const warnings = advisoryWarnings(
             "prompt",
