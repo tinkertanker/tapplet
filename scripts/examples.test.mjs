@@ -86,6 +86,8 @@ test('allows comments but rejects overlooked network and resource paths', () => 
 test('accepts custom attributes and script variables the production validator accepts', () => {
   for (const snippet of [
     '<button data-action="check" data-src="pool-1" data-href="x">Go</button>',
+    '<script data-src="pool-1">const pool = 1;</script>',
+    '<link data-rel="stylesheet">',
     '<script>const action = event.target.dataset.action; let src = card.dataset.src; var poster = 1;</script>',
   ]) {
     assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);

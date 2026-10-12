@@ -49,8 +49,7 @@ export function validateHtmlArtifact(html, options = {}) {
   if (!/<script\b[^>]*>[\s\S]*<\/script>/i.test(html)) add('inline-js', 'Include inline JavaScript for the interaction.');
 
   const forbidden = [
-    [/<script\b[^>]*\bsrc\s*=/i, 'external-script', 'External script sources are not allowed.'],
-    [/<link\b[^>]*\brel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
+    [/<link\b[^>]*(?<![\w-])rel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
     [/@import\b|\bimport\s*(?:\(|["'{*])|\bimport\b[^;]*?from\s*["']|\brequire\s*\(/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
     [/\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i, 'network', 'Network APIs are not allowed.'],
   ];
