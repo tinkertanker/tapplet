@@ -131,6 +131,25 @@ function migratedDatabase() {
 }
 
 describe("atomic storage admission with migrated SQLite", () => {
+  it("keeps revision inserts working after an additive column migration", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      // Production applies migrations before deploying the matching Worker.
+      sqlite.exec("ALTER TABLE revisions ADD COLUMN future_column TEXT");
+      const repository = new D1StudioRepository(database);
+      await expect(
+        repository.createArtifact({
+          artifact,
+          revision: { ...revision, parentRevisionId: null },
+          assetIds: [],
+        }),
+      ).resolves.toBe(true);
+      expect(await repository.getRevision(revision.id)).toMatchObject({ id: revision.id });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("returns expired screenshot references despite FK cascade changes", async () => {
     const { database, sqlite } = migratedDatabase();
     try {
