@@ -384,6 +384,21 @@ test('named-technique hints change on each wrong attempt', async () => {
   }
 });
 
+test('named techniques accept a trailing full stop and doubled spaces', async () => {
+  for (const [file, answer] of [
+    ['persuasive-language-lab.html', 'Rhetorical  question. '],
+    ['source-reliability-check.html', 'Corroboration. '],
+  ]) {
+    const html = await readFile(path.resolve(`apps/ipad/Resources/Examples/${file}`), 'utf8');
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+    const { document } = dom.window;
+    document.getElementById('term').value = answer;
+    document.getElementById('check').click();
+    assert.match(document.getElementById('tm').textContent, /^✓ Correct!/, file);
+    dom.window.close();
+  }
+});
+
 test('plant-cell matches are listed as structure beside job', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
