@@ -249,11 +249,22 @@ private enum RestoreFetch: Sendable {
     }
     func restore(revision: ArtifactRevision, projectID: String) async throws {
         let current = try project(projectID)
-        upsert(try await api.setHead(id: projectID, revisionId: revision.id, expectedHeadRevisionId: current.artifact.headRevisionId))
+        let moved = try await api.setHead(id: projectID, revisionId: revision.id, expectedHeadRevisionId: current.artifact.headRevisionId)
+        upsert(await withMissingAssets(moved))
     }
     func undo(projectID: String) async throws {
         let current = try project(projectID); guard let parent = current.source.revision.parentRevisionId else { return }
-        upsert(try await api.setHead(id: projectID, revisionId: parent, expectedHeadRevisionId: current.artifact.headRevisionId))
+        let moved = try await api.setHead(id: projectID, revisionId: parent, expectedHeadRevisionId: current.artifact.headRevisionId)
+        upsert(await withMissingAssets(moved))
+    }
+    /// An earlier revision can reference images this iPad never downloaded, for
+    /// example after Restore tapplets. Cache them before the offline preview loads it.
+    private func withMissingAssets(_ incoming: ArtifactProject) async -> ArtifactProject {
+        var project = incoming
+        let incomingIDs = Set(project.localAssets.map(\.id))
+        let cached = projects.first { $0.id == incoming.id }?.localAssets ?? []
+        project.localAssets.append(contentsOf: cached.filter { !incomingIDs.contains($0.id) })
+        return (try? await cacheAssets(in: project)) ?? project
     }
     func updateDetails(_ artifact: Artifact) async throws {
         let result = try await api.updateArtifact(artifact)
@@ -321,7 +332,13 @@ private enum RestoreFetch: Sendable {
     func restoreFromTapplet() async throws -> Int {
         isRestoringFromTapplet = true
         defer { isRestoringFromTapplet = false }
-        let artifacts = try await api.listArtifacts()
+        let artifacts: [Artifact]
+        do {
+            artifacts = try await api.listArtifacts()
+        } catch let error as TappletAPIError where error.requiresRegistration {
+            _ = present(error, during: .restore)
+            throw error
+        }
         let fetched = await fetchRestoreProjects(artifacts)
         var count = 0
         var failures = 0

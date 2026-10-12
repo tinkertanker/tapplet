@@ -17,7 +17,7 @@ struct AppletEditorView: View {
         HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { sharePresentationID = UUID(); showShare = true }.buttonStyle(.borderedProminent) } }
             .padding().background(TappletTheme.surface)
         HStack(spacing: 0) { AppletPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
-            VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { operationError = error.localizedDescription } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
+            VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { showOperationError(error, during: .generation) } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
     }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }
         .sheet(isPresented: $showShare, onDismiss: {
             if let error = shareAccessError {
@@ -85,7 +85,7 @@ struct AppletEditorView: View {
                 Button("Undo") {
                     Task {
                         do { try await store.undo(projectID: project.id) }
-                        catch { operationError = error.localizedDescription }
+                        catch { showOperationError(error, during: .undo) }
                     }
                 }
                 .disabled(project.source.revision.parentRevisionId == nil)
@@ -114,7 +114,7 @@ struct AppletEditorView: View {
                         Button("Restore") {
                             Task {
                                 do { try await store.restore(revision: revision, projectID: project.id) }
-                                catch { operationError = error.localizedDescription }
+                                catch { showOperationError(error, during: .restore) }
                             }
                         }
                         .disabled(revision.id == project.artifact.headRevisionId)
@@ -124,6 +124,10 @@ struct AppletEditorView: View {
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("tapplet-editor-form")
+    }
+    private func showOperationError(_ error: Error, during operation: TappletOperation) {
+        let presentation = store.present(error, during: operation)
+        operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
     }
 }
 
@@ -147,7 +151,7 @@ private struct ImageManagementView: View {
                 Button("Remove", role: .destructive) {
                     Task {
                         do { try await store.removeImage(assetID: assetID, projectID: projectID) }
-                        catch { self.error = error.localizedDescription }
+                        catch { show(error) }
                     }
                 }
             }
@@ -184,14 +188,19 @@ private struct ImageManagementView: View {
             do {
                 try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
                 self.pendingData = nil; description = ""; decorative = false; photo = nil
-            } catch { self.error = error.localizedDescription }
+            } catch { show(error) }
         }
+    }
+
+    private func show(_ error: Error) {
+        let presentation = store.present(error, during: .image)
+        self.error = presentation.requestsWorkshopAccess ? nil : presentation.message
     }
 }
 
 private struct DetailsFields: View { let store: TappletStore; let project: ArtifactProject; @State private var draft: Artifact; @State private var error: String?
     init(store: TappletStore, project: ArtifactProject) { self.store = store; self.project = project; _draft = State(initialValue: project.artifact) }
-    var body: some View { Group { TextField("Title", text: $draft.title); TextField("Summary", text: $draft.summary, axis: .vertical); TextField("Subject", text: optional($draft.subject)); TextField("Level", text: optional($draft.level)); TextField("Locale", text: optional($draft.locale)); TextField("Learning objective", text: optional($draft.learningObjective), axis: .vertical); TextField("Tags (comma separated)", text: Binding(get: { draft.tags.joined(separator: ", ") }, set: { draft.tags = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } })); Button("Save details") { Task { do { try await store.updateDetails(draft); error = nil } catch { self.error = error.localizedDescription } } }; if let error { Text(error).foregroundStyle(TappletTheme.danger) } }
+    var body: some View { Group { TextField("Title", text: $draft.title); TextField("Summary", text: $draft.summary, axis: .vertical); TextField("Subject", text: optional($draft.subject)); TextField("Level", text: optional($draft.level)); TextField("Locale", text: optional($draft.locale)); TextField("Learning objective", text: optional($draft.learningObjective), axis: .vertical); TextField("Tags (comma separated)", text: Binding(get: { draft.tags.joined(separator: ", ") }, set: { draft.tags = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } })); Button("Save details") { Task { do { try await store.updateDetails(draft); error = nil } catch { let presentation = store.present(error, during: .directSave); self.error = presentation.requestsWorkshopAccess ? nil : presentation.message } } }; if let error { Text(error).foregroundStyle(TappletTheme.danger) } }
     }
     private func optional(_ value: Binding<String?>) -> Binding<String> { Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 }) }
 }

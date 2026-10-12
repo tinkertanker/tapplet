@@ -505,6 +505,33 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoreRequestsAccessWhenListingRequiresRegistration() async {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let api = ArtifactAPIStub(
+            generated: project,
+            revised: project,
+            listError: .server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again")
+        )
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        store.workshopAccessState = .ready
+
+        do {
+            _ = try await store.restoreFromTapplet()
+            XCTFail("Expected registration to be requested")
+        } catch let error as TappletAPIError {
+            XCTAssertTrue(error.requiresRegistration)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(store.workshopAccessState, .registrationRequired)
+        XCTAssertTrue(store.showsWorkshopAccess)
+    }
+
+    @MainActor
     func testDeleteRemovesLocalProjectWhenServerCopyHasExpired() async throws {
         let directory = temporaryDirectory()
         var project = makeProject(revisionID: "r1", html: "<html></html>")
@@ -672,6 +699,31 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testUndoCachesAnImageThisIPadNeverDownloaded() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assetID = "uncached-\(UUID().uuidString)"
+        let image = try syntheticImage()
+        let original = makeProject(revisionID: "r1", html: "<html><img src=\"assets/\(assetID)\"></html>")
+        var current = makeProject(revisionID: "r2", parentRevisionID: "r1", html: "<html>No image</html>")
+        current.revisions = original.revisions + current.revisions
+        let api = ArtifactAPIStub(generated: original, revised: current)
+        await api.configureRestoredProject(original, image: image)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        store.projects = [current]
+
+        try await store.undo(projectID: current.id)
+
+        for candidate in [store, TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))] {
+            let restored = try XCTUnwrap(candidate.projects.first)
+            XCTAssertEqual(restored.source.html, original.source.html)
+            let cached = restored.localAssets.first { $0.id == assetID }
+            XCTAssertNotNil(cached.flatMap { LocalAppletAssetStorage.url(for: $0) }, "The restored image must be available to the offline preview")
+        }
+        store.projects.first?.localAssets.forEach { LocalAppletAssetStorage.remove($0) }
+    }
+
+    @MainActor
     func testHistoricalImageCacheDoesNotConsumeCurrentImageLimit() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -830,6 +882,7 @@ private actor ArtifactAPIStub: TappletAPI {
     let revised: ArtifactProject
     let hasCredential: Bool
     let listedArtifacts: [Artifact]
+    let listError: TappletAPIError?
     let artifactErrors: [String: TappletAPIError]
     let projectsByID: [String: ArtifactProject]
     let assetErrors: [String: TappletAPIError]
@@ -876,6 +929,7 @@ private actor ArtifactAPIStub: TappletAPI {
         revised: ArtifactProject,
         hasCredential: Bool = true,
         listedArtifacts: [Artifact]? = nil,
+        listError: TappletAPIError? = nil,
         artifactErrors: [String: TappletAPIError] = [:],
         projectsByID: [String: ArtifactProject] = [:],
         assetErrors: [String: TappletAPIError] = [:],
@@ -887,6 +941,7 @@ private actor ArtifactAPIStub: TappletAPI {
         self.revised = revised
         self.hasCredential = hasCredential
         self.listedArtifacts = listedArtifacts ?? [generated.artifact]
+        self.listError = listError
         self.artifactErrors = artifactErrors
         self.projectsByID = projectsByID
         self.assetErrors = assetErrors
@@ -901,7 +956,10 @@ private actor ArtifactAPIStub: TappletAPI {
         lastGenerationRequest = request
         return AdvisoryResult(value: generated, warnings: warnings)
     }
-    func listArtifacts() async throws -> [Artifact] { listedArtifacts }
+    func listArtifacts() async throws -> [Artifact] {
+        if let listError { throw listError }
+        return listedArtifacts
+    }
     func searchExamples(brief: String) async throws -> [ExampleSearchDescriptor] { [] }
     func getArtifact(id: String) async throws -> ArtifactProject {
         if let error = artifactErrors[id] { throw error }
