@@ -129,6 +129,16 @@ function referencedImageAssetIdsFrom(
   return ids;
 }
 
+function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
+  if (
+    "tagName" in node &&
+    node.attrs.some((attribute) => attribute.name === "srcset" || attribute.name === "poster")
+  )
+    return true;
+  if ("childNodes" in node && node.childNodes.some(hasMultiSourceAttribute)) return true;
+  return "content" in node && hasMultiSourceAttribute(node.content);
+}
+
 function rejected(
   candidate: unknown,
   issues: Issue[],
@@ -270,7 +280,12 @@ function inspect(
         kind: "policy",
         message: "Embedded documents and base URLs are not allowed.",
       });
-    if (/\b(?:srcset|poster)\s*=/i.test(html))
+    // Check real attributes and property writes; a script variable named
+    // poster (for a poster-design activity) loads nothing.
+    if (
+      hasMultiSourceAttribute(document) ||
+      /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
+    )
       issues.push({
         kind: "policy",
         message: "Redirecting and multi-source URLs are not allowed.",

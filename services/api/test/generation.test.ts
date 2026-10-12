@@ -78,6 +78,14 @@ describe("HTML generation contract", () => {
     ).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts a script variable named poster", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'let poster = document.getElementById("poster"); poster.dataset.ready = "1"',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+  });
+
   it("normalizes surrounding ASCII whitespace in managed URL references", () => {
     const candidate = html.replace("assets/asset-one", " \t\nassets/asset-one\r\f ")
       .replace("</style>", '.image{background:url(" \tassets/css-image\n ")}</style>');
@@ -679,6 +687,10 @@ describe("HTML generation contract", () => {
     "<img src=https://example.test/x.png>",
     "<style>body{background:url(https://example.test/x.png)}</style>",
     '<img srcset="https://example.test/x.png 2x">',
+    '<video POSTER="https://example.test/x.png"></video>',
+    '<template><img srcset="https://example.test/x.png 2x"></template>',
+    '<script>document.querySelector("video").poster = "https://example.test/x.png"</script>',
+    '<script>document.images[0].setAttribute("srcset", "https://example.test/x.png 2x")</script>',
     '<meta http-equiv="refresh" content="0;url=https://example.test">',
     '<style>@import "https://example.test/theme.css";</style>',
   ])("rejects unsafe HTML capability: %s", (capability) => {
