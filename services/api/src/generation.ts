@@ -139,12 +139,21 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
   return "content" in node && hasMultiSourceAttribute(node.content);
 }
 
-function actionAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
+// Source offsets of the src, href and action names in real attributes,
+// including prefixed names such as xlink:href.
+function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
   const offsets = new Set<number>();
   function visit(current: DefaultTreeAdapterTypes.Node) {
     if ("tagName" in current) {
-      const offset = current.sourceCodeLocation?.attrs?.action?.startOffset;
-      if (offset !== undefined) offsets.add(offset);
+      for (const attribute of current.attrs) {
+        const qualified = attribute.prefix
+            ? `${attribute.prefix}:${attribute.name}`
+            : attribute.name,
+          name = /(?:^|:)(src|href|action)$/.exec(qualified)?.[1],
+          start = current.sourceCodeLocation?.attrs?.[qualified]?.startOffset;
+        if (name && start !== undefined)
+          offsets.add(start + qualified.length - name.length);
+      }
     }
     if ("childNodes" in current) current.childNodes.forEach(visit);
     if ("content" in current) visit(current.content);
@@ -304,19 +313,22 @@ function inspect(
         kind: "policy",
         message: "Redirecting and multi-source URLs are not allowed.",
       });
-    const actionAttributes = actionAttributeOffsets(document);
+    const urlAttributes = urlAttributeOffsets(document);
     for (const match of html.matchAll(URL_ATTRIBUTE)) {
       const index = match.index ?? 0;
       // data-action, data-src and similar custom attributes load nothing.
       if (html[index - 1] === "-") continue;
       const attribute = (match[1] ?? "").toLowerCase(),
         value = normalizeAssetUrl(attributeValue(match));
-      // A script variable named action loads nothing; check form action
-      // attributes and property writes only.
+      // A script variable named src, href or action loads nothing. Markup in
+      // script strings and property writes are still checked.
+      const line = html.slice(
+        Math.max(html.lastIndexOf("\n", index - 1) + 1, index - 200),
+        index,
+      );
       if (
-        attribute === "action" &&
-        !actionAttributes.has(index) &&
-        !/\.\s*$/.test(html.slice(Math.max(0, index - 20), index))
+        !urlAttributes.has(index) &&
+        /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)
       )
         continue;
       const allowed =

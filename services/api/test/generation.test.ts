@@ -94,6 +94,25 @@ describe("HTML generation contract", () => {
       ).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts script variables named src and href", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'const src = document.body.dataset.src; let href = location.hash; void [src, href]',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<svg><image xlink:href="https://outside.invalid/x.png"/></svg>',
+      '<template><img src="https://outside.invalid/x.png"></template>',
+      '<script>document.images[0].src = "https://outside.invalid/x.png"</script>',
+      "<script>document.images[0].src = window.name</script>",
+      `<script>document.body.innerHTML = '<img src="https://outside.invalid/x.png">'</script>`,
+      `<script>document.body.innerHTML = '<form action="https://outside.invalid/">'</script>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts a script variable named poster", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
