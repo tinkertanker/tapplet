@@ -95,6 +95,33 @@ test('accepts custom attributes and script variables the production validator ac
   }
 });
 
+test('rejects the URLs, multi-source and embedded markup the production validator rejects', () => {
+  for (const snippet of [
+    '<a href="">Empty</a>',
+    '<a href="data:text/html,hi">Data document</a>',
+    '<img alt="" src="data:image/svg+xml,<svg></svg>">',
+    '<form action="#"></form>',
+    '<video poster="assets/image-1"></video>',
+    '<template><video poster="assets/image-1"></video></template>',
+    '<script>el.setAttribute("srcset", "assets/image-1 1x");</script>',
+    '<script>box.innerHTML = \'<video poster="assets/image-1">\';</script>',
+    '<script>box.innerHTML = `<img\n  src="https://outside.invalid/a.png">`;</script>',
+    '<p>\nhref="https://outside.invalid"</p>',
+    '<iframe srcdoc="hi"></iframe>',
+    '<style>.a{fill:url(#gradient)}</style>',
+  ]) {
+    assert.equal(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).valid, false, snippet);
+  }
+  for (const snippet of [
+    '<a href="#top">Top</a>',
+    '<img alt="" src="data:image/png;base64,AAAA">',
+    '<script>box.innerHTML = \'<button data-src="x"><img alt="" src="assets/image-1"></button>\';</script>',
+    '<script>const poster = "Poster"; if (poster == "x") {}</script>',
+  ]) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);
+  }
+});
+
 test('validates manifest uniqueness and required metadata', () => {
   const seed = { id: 'stable-id', filename: 'stable-id.html', title: 'Title', summary: 'Summary', subject: 'science', level: 'secondary', locale: 'en-SG', learningObjective: 'Learn', tags: ['a', 'b', 'c'], interactionPattern: 'quiz', descriptor: 'Card', designCard: { layout: 'one screen' } };
   assert.deepEqual(validateSeedManifest({ schemaVersion: '1.0', seeds: [seed] }), []);
