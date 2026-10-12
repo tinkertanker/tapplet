@@ -61,10 +61,14 @@ export function validateHtmlArtifact(html, options = {}) {
   // checks accept and reject the same tapplets production does.
   const document = parseHtml(html, { sourceCodeLocationInfo: true });
   if (/<(?:base|iframe|object|embed)\b/i.test(html)) add('external-resource', 'Embedded documents and base URLs are not allowed.');
-  const scripts = scriptSources(document);
+  const scripts = scriptSources(document, html);
+  // Check real attributes, markup in script strings, stored markup such as
+  // data attributes and property writes; a script variable named poster (for
+  // a poster-design activity) loads nothing.
   if (
     hasMultiSourceAttribute(document)
     || scripts.strings.some((value) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value))
+    || [...html.matchAll(/(?<![\w-])(?:srcset|poster)\s*=(?![=>])/gi)].some((match) => !scripts.declarations.has(match.index ?? 0))
     || /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
   ) add('external-resource', 'Redirecting and multi-source URLs are not allowed.');
   const checkUrl = (attribute, value) => {
@@ -78,16 +82,12 @@ export function validateHtmlArtifact(html, options = {}) {
     const index = match.index ?? 0;
     // data-action, data-src and similar custom attributes load nothing.
     if (html[index - 1] === '-') continue;
-    // A script variable named src, href or action loads nothing; markup in
-    // script strings, other text and property writes are still checked.
-    const line = html.slice(Math.max(html.lastIndexOf('\n', index - 1) + 1, index - 200), index);
-    if (
-      !attributeOffsets.has(index)
-      && scripts.ranges.some(([start, end]) => start <= index && index < end)
-      && /(?:\b(?:const|let|var)\s+|[;{}(,]\s*|^\s*)$/.test(line)
-    ) continue;
+    // A script variable named src, href, action or formaction loads nothing.
+    // Markup in script strings, other text and property writes are checked.
+    if (!attributeOffsets.has(index) && scripts.declarations.has(index)) continue;
     checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
   }
+  for (const { attribute, value } of scripts.attributeWrites) checkUrl(attribute, value.trim());
   for (const string of scripts.strings) {
     for (const match of string.matchAll(URL_ATTRIBUTE)) {
       if (string[(match.index ?? 0) - 1] !== '-') checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
@@ -169,12 +169,33 @@ function hasMultiSourceAttribute(node) {
   return 'content' in node && hasMultiSourceAttribute(node.content);
 }
 
-// Source ranges of inline scripts and event handlers, and their cooked string
-// and template literal text, where markup such as innerHTML can still load URLs.
-function scriptSources(root) {
+const EVENT_HANDLER_PREFIX = 'function eventHandler(event) {\n';
+
+function visitJavaScript(value, visit) {
+  if (Array.isArray(value)) value.forEach((item) => visitJavaScript(item, visit));
+  else if (value && typeof value === 'object' && typeof value.type === 'string') {
+    visit(value);
+    Object.values(value).forEach((item) => visitJavaScript(item, visit));
+  }
+}
+
+function literalText(node) {
+  if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
+  if (node.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0]?.value.cooked ?? undefined;
+  return undefined;
+}
+
+// Source ranges of inline scripts and event handlers, their cooked string and
+// template literal text, where markup such as innerHTML can still load URLs,
+// the source offsets of script variables named like URL attributes, and the
+// literal URLs scripts pass to setAttribute.
+function scriptSources(root, html) {
   const ranges = [];
   const strings = [];
-  function collect(source, sourceType) {
+  const declarations = new Set();
+  const attributeWrites = [];
+  // offset is where source starts in html when html holds it verbatim.
+  function collect(source, sourceType, offset, handler = false) {
     try {
       for (const token of tokenizer(source, { ecmaVersion: 'latest', sourceType })) {
         if ((token.type === tokTypes.string || token.type === tokTypes.template) && typeof token.value === 'string') strings.push(token.value);
@@ -182,14 +203,56 @@ function scriptSources(root) {
     } catch {
       // Invalid syntax is reported separately.
     }
+    let program;
+    try {
+      program = parseJavaScript(source, { ecmaVersion: 'latest', sourceType });
+    } catch {
+      return;
+    }
+    // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
+    visitJavaScript(program, (current) => {
+      if (
+        current.type !== 'CallExpression'
+        || current.callee.type !== 'MemberExpression'
+        || current.callee.property.type !== 'Identifier'
+        || !/^setAttribute(?:NS)?$/.test(current.callee.property.name)
+      ) return;
+      const [name, value] = current.callee.property.name === 'setAttributeNS' ? current.arguments.slice(1) : current.arguments;
+      const attribute = name && literalText(name);
+      const url = value && literalText(value);
+      const match = attribute && /^(?:[\w-]+:)?(src|href|action|formaction)$/i.exec(attribute);
+      if (match?.[1] && url !== undefined) attributeWrites.push({ attribute: match[1].toLowerCase(), value: url });
+    });
+    if (offset === undefined) return;
+    // A script variable loads nothing, but in an event handler or a with
+    // statement a bare name such as src can assign the element's property.
+    const found = [];
+    let usesWith = false;
+    visitJavaScript(program, (current) => {
+      if (current.type === 'WithStatement') usesWith = true;
+      const name = current.type === 'VariableDeclarator'
+        ? current.id
+        : current.type === 'AssignmentExpression' && !handler ? current.left : undefined;
+      if (name?.type === 'Identifier' && /^(?:src|href|action|formaction|srcset|poster)$/i.test(name.name)) found.push(offset + name.start);
+    });
+    if (!usesWith) for (const start of found) declarations.add(start);
+  }
+  // The html text from start to end when it is exactly the parsed value.
+  function verbatim(start, end, value) {
+    const source = html.slice(start, end);
+    return source.replace(/\r\n?/g, '\n') === value ? source : undefined;
   }
   function visit(node) {
     if ('tagName' in node) {
       for (const attribute of node.attrs) {
         if (/^on[a-z]+$/.test(attribute.name)) {
           const location = node.sourceCodeLocation?.attrs?.[attribute.name];
+          const prefix = location ? /^[^=]*=\s*(["']?)/.exec(html.slice(location.startOffset, location.endOffset)) : null;
+          const start = location && prefix ? location.startOffset + prefix[0].length : undefined;
+          const source = start !== undefined ? verbatim(start, location.endOffset - (prefix[1] ? 1 : 0), attribute.value) : undefined;
           if (location) ranges.push([location.startOffset, location.endOffset]);
-          collect(`function eventHandler(event) {\n${attribute.value}\n}`, 'script');
+          if (source !== undefined) collect(`${EVENT_HANDLER_PREFIX}${source}\n}`, 'script', start - EVENT_HANDLER_PREFIX.length, true);
+          else collect(`${EVENT_HANDLER_PREFIX}${attribute.value}\n}`, 'script');
         }
       }
       const type = (node.attrs.find(({ name }) => name === 'type')?.value ?? '').trim().toLowerCase();
@@ -198,14 +261,18 @@ function scriptSources(root) {
         for (const child of text) {
           if (child.sourceCodeLocation) ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
         }
-        collect(text.map((child) => child.value).join(''), type === 'module' ? 'module' : 'script');
+        const sourceType = type === 'module' ? 'module' : 'script';
+        const location = text.length === 1 ? text[0].sourceCodeLocation : undefined;
+        const source = location ? verbatim(location.startOffset, location.endOffset, text[0].value) : undefined;
+        if (source !== undefined) collect(source, sourceType, location.startOffset);
+        else collect(text.map((child) => child.value).join(''), sourceType);
       }
     }
     if ('childNodes' in node) node.childNodes.forEach(visit);
     if ('content' in node) visit(node.content);
   }
   visit(root);
-  return { ranges, strings };
+  return { ranges, strings, declarations, attributeWrites };
 }
 
 export function validateSeedManifest(manifest, options = {}) {

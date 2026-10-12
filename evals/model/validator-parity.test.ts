@@ -53,6 +53,32 @@ const snippets = [
   '<script>localStorage.setItem("a", "b")</script>',
   "<script>navigator.serviceWorker</script>",
   '<script type="module">import confetti from "https://outside.invalid/c.js";</script>',
+  // Script variables are exempt only where parsing finds a declaration or a
+  // script assignment, not anywhere a name starts a line or follows punctuation.
+  '<script>\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src</script>',
+  '<button onclick="const href = this.dataset.href; void href">Go</button>',
+  '<script>const poster = 1; [poster].find((poster) => poster === 1);</script>',
+  '<script>const u = "https://outside.invalid/x.png"; document.body.innerHTML = `<img\n  src="${u}" alt="">`;</script>',
+  '<script>const u = "https://outside.invalid/x.png"; document.body.innerHTML = "<img \\\nsrc=" + u + ">";</script>',
+  '<script>document.body.innerHTML = /<img let src="https:\\/\\/outside.invalid\\/x.png">/.source;</script>',
+  `<img alt="" src="assets/image-1" onerror="0;src='https://outside.invalid/x.png'">`,
+  '<script>with (document.images[0]) { var src = "https://outside.invalid/x.png" }</script>',
+  // srcset and poster anywhere outside script variables, such as stored markup.
+  `<div data-markup='<img srcset="https://outside.invalid/x.png 2x">'></div>`,
+  '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',
+  '<script type="text/template"><img srcset="assets/image-1 1x"></script>',
+  `<video onclick="0;poster='https://outside.invalid/x.png'"></video>`,
+  // formaction is checked like action.
+  '<form><button formaction="https://outside.invalid/">Send</button></form>',
+  '<button data-formaction="check">Check</button>',
+  '<script>const formaction = 1; let next = formaction;</script>',
+  // Literal URLs passed to setAttribute and setAttributeNS.
+  '<script>document.images[0].setAttribute("src", "https://outside.invalid/x.png")</script>',
+  "<script>document.images[0].setAttribute('SRC', `https://outside.invalid/x.png`)</script>",
+  `<button onclick="document.forms[0]?.setAttribute('action', 'https://outside.invalid/')">Go</button>`,
+  '<button onclick="this.setAttribute(&quot;formaction&quot;, &quot;https://outside.invalid/&quot;)">Go</button>',
+  '<script>document.links[0].setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "https://outside.invalid/")</script>',
+  '<script>const image = document.images[0]; image.setAttribute("src", "assets/image-1"); image.setAttribute("href", `#top`); image.setAttribute("src", image.dataset.src); image.setAttribute("alt", "https://outside.invalid/");</script>',
 ];
 
 test("the eval's HTML check accepts and rejects what production accepts and rejects", () => {
