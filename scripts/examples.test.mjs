@@ -78,6 +78,23 @@ test('allows comments but rejects overlooked network and resource paths', () => 
   }
 });
 
+test('accepts custom attributes and script variables the production validator accepts', () => {
+  for (const snippet of [
+    '<button data-action="check" data-src="pool-1" data-href="x">Go</button>',
+    '<script>const action = event.target.dataset.action; let src = card.dataset.src; var poster = 1;</script>',
+  ]) {
+    assert.deepEqual(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).issues, [], snippet);
+  }
+  for (const snippet of [
+    '<img alt=""\nsrc="https://outside.invalid/a.png">',
+    '<svg><use\nxlink:href="https://outside.invalid/a.svg#i"/></svg>',
+    '<script>const image = new Image(); image.src = "https://outside.invalid/a.png";</script>',
+    '<script>box.innerHTML = \'<img src="https://outside.invalid/a.png">\';</script>',
+  ]) {
+    assert.equal(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).valid, false, snippet);
+  }
+});
+
 test('validates manifest uniqueness and required metadata', () => {
   const seed = { id: 'stable-id', filename: 'stable-id.html', title: 'Title', summary: 'Summary', subject: 'science', level: 'secondary', locale: 'en-SG', learningObjective: 'Learn', tags: ['a', 'b', 'c'], interactionPattern: 'quiz', descriptor: 'Card', designCard: { layout: 'one screen' } };
   assert.deepEqual(validateSeedManifest({ schemaVersion: '1.0', seeds: [seed] }), []);
