@@ -38,9 +38,18 @@ describe("HTML generation contract", () => {
   it("accepts the word caches in content while rejecting storage APIs", () => {
     const prose = html.replace("Hello", "<p>Squirrels bury acorns in caches. Caches help CPUs.</p>");
     expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    expect(() =>
+      validateHtmlOutput({
+        html: html.replace("Hello", `<button onclick="caches ['open']('scores')">Save</button>`),
+      }),
+    ).toThrow(InvalidModelOutputError);
+    const crlf = prose.replaceAll("<", "\r\n<").replace("\r\n<!doctype", "<!doctype");
+    expect(validateHtmlOutput({ html: crlf })).toEqual({ html: crlf });
     for (const script of [
       'caches.open("v1")',
       "window.caches.match(event)",
+      'caches .open("scores")',
+      'const storage = caches; storage.open("scores")',
       'localStorage.setItem("score", "1")',
       "indexedDB.open('db')",
     ]) {

@@ -446,10 +446,12 @@ function inspect(
         message: "Network APIs are not allowed.",
       });
     if (
-      // "caches" is also an ordinary word, so match only Cache API calls.
       /\b(?:localStorage|sessionStorage|indexedDB)\b|\bcaches\.(?:open|match|matchAll|has|keys|delete)\b|document\.cookie/i.test(
         html,
-      )
+      ) ||
+      // "caches" is also an ordinary word in visible text, but any reference
+      // in a script or event handler can reach the Cache API.
+      scripts.ranges.some(([start, end]) => /\bcaches\b/i.test(html.slice(start, end)))
     )
       issues.push({
         kind: "policy",
