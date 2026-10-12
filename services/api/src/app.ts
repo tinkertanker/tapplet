@@ -1139,10 +1139,15 @@ export function createStudioApp(d: Deps) {
             durationMs: Math.round(performance.now() - requestStarted),
           });
         }
+        // Details may have been saved during the model call; return them
+        // rather than the metadata read before it.
+        const latest = await d.repository.getArtifact(a.id, o);
         return json(
           {
             ...(await projectResponse(
-              { ...a, headRevisionId: rid, updatedAt: timestamp },
+              latest
+                ? { ...latest, headRevisionId: rid }
+                : { ...a, headRevisionId: rid, updatedAt: timestamp },
               o,
               u.origin,
               { revision: rv, html: out.html },

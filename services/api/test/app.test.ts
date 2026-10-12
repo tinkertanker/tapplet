@@ -1166,6 +1166,54 @@ describe("Tapplet API registration and public HTML", () => {
     expect(saved.status).toBe(200);
   });
 
+  it("returns details saved while a refinement was running", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string; summary: string; creationBrief: string };
+      headRevision: { id: string };
+    };
+    const provider = new FixtureModelProvider(),
+      revise = provider.revise.bind(provider);
+    vi.spyOn(provider, "revise").mockImplementation(async (...args) => {
+      const saved = await app.fetch(
+        authenticated(`/v1/artifacts/${first.artifact.id}`, "PATCH", {
+          title: "Saved during refinement",
+          summary: first.artifact.summary,
+          tags: ["saved"],
+          creationBrief: first.artifact.creationBrief,
+        }),
+      );
+      expect(saved.status).toBe(200);
+      return revise(...args);
+    });
+    const refining = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const revised = await refining.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}/revisions`, "POST", {
+        instruction: "Use a number line",
+        expectedHeadRevisionId: first.headRevision.id,
+      }),
+    );
+    expect(revised.status).toBe(201);
+    const body = (await revised.json()) as {
+      artifact: { title: string; tags: string[]; headRevisionId: string };
+      headRevision: { id: string };
+    };
+    expect(body.artifact).toMatchObject({
+      title: "Saved during refinement",
+      tags: ["saved"],
+      headRevisionId: body.headRevision.id,
+    });
+  });
+
   it("saves details that echo the metadata generation stored", async () => {
     const learnerContext = `Primary 5 Mathematics, mixed-ability class of 38 pupils ${"who need extra visual support ".repeat(4)}`.trim();
     const learningObjective = `Compare fractions with unlike denominators ${"by reasoning about equivalent fractions and benchmarks ".repeat(4)}`.trim();
