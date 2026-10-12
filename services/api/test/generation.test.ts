@@ -136,6 +136,10 @@ describe("HTML generation contract", () => {
     for (const capability of [
       `<script>document.body.innerHTML = '<img src="assets/a" srcset="https://outside.invalid/x.png 2x">'</script>`,
       "<script>document.body.innerHTML = `<video\n  poster=\"https://outside.invalid/x.png\"></video>`</script>",
+      `<script>document.body.innerHTML = '<img srcset="https://outside.invalid/x.png 2x">';</script>`,
+      '<script>document.body.innerHTML = `<img srcset="https://outside.invalid/x.png 2x">`;</script>',
+      '<script>document.body.innerHTML = `<img\nsrc="https://outside.invalid/x.png">`;</script>',
+      `<script>document.body.innerHTML = '<img src="https://outside.invalid/x.png">';</script>`,
     ])
       expect(() =>
         validateHtmlOutput({ html: html.replace("Hello", capability) }),
