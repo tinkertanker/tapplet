@@ -113,6 +113,7 @@ test('rejects the URLs, multi-source and embedded markup the production validato
     '<script>el.setAttribute("srcset", "assets/image-1 1x");</script>',
     '<script>box.innerHTML = \'<video poster="assets/image-1">\';</script>',
     '<script>box.innerHTML = `<img\n  src="https://outside.invalid/a.png">`;</script>',
+    '<script>document.body.innerHTML = `<img\nsrc="https://outside.invalid/x.png">`;</script>',
     '<p>\nhref="https://outside.invalid"</p>',
     '<iframe srcdoc="hi"></iframe>',
     '<style>.a{fill:url(#gradient)}</style>',
