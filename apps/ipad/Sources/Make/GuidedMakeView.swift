@@ -480,7 +480,9 @@ struct GuidedMakeView: View {
                 _ = try await store.createApprovedBrief(store.guidedMakeDraft)
                 if store.advisoryNotice == nil { store.resetGuidedMake() }
             } catch {
-                store.guidedMakeCreationError = store.present(error, during: .generation)
+                // Lost access opens the class-code sheet; a panel would outlive activation.
+                let presentation = store.present(error, during: .generation)
+                store.guidedMakeCreationError = presentation.requestsWorkshopAccess ? nil : presentation
             }
         }
     }
