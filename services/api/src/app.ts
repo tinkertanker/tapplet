@@ -959,11 +959,13 @@ export function createStudioApp(d: Deps) {
       if (s.length === 3 && r.method === "PATCH") {
         const b = obj(await readJson(r, 10000));
         if (typeof b.title === "string" && b.headRevisionId === undefined) {
+          // Accept everything creation stores: a generated title can fall back
+          // to the learning objective and the level is the learner context.
           const metadata = {
-            title: str(b.title, "Title", 200),
+            title: str(b.title, "Title", 600),
             summary: str(b.summary, "Summary", 1000),
             subject: optionalStr(b.subject, "Subject", 100) ?? null,
-            level: optionalStr(b.level, "Level", 100) ?? null,
+            level: optionalStr(b.level, "Level", 300) ?? null,
             locale: optionalStr(b.locale, "Locale", 30) ?? null,
             learningObjective:
               optionalStr(b.learningObjective, "Learning objective", 600) ??

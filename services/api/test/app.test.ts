@@ -1093,6 +1093,51 @@ describe("Tapplet API registration and public HTML", () => {
     expect(own.artifact.creationBrief).toContain("row 3");
   });
 
+  it("saves details that echo the metadata generation stored", async () => {
+    const learnerContext = `Primary 5 Mathematics, mixed-ability class of 38 pupils ${"who need extra visual support ".repeat(4)}`.trim();
+    const learningObjective = `Compare fractions with unlike denominators ${"by reasoning about equivalent fractions and benchmarks ".repeat(4)}`.trim();
+    expect(learnerContext.length).toBeGreaterThan(100);
+    expect(learningObjective.length).toBeGreaterThan(200);
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, learnerContext, learningObjective },
+      }),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: {
+        id: string;
+        title: string;
+        summary: string;
+        subject: string | null;
+        level: string | null;
+        locale: string | null;
+        learningObjective: string | null;
+        tags: string[];
+        creationBrief: string;
+      };
+    };
+    expect(artifact.level).toBe(learnerContext);
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: artifact.title,
+        summary: artifact.summary,
+        subject: artifact.subject,
+        level: artifact.level,
+        locale: artifact.locale,
+        learningObjective: artifact.learningObjective,
+        tags: artifact.tags,
+        creationBrief: artifact.creationBrief,
+      }),
+    );
+    expect(saved.status).toBe(200);
+    await expect(saved.json()).resolves.toMatchObject({
+      artifact: { title: artifact.title, level: learnerContext },
+    });
+  });
+
   it("keeps flagged metadata and remix titles with advisory warnings", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
