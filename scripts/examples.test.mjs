@@ -503,6 +503,26 @@ test('town budget shares never go negative while dragging sliders', async () => 
   dom.window.close();
 });
 
+test('town budget accepts either group when two are hit equally hard', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/town-council-budget.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  // 50 min clinic wait and 50% lift breakdown risk are the joint worst outcomes.
+  dom.window.eval('values.splice(0, 4, 33, 15, 30, 22); draw();');
+  assert.equal(document.getElementById('waitText').textContent, '50 min');
+  assert.equal(document.getElementById('riskText').textContent, '50%');
+  for (const group of ['clinic', 'lifts']) {
+    document.querySelector(`[data-group="${group}"]`).click();
+    assert.match(document.getElementById('feedback').textContent, /^✓ Correct!/, group);
+  }
+  document.querySelector('[data-group="youth"]').click();
+  assert.match(document.getElementById('feedback').textContent, /^✗ Try again\./);
+  dom.window.close();
+});
+
 test('conductor sort feedback uses the right article for each bin', async () => {
   const html = await readFile(
     path.resolve('apps/ipad/Resources/Examples/conductor-or-insulator.html'),
