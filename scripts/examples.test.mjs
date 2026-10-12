@@ -426,3 +426,30 @@ test('ordering feedback marks each step, clears on moves, and counts correct pos
     await browser.close();
   }
 });
+
+test('town budget shares never go negative while dragging sliders', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/town-council-budget.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document, Event } = dom.window;
+  const shares = () => ['estate', 'clinic', 'youth', 'lifts']
+    .map((id) => Number.parseInt(document.getElementById(`${id}Value`).textContent, 10));
+  const drag = (id, to) => {
+    const input = document.getElementById(id);
+    const step = to > +input.value ? 1 : -1;
+    for (let value = +input.value; value !== to;) {
+      value += step;
+      input.value = String(value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const values = shares();
+      assert.ok(values.every((share) => share >= 0), `${id} ${value}: ${values.join(', ')}`);
+      assert.equal(values.reduce((sum, share) => sum + share, 0), 100, `${id} ${value}`);
+    }
+  };
+  drag('lifts', 0);
+  drag('youth', 100);
+  drag('youth', 0);
+  dom.window.close();
+});
