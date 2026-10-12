@@ -494,3 +494,24 @@ test('every curated control has an accessible name', async () => {
     await browser.close();
   }
 });
+
+test('tap-to-select corpus controls expose their pressed state', async () => {
+  const pressed = (document) => [...document.querySelectorAll('[aria-pressed="true"]')].map((el) => el.textContent);
+  const load = async (file) => new JSDOM(
+    await readFile(path.resolve(`apps/ipad/Resources/Examples/${file}`), 'utf8'),
+    { runScripts: 'dangerously', url: 'https://artifact.invalid/' },
+  );
+
+  const cut = await load('cut-extra-words.html');
+  const tokens = [...cut.window.document.querySelectorAll('#editor .token')];
+  assert.ok(tokens.every((token) => token.getAttribute('aria-pressed') === 'false'));
+  const padding = tokens.find((token) => token.textContent === 'very important and useful');
+  padding.click();
+  assert.deepEqual(pressed(cut.window.document), ['very important and useful']);
+  padding.click();
+  assert.deepEqual(pressed(cut.window.document), []);
+  padding.click();
+  cut.window.document.getElementById('reset').click();
+  assert.deepEqual(pressed(cut.window.document), []);
+  cut.window.close();
+});
