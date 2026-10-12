@@ -544,6 +544,32 @@ test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () 
   }
 });
 
+test('shadow rays never pass through the opaque object', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/where-the-shadow-falls.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document, KeyboardEvent } = dom.window;
+  document.querySelector('[data-value="right"]').click();
+  document.querySelector('[data-value="long"]').click();
+  document.getElementById('check').click();
+  const lamp = document.getElementById('lamp');
+  const press = (key) => lamp.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  for (let step = 0; step < 6; step += 1) press('ArrowLeft');
+  for (let step = 0; step < 40; step += 1) {
+    for (const id of ['ray1', 'ray2']) {
+      const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((name) => +document.getElementById(id).getAttribute(name));
+      for (let t = 0; t <= 1; t += 0.01) {
+        const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+        assert.ok(!(x > 336 && x < 394 && y > 146 && y < 249), `${id} enters the object at lamp step ${step}: (${x}, ${y})`);
+      }
+    }
+    press('ArrowRight');
+  }
+  dom.window.close();
+});
+
 test('ordering feedback marks each step, clears on moves, and counts correct positions', async () => {
   const cases = [
     { file: 'cool-box-fair-test-lab.html', list: '#steps', check: '#checkSteps', message: '#sm', move: 1, marks: ['✓', '✗', '✗', '✗', '✗'], count: '1 of 5' },
