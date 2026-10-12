@@ -224,7 +224,7 @@ function scriptSources(
           : current.type === "AssignmentExpression" && !handler
             ? current.left
             : undefined;
-      if (name?.type === "Identifier" && /^(?:src|href|action)$/i.test(name.name))
+      if (name?.type === "Identifier" && /^(?:src|href|action|srcset|poster)$/i.test(name.name))
         found.push(offset + name.start);
     });
     if (!usesWith) for (const start of found) declarations.add(start);
@@ -447,11 +447,15 @@ function inspect(
         message: "Embedded documents and base URLs are not allowed.",
       });
     const scripts = scriptSources(document, html);
-    // Check real attributes, markup in script strings and property writes; a
-    // script variable named poster (for a poster-design activity) loads nothing.
+    // Check real attributes, markup in script strings, stored markup such as
+    // data attributes and property writes; a script variable named poster (for
+    // a poster-design activity) loads nothing.
     if (
       hasMultiSourceAttribute(document) ||
       scripts.strings.some((value) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value)) ||
+      [...html.matchAll(/(?<![\w-])(?:srcset|poster)\s*=(?![=>])/gi)].some(
+        (match) => !scripts.declarations.has(match.index ?? 0),
+      ) ||
       /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
     )
       issues.push({

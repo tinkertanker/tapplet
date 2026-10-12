@@ -149,8 +149,8 @@ describe("HTML generation contract", () => {
   it("accepts a script variable named poster", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
-      'let poster = document.getElementById("poster"); poster.dataset.ready = "1"',
-    );
+      'let poster = document.getElementById("poster"); poster.dataset.ready = "1"; poster = [poster].find((poster) => poster === poster)',
+    ).replace("Hello", `<button onclick="const poster = this.dataset.poster; void poster">Go</button>`);
     expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
     for (const capability of [
       `<script>document.body.innerHTML = '<img src="assets/a" srcset="https://outside.invalid/x.png 2x">'</script>`,
@@ -159,6 +159,9 @@ describe("HTML generation contract", () => {
       '<script>document.body.innerHTML = `<img srcset="https://outside.invalid/x.png 2x">`;</script>',
       '<script>document.body.innerHTML = `<img\nsrc="https://outside.invalid/x.png">`;</script>',
       `<script>document.body.innerHTML = '<img src="https://outside.invalid/x.png">';</script>`,
+      `<div data-markup='<img srcset="https://outside.invalid/x.png 2x">'></div>`,
+      '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',
+      `<video onclick="0;poster='https://outside.invalid/x.png'"></video>`,
     ])
       expect(() =>
         validateHtmlOutput({ html: html.replace("Hello", capability) }),
