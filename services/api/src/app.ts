@@ -819,7 +819,8 @@ export function createStudioApp(d: Deps) {
         id: aid,
         ownerHash: o,
         title: out.designCard?.title ?? b.learningObjective,
-        summary: out.designCard?.description ?? b.studentAction,
+        // A blank card description would store a summary Save details rejects.
+        summary: out.designCard?.description?.trim() || b.studentAction,
         subject: b.subject === "other" ? null : b.subject,
         level: b.learnerContext ?? b.level,
         locale: "en-SG",

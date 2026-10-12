@@ -1396,6 +1396,40 @@ describe("Tapplet API registration and public HTML", () => {
     });
   });
 
+  it("saves details for a tapplet whose design card has a blank description", async () => {
+    const provider = new FixtureModelProvider(),
+      generate = provider.generate.bind(provider);
+    vi.spyOn(provider, "generate").mockImplementation(async (...args) => ({
+      ...(await generate(...args)),
+      designCard: { title: "Fraction race", description: " " },
+    }));
+    const generating = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const generated = await generating.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: { id: string; title: string; summary: string; creationBrief: string };
+    };
+    expect(artifact.summary).toBe(creationBrief.brief.studentAction);
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: artifact.title,
+        summary: artifact.summary,
+        tags: ["fractions"],
+        creationBrief: artifact.creationBrief,
+      }),
+    );
+    expect(saved.status).toBe(200);
+  });
+
   it("keeps flagged metadata and remix titles with advisory warnings", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
