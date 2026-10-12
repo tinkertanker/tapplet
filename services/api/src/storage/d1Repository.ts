@@ -263,6 +263,8 @@ ON CONFLICT(artifact_id) DO UPDATE SET revision_id=?2,descriptor=?3,curated=1,up
   }
   private revInsert(r: RevisionRecord) {
     return this.p(
+      // Name every column so an additive migration applied before the matching
+      // Worker deploy cannot break inserts from the still-serving Worker.
       "INSERT INTO revisions(id,artifact_id,parent_revision_id,source_hash,source_bytes,kind,instruction,design_card_json,exemplars_json,model_version,prompt_version,screenshot_key,created_at,comment) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14 WHERE EXISTS(SELECT 1 FROM artifacts WHERE id=?2)",
       r.id,
       r.artifactId,
