@@ -182,9 +182,11 @@ private enum RestoreFetch: Sendable {
         ), preferredExampleRevisionId: guidedMakeEffectivePreferredExampleRevisionId)
         let result = try await api.generate(request: request)
         presentAdvisories(result.warnings)
-        upsert(result.value)
-        open(result.value)
-        return result.value
+        // A model can reuse an image from one of this device's own exemplars.
+        let generated = await withMissingAssets(result.value)
+        upsert(generated)
+        open(generated)
+        return generated
     }
     func remix(_ example: ArtifactProject) async throws {
         let project: ArtifactProject
