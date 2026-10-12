@@ -90,13 +90,15 @@ describe("HTML generation contract", () => {
   it("accepts a script variable named action", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
-      'document.body.onclick = (event) => { const action = event.target.dataset.action; let next = action; next = "reset"; }',
-    );
+      'document.body.onclick = (event) => { const action = event.target.dataset.action; const formaction = action; let next = formaction; next = "reset"; }',
+    ).replace("Hello", '<button data-formaction="check">Check</button>');
     expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
     for (const capability of [
       '<FORM ACTION="https://outside.invalid/"></FORM>',
       '<template><form action="/submit"></form></template>',
       '<script>document.forms[0].action = "https://outside.invalid/"</script>',
+      '<form><button formaction="https://outside.invalid/">Send</button></form>',
+      `<script>document.body.innerHTML = '<button formaction="https://outside.invalid/">'</script>`,
     ])
       expect(() =>
         validateHtmlOutput({ html: html.replace("Hello", capability) }),

@@ -41,7 +41,7 @@ export const DEFAULT_MAX_MODEL_REPAIRS = 2;
 // fits in this budget, leaving time for retrieval, moderation and storage.
 export const MODEL_WORK_BUDGET_MS = 135_000;
 const URL_ATTRIBUTE =
-  /\b(src|href|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
+  /\b(src|href|action|formaction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
 const CSS_URL = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis;
 const MANAGED_ASSET = /^assets\/([A-Za-z0-9_-]+)$/;
 const JAVASCRIPT_TYPES = new Set([
@@ -139,7 +139,7 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
   return "content" in node && hasMultiSourceAttribute(node.content);
 }
 
-// Source offsets of the src, href and action names in real attributes,
+// Source offsets of the src, href, action and formaction names in real attributes,
 // including prefixed names such as xlink:href.
 function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
   const offsets = new Set<number>();
@@ -149,7 +149,7 @@ function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
         const qualified = attribute.prefix
             ? `${attribute.prefix}:${attribute.name}`
             : attribute.name,
-          name = /(?:^|:)(src|href|action)$/.exec(qualified)?.[1],
+          name = /(?:^|:)(src|href|action|formaction)$/.exec(qualified)?.[1],
           start = current.sourceCodeLocation?.attrs?.[qualified]?.startOffset;
         if (name && start !== undefined)
           offsets.add(start + qualified.length - name.length);
@@ -224,7 +224,7 @@ function scriptSources(
           : current.type === "AssignmentExpression" && !handler
             ? current.left
             : undefined;
-      if (name?.type === "Identifier" && /^(?:src|href|action|srcset|poster)$/i.test(name.name))
+      if (name?.type === "Identifier" && /^(?:src|href|action|formaction|srcset|poster)$/i.test(name.name))
         found.push(offset + name.start);
     });
     if (!usesWith) for (const start of found) declarations.add(start);
@@ -469,7 +469,7 @@ function inspect(
       if (html[index - 1] === "-") continue;
       const attribute = (match[1] ?? "").toLowerCase(),
         value = normalizeAssetUrl(attributeValue(match));
-      // A script variable named src, href or action loads nothing.
+      // A script variable named src, href, action or formaction loads nothing.
       // Markup in script strings, other text and property writes are checked.
       if (!urlAttributes.has(index) && scripts.declarations.has(index)) continue;
       checkUrl(attribute, value, issues);
