@@ -306,7 +306,7 @@ function inspect(
     }
     if (
       /@import\b/i.test(html) ||
-      /\b(?:import\s*(?:\(|[^;]*?from\s*)|require\s*\()["']/i.test(html)
+      /\b(?:import\b\s*(?:\(|[^;]*?from\s*)|require\s*\()["']/i.test(html)
     )
       issues.push({
         kind: "policy",

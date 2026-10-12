@@ -50,6 +50,23 @@ describe("HTML generation contract", () => {
     }
   });
 
+  it("accepts words starting with import before quoted text while rejecting imports", () => {
+    const prose = html.replace(
+      "Hello",
+      `<p>Pick the most important line from 'Macbeth'. Which is important? Pick one from "Act 1".</p>`,
+    );
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const script of [
+      'import confetti from "https://esm.sh/confetti"',
+      "import { a } from './a.js'",
+      'import("./module.js")',
+    ]) {
+      expect(() =>
+        validateHtmlOutput({ html: html.replace('document.body.dataset.ok="1"', script) }),
+      ).toThrow(InvalidModelOutputError);
+    }
+  });
+
   it("normalizes surrounding ASCII whitespace in managed URL references", () => {
     const candidate = html.replace("assets/asset-one", " \t\nassets/asset-one\r\f ")
       .replace("</style>", '.image{background:url(" \tassets/css-image\n ")}</style>');
