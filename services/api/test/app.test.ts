@@ -1214,6 +1214,49 @@ describe("Tapplet API registration and public HTML", () => {
     });
   });
 
+  it("publishes details saved during the publication review", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string; summary: string; creationBrief: string };
+      headRevision: { id: string };
+    };
+    const provider = new FixtureModelProvider(),
+      moderate = provider.moderate.bind(provider);
+    vi.spyOn(provider, "moderate").mockImplementation(async () => {
+      const saved = await app.fetch(
+        authenticated(`/v1/artifacts/${first.artifact.id}`, "PATCH", {
+          title: "Saved during review",
+          summary: "Newer summary",
+          creationBrief: first.artifact.creationBrief,
+        }),
+      );
+      expect(saved.status).toBe(200);
+      return moderate();
+    });
+    const publishing = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const published = await publishing.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+        expectedHeadRevisionId: first.headRevision.id,
+      }),
+    );
+    expect(published.status).toBe(201);
+    await expect(published.json()).resolves.toMatchObject({
+      publication: { title: "Saved during review" },
+    });
+    const search = await app.fetch(authenticated("/v1/examples/search?q=fractions"));
+    await expect(search.json()).resolves.toMatchObject({
+      examples: [{ title: "Saved during review", descriptor: expect.stringContaining("Newer summary") }],
+    });
+  });
+
   it("saves details that echo the metadata generation stored", async () => {
     const learnerContext = `Primary 5 Mathematics, mixed-ability class of 38 pupils ${"who need extra visual support ".repeat(4)}`.trim();
     const learningObjective = `Compare fractions with unlike denominators ${"by reasoning about equivalent fractions and benchmarks ".repeat(4)}`.trim();

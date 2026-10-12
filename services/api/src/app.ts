@@ -1200,13 +1200,15 @@ export function createStudioApp(d: Deps) {
           console.error(`Publication moderation failed: ${diagnostic}`);
           warnings.push(moderationUnavailableWarning());
         }
+        // Details may have been saved during the review; publish those.
+        const current = (await d.repository.getArtifact(a.id, o)) ?? a;
         const p = await d.repository.publish(
           slug(),
-          a,
+          current,
           rv,
           days(now(), d.config.publicationTtlDays),
           now().toISOString(),
-          retrievalDescriptor(a, rv.designCard),
+          retrievalDescriptor(current, rv.designCard),
         );
         if (!p)
           throw new HttpError(
