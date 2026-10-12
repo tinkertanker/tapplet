@@ -3,8 +3,10 @@ import { parse as parseHtml } from 'parse5';
 
 export const MAX_HTML_BYTES = 200_000;
 
-// formaction is checked here as well as src, href and action.
-const URL_ATTRIBUTE = /\b(src|href|action|formaction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
+// formaction is checked here as well as src, href and action. The value is
+// matched in a lookahead so a value never hides a later name, as in
+// `var action = href = "https://..."`.
+const URL_ATTRIBUTE = /\b(src|href|action|formaction)(?=\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))/gis;
 const MANAGED_ASSET = /^assets\/[A-Za-z0-9_-]+$/;
 
 const JAVASCRIPT_TYPES = new Set([

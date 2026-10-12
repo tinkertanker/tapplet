@@ -69,6 +69,10 @@ const snippets = [
   '<script>document.body.innerHTML = /<img let src="https:\\/\\/outside.invalid\\/x.png">/.source;</script>',
   `<img alt="" src="assets/image-1" onerror="0;src='https://outside.invalid/x.png'">`,
   '<script>with (document.images[0]) { var src = "https://outside.invalid/x.png" }</script>',
+  // An exempt name never hides a later one, nor does text before a real attribute.
+  `<a onclick="var action = href = 'https://outside.invalid/'">Go</a>`,
+  "<script>var action = href = 'https://outside.invalid/';</script>",
+  '<p>href="#</p><a href=https://outside.invalid/>Go</a><p>"</p>',
   // srcset and poster anywhere outside script variables, such as stored markup.
   `<div data-markup='<img srcset="https://outside.invalid/x.png 2x">'></div>`,
   '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',

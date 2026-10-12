@@ -175,6 +175,8 @@ describe("HTML generation contract", () => {
       `<script>${url} document.body.innerHTML = \`<img\n  src="\${u}" alt="">\`</script>`,
       `<script>${url} document.body.innerHTML = "<img \\\nsrc=" + u + ">"</script>`,
       '<script>document.body.innerHTML = /<img let src="https:\\/\\/outside.invalid\\/x.png">/.source</script>',
+      `<a onclick="var action = href = 'https://outside.invalid/'">Go</a>`,
+      '<p>href="#</p><a href=https://outside.invalid/>Go</a><p>"</p>',
       `<img src="assets/a" onerror="0;src='https://outside.invalid/x.png'">`,
       '<script>with (document.images[0]) { var src = "https://outside.invalid/x.png" }</script>',
     ])

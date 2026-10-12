@@ -40,8 +40,11 @@ export const DEFAULT_MAX_MODEL_REPAIRS = 2;
 // The iPad waits 150 seconds. Start a repair only if a full model call still
 // fits in this budget, leaving time for retrieval, moderation and storage.
 export const MODEL_WORK_BUDGET_MS = 135_000;
+// The value is matched in a lookahead so a value never hides a later name, as
+// in `var action = href = "https://..."` or text such as `href="#` before a
+// real attribute.
 const URL_ATTRIBUTE =
-  /\b(src|href|action|formaction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gis;
+  /\b(src|href|action|formaction)(?=\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))/gis;
 const CSS_URL = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis;
 const MANAGED_ASSET = /^assets\/([A-Za-z0-9_-]+)$/;
 const JAVASCRIPT_TYPES = new Set([
