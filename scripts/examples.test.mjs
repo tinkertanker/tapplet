@@ -376,6 +376,26 @@ test('line golf ignores a second check while the next hole loads', async () => {
   dom.window.close();
 });
 
+test('line golf keeps the next hole as set after Reset during the hole pause', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/line-golf.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  document.getElementById('m').value = '2';
+  document.getElementById('c').value = '1';
+  document.getElementById('check').click();
+  document.getElementById('reset').click();
+  assert.equal(document.getElementById('hole').textContent, '2');
+  document.getElementById('m').value = '-1';
+  document.getElementById('check').click();
+  await new Promise((resolve) => { setTimeout(resolve, 1400); });
+  assert.equal(document.getElementById('m').value, '-1');
+  assert.equal(document.getElementById('strokes').textContent, '1');
+  dom.window.close();
+});
+
 test('fair-test variables and confounds give choice-specific feedback', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
