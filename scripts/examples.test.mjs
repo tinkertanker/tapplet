@@ -453,3 +453,24 @@ test('town budget shares never go negative while dragging sliders', async () => 
   drag('youth', 0);
   dom.window.close();
 });
+
+test('conductor sort feedback uses the right article for each bin', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/conductor-or-insulator.html'),
+    'utf8',
+  );
+  for (const [item, wrongBin, miss, expected] of [
+    ['Copper coin', 'insulator', /^Not an insulator\./, /Copper coin is a conductor\./],
+    ['Rubber band', 'conductor', /^Not a conductor\./, /Rubber band is an insulator\./],
+  ]) {
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+    const { document } = dom.window;
+    for (let life = 0; life < 3; life += 1) {
+      [...document.querySelectorAll('#items button')].find((button) => button.textContent === item).click();
+      document.querySelector(`[data-bin="${wrongBin}"]`).click();
+      if (life === 0) assert.match(document.getElementById('msg').textContent, miss);
+    }
+    assert.match(document.getElementById('msg').textContent, expected);
+    dom.window.close();
+  }
+});
