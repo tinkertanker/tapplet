@@ -523,6 +523,27 @@ test('plant-cell matches are listed as structure beside job', async () => {
   }
 });
 
+test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/where-the-shadow-falls.html', 'utf8'));
+    const offset = () => page.evaluate(() => {
+      const bulb = document.querySelector('#lamp circle').getBoundingClientRect();
+      const beam = document.getElementById('beam').getBoundingClientRect();
+      return Math.abs(beam.left - (bulb.left + bulb.width / 2));
+    });
+    assert.ok(await offset() < 1, 'starting beam apex is at the lamp');
+    await page.focus('#lamp');
+    for (let press = 0; press < 6; press += 1) await page.keyboard.press('ArrowRight');
+    assert.ok(await offset() < 1, 'moved beam apex follows the lamp');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('ordering feedback marks each step, clears on moves, and counts correct positions', async () => {
   const cases = [
     { file: 'cool-box-fair-test-lab.html', list: '#steps', check: '#checkSteps', message: '#sm', move: 1, marks: ['✓', '✗', '✗', '✗', '✗'], count: '1 of 5' },
