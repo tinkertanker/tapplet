@@ -571,6 +571,26 @@ test('mean-and-median scores can be moved without dragging', async () => {
   }
 });
 
+test('mean-and-median keeps every dot inside the plot when all seven scores match', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/mean-and-median.html', 'utf8'));
+    const moves = { 'Score 1': 'ArrowRight', 'Score 6': 'ArrowLeft', 'Score 7': 'ArrowLeft' };
+    for (const [name, key] of Object.entries(moves)) {
+      await page.getByRole('slider', { name, exact: true }).focus();
+      await page.keyboard.press(key);
+    }
+    const tops = await page.$$eval('#dots circle', (dots) => dots.map((dot) => dot.cy.baseVal.value - dot.r.baseVal.value));
+    assert.equal(tops.length, 7);
+    for (const top of tops) assert.ok(top >= 0, `a dot's top edge at y=${top} is cut off above the plot`);
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
