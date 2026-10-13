@@ -836,6 +836,30 @@ test('answering a times-tables question keeps keyboard focus on the next choices
   }
 });
 
+test('guessing a spelling letter keeps keyboard focus on the letter keys', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/spell-it-before-the-sun-sets.html', 'utf8'));
+    const focused = () => page.evaluate(() => document.activeElement?.dataset.ch ?? document.activeElement?.id);
+    await page.focus('[data-ch="m"]');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'n', 'a miss moves focus to the next key');
+    await page.focus('[data-ch="z"]');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'a', 'the last key wraps to the first key');
+    for (const ch of ['i', 's', 'l', 'a', 'n', 'd']) {
+      await page.focus(`[data-ch="${ch}"]`);
+      await page.keyboard.press('Enter');
+    }
+    assert.equal(await focused(), 'next', 'a finished word moves focus to Next word');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('every curated control has an accessible name', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
