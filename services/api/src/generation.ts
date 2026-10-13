@@ -753,7 +753,9 @@ function inspect(
         (match) =>
           !scripts.declarations.has(match.index ?? 0) && !within(prose, match.index ?? 0),
       ) ||
-      /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
+      [...html.matchAll(/\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/gi)].some(
+        (match) => !within(prose, match.index ?? 0),
+      )
     )
       issues.push({
         kind: "policy",

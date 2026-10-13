@@ -338,7 +338,7 @@ describe("HTML generation contract", () => {
     ).replace("Hello", `<button onclick="const poster = this.dataset.poster; void poster">Go</button>`);
     expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
     // Lesson text names a poster too.
-    const prose = html.replace("Hello", "<p>1 poster = $3, so 4 posters cost $12.</p><td>Poster=2</td>");
+    const prose = html.replace("Hello", "<p>1 poster = $3, so 4 posters cost $12.</p><td>Poster=2</td><p>Pen = $1. Poster = $3.</p>");
     expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
     for (const capability of [
       `<script>document.body.innerHTML = '<img src="assets/a" srcset="https://outside.invalid/x.png 2x">'</script>`,
@@ -350,6 +350,8 @@ describe("HTML generation contract", () => {
       `<div data-markup='<img srcset="https://outside.invalid/x.png 2x">'></div>`,
       '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',
       `<video onclick="0;poster='https://outside.invalid/x.png'"></video>`,
+      `<video onclick="this. poster = 'https://outside.invalid/x.png'"></video>`,
+      `<p>Pen = $1. Poster = $3.</p><script>document.querySelector("video").poster = "assets/a"</script>`,
     ])
       expect(() =>
         validateHtmlOutput({ html: html.replace("Hello", capability) }),

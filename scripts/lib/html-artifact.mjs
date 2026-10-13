@@ -85,7 +85,7 @@ export function validateHtmlArtifact(html, options = {}) {
     hasMultiSourceAttribute(document)
     || scripts.strings.some(({ value }) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value))
     || [...html.matchAll(/(?<![\w-])(?:srcset|poster)\s*=(?![=>])/gi)].some((match) => !scripts.declarations.has(match.index ?? 0) && !within(prose, match.index ?? 0))
-    || /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
+    || [...html.matchAll(/\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/gi)].some((match) => !within(prose, match.index ?? 0))
   ) add('external-resource', 'Redirecting and multi-source URLs are not allowed.');
   const checkUrl = (attribute, value) => {
     const allowed = MANAGED_ASSET.test(value)

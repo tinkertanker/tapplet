@@ -110,6 +110,8 @@ const snippets = [
   `<div data-markup='<img srcset="https://outside.invalid/x.png 2x">'></div>`,
   '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',
   "<p>1 poster = $3</p><textarea>Poster=2</textarea>",
+  "<p>Pen = $1. Poster = $3.</p>",
+  `<p>Pen = $1. Poster = $3.</p><video onclick="this. poster = 'https://outside.invalid/x.png'"></video>`,
   '<textarea>&lt;video poster="https://outside.invalid/x.png"&gt;</textarea>',
   '<script type="text/template"><img srcset="assets/image-1 1x"></script>',
   `<video onclick="0;poster='https://outside.invalid/x.png'"></video>`,
