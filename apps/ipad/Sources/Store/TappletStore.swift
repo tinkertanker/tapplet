@@ -492,21 +492,27 @@ private enum RestoreFetch: Sendable {
     static func referencedAssetIDs(in html: String) -> Set<String> {
         let patterns = [
             #"\b(?:src|href|action)\s*=\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))"#,
-            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#,
-            // The API also serves an image a script sets with a literal setAttribute("src", "assets/<id>").
-            #"\bsetAttribute(?:NS)?\(\s*(?:(?:"[^"]*"|'[^']*'|`[^`]*`|null)\s*,\s*)?["'`](?:[\w-]+:)?(?:src|href|action|formaction)["'`]\s*,\s*["'`]\s*assets/([A-Za-z0-9_-]+)\s*["'`]\s*\)"#
+            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#
         ]
         var result: Set<String> = []
-        for pattern in patterns {
-            guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
-            let range = NSRange(html.startIndex..., in: html)
-            for match in expression.matches(in: html, range: range) {
-                for capture in 1..<match.numberOfRanges {
-                    guard match.range(at: capture).location != NSNotFound,
-                          let range = Range(match.range(at: capture), in: html)
-                    else { continue }
-                    result.insert(String(html[range]))
-                }
+        for pattern in patterns { result.formUnion(captures(of: pattern, in: html)) }
+        // The API also serves an image a script or event handler keeps in a string that is exactly
+        // assets/<id>, as in setAttribute("src", "assets/<id>"), img.src = `assets/<id>` or an array.
+        let scripts = #"<script\b[^>]*>([\s\S]*?)</script\s*>|(?<![\w-])on[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')"#
+        for source in captures(of: scripts, in: html) {
+            result.formUnion(captures(of: #"["'`]\s*assets/([A-Za-z0-9_-]+)\s*["'`]"#, in: source))
+        }
+        return result
+    }
+    private static func captures(of pattern: String, in text: String) -> [String] {
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        var result: [String] = []
+        for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            for capture in 1..<match.numberOfRanges {
+                guard match.range(at: capture).location != NSNotFound,
+                      let range = Range(match.range(at: capture), in: text)
+                else { continue }
+                result.append(String(text[range]))
             }
         }
         return result
