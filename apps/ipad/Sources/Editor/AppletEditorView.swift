@@ -103,7 +103,7 @@ struct AppletEditorView: View {
             Section("Images") {
                 let referencedIDs = TappletStore.referencedAssetIDs(in: project.source.html)
                 ImageManagementView(store: store, projectID: project.id,
-                                    assetIDs: referencedIDs.sorted())
+                                    assetIDs: referencedIDs.sorted(), isMovingHead: isMovingHead)
             }
             Section("History") {
                 ForEach(project.revisions.reversed()) { revision in
@@ -146,6 +146,7 @@ private struct ImageManagementView: View {
     let store: TappletStore
     let projectID: String
     let assetIDs: [String]
+    let isMovingHead: Bool
     @State private var photo: PhotosPickerItem?
     @State private var pendingData: Data?
     @State private var description = ""
@@ -153,8 +154,8 @@ private struct ImageManagementView: View {
     @State private var importsFile = false
     @State private var showsCamera = false
     @State private var error: String?
-    // Shared with "Make this change": two changes at once would conflict on the head.
-    private var isWorking: Bool { store.refiningProjectIDs.contains(projectID) }
+    // Shared with "Make this change", Undo and Restore: two changes at once would conflict on the head.
+    private var isWorking: Bool { store.refiningProjectIDs.contains(projectID) || isMovingHead }
 
     var body: some View {
         ForEach(assetIDs, id: \.self) { assetID in
