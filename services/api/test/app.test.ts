@@ -363,6 +363,17 @@ describe("Tapplet API registration and public HTML", () => {
     }
   });
 
+  it("serves sources that start with a byte order mark before the doctype", () => {
+    for (const prefix of ["﻿", " "]) {
+      const source = `${prefix}<!doctype html><html lang="en"><head><title>T</title></head><body><p>Hi</p></body></html>`;
+      expect(() => validateHtmlOutput({ html: source })).not.toThrow();
+      const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
+      expect(served).toContain(
+        `srcdoc="&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;connect-src 'none'&quot;&gt;${prefix}&lt;!doctype html&gt;`,
+      );
+    }
+  });
+
   it("injects one favicon link into the served head", () => {
     const source =
       "<!doctype html><html><head></head><body><main>Widget</main></body></html>";

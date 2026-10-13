@@ -123,13 +123,15 @@ export function injectPublicHtml(source: string, slug: string): string {
   // Content such as <style> before <head>, or <div> inside it, starts the
   // head or body without the written tag, which then has no location. The
   // base and policy still belong at the start of the head, which begins after
-  // the html start tag or the doctype.
+  // the html start tag or the doctype. Validation accepts a byte order mark or
+  // other non-HTML white space before the doctype, which then starts the
+  // document implicitly; inserted first, the base and policy still lead the
+  // head.
   const headEnd =
     head?.sourceCodeLocation?.startTag?.endOffset ??
     root?.sourceCodeLocation?.startTag?.endOffset ??
-    doctype?.sourceCodeLocation?.endOffset;
-  if (headEnd === undefined)
-    throw new Error("Stored tapplet source is not a complete HTML document.");
+    doctype?.sourceCodeLocation?.endOffset ??
+    0;
   const title = head?.childNodes.find(
     (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "title",
   );
