@@ -104,27 +104,40 @@ function normalizeAssetUrl(value: string): string {
 }
 
 export function referencedAssetIds(html: string): string[] {
-  const ids: string[] = [];
+  const { markup, strings } = assetReferences(html);
+  return [...markup, ...strings];
+}
+
+// Managed image URLs in markup, CSS and attribute writes such as
+// setAttribute("src", "assets/<id>"), and the other script strings that are
+// exactly a managed image URL. A script can show an image it keeps in a
+// string, as in img.src = `assets/<id>` or an array of image paths; the
+// published tapplet serves it only when it is recorded. Such a string need not
+// name an image, as in "assets/images" in a lesson on folders.
+export function assetReferences(html: string): { markup: string[]; strings: string[] } {
+  const markup = new Set<string>(),
+    strings = new Set<string>();
   const document = parseHtml(html, { sourceCodeLocationInfo: true }),
     scripts = scriptSources(document, html),
     values = [...urlValueRanges(document), ...scripts.urlValues];
   for (const match of html.matchAll(URL_ATTRIBUTE)) {
     if (within(values, match.index ?? 0)) continue;
     const asset = MANAGED_ASSET.exec(normalizeAssetUrl(attributeValue(match)));
-    if (asset?.[1]) ids.push(asset[1]);
+    if (asset?.[1]) markup.add(asset[1]);
   }
-  // A script can also show an image it keeps in a string, as in
-  // setAttribute("src", "assets/<id>"), img.src = `assets/<id>` or an array of
-  // image paths; the published tapplet serves it only when it is recorded here.
-  for (const { value } of scripts.strings) {
+  for (const { value } of scripts.attributeWrites) {
     const asset = MANAGED_ASSET.exec(normalizeAssetUrl(value));
-    if (asset?.[1]) ids.push(asset[1]);
+    if (asset?.[1]) markup.add(asset[1]);
   }
   for (const match of html.matchAll(CSS_URL)) {
     const asset = MANAGED_ASSET.exec(normalizeAssetUrl(match[1] ?? match[2] ?? match[3] ?? ""));
-    if (asset?.[1]) ids.push(asset[1]);
+    if (asset?.[1]) markup.add(asset[1]);
   }
-  return [...new Set(ids)];
+  for (const { value } of scripts.strings) {
+    const asset = MANAGED_ASSET.exec(normalizeAssetUrl(value));
+    if (asset?.[1] && !markup.has(asset[1])) strings.add(asset[1]);
+  }
+  return { markup: [...markup], strings: [...strings] };
 }
 
 function referencedImageAssetIdsFrom(

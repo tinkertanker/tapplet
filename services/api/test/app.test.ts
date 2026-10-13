@@ -1000,6 +1000,57 @@ describe("Tapplet API registration and public HTML", () => {
     );
   });
 
+  it("keeps a tapplet whose script strings name images this device cannot use", async () => {
+    const ownerHash = await ownerHashFrom(
+      authenticated("/v1/artifacts"),
+      secret,
+      Date.parse("2026-08-02T00:00:00Z"),
+      repository,
+    );
+    const record = (id: string, owner: string) => ({
+      id,
+      ownerHash: owner,
+      objectKey: `assets/${owner}/${id}.jpg`,
+      contentType: "image/jpeg",
+      byteLength: 3,
+      width: 1,
+      height: 1,
+      sha256: "hash",
+      alternativeText: "A picture",
+      decorative: false,
+      createdAt: "2026-08-01T00:00:00Z",
+    });
+    const records = new Map([
+      ["own-image", record("own-image", ownerHash)],
+      ["foreign-image", record("foreign-image", "other-owner")],
+    ]);
+    const provider = new FixtureModelProvider();
+    // A lesson on folders names "assets/images", which is no stored image.
+    vi.spyOn(provider, "generate").mockResolvedValue({
+      html: `<!doctype html><html lang="en"><head><title>Folders</title></head><body><img id="photo" alt="A picture"><script>const folders = ["assets/images", "src/js"]; const pictures = ["assets/own-image", "assets/foreign-image"]; document.getElementById("photo").setAttribute("src", pictures[0]);</script></body></html>`,
+    });
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      assets: {
+        get: vi.fn(),
+        getRecord: vi.fn(async (id: string) => records.get(id) ?? null),
+      } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const response = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+
+    expect(response.status).toBe(201);
+    expect(await repository.ownerReferencesAsset(ownerHash, "own-image")).toBe(true);
+    expect(await repository.ownerReferencesAsset(ownerHash, "foreign-image")).toBe(false);
+    expect(await repository.ownerReferencesAsset(ownerHash, "images")).toBe(false);
+  });
+
   it("removes deleted screenshots without racing shared content-addressed sources", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
