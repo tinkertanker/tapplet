@@ -251,3 +251,17 @@ test("generic interactions fill colour, time and calendar inputs in their own fo
     assert.equal(result.viewports[0]?.behavior.changedControlCount, 1, type);
   }
 });
+
+test("browser evaluator names a control by the image it contains", async () => {
+  const fixture = (alt: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Image button fixture</title><style>body{font:16px system-ui}button{min-width:120px;min-height:48px}img{width:100px;height:40px}</style></head><body><main><h1>Image button fixture</h1><button type="button" id="pick"><img src="assets/diagram" alt="${alt}"></button><p id="feedback"></p></main><script>pick.onclick=()=>{feedback.textContent='Chosen'}</script></body></html>`;
+  const named = await evaluateHtmlInBrowser(fixture("A fraction diagram"), {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  assert.equal(named.viewports[0]?.accessibilityBasic.unnamedControlCount, 0);
+  assert.equal(named.viewports[0]?.accessibilityBasic.passed, true);
+
+  const decorative = await evaluateHtmlInBrowser(fixture(""), {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  assert.equal(decorative.viewports[0]?.accessibilityBasic.unnamedControlCount, 1);
+});

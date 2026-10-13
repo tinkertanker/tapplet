@@ -442,12 +442,18 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
       const labels = formField
         ? [...(element.labels ?? [])].map((label) => label.textContent ?? "").join(" ").trim()
         : "";
-      // Option text and default textarea text are values, not names.
+      // Option text and default textarea text are values, not names. Other
+      // controls are named by their content, including a labelled image.
+      const content = formField ? "" : [
+        element.textContent ?? "",
+        ...[...element.querySelectorAll("img[alt],[aria-label]")].map((child) =>
+          child.getAttribute("aria-label") ?? child.getAttribute("alt") ?? ""),
+      ].join(" ").trim();
       return element.getAttribute("aria-label")?.trim()
         || labelledBy
         || labels
         || element.getAttribute("alt")?.trim()
-        || (formField ? "" : element.textContent?.trim())
+        || content
         || element.getAttribute("title")?.trim()
         || (element instanceof HTMLInputElement
           && ["button", "submit", "reset"].includes(element.type)
