@@ -5,13 +5,15 @@ import UniformTypeIdentifiers
 
 struct AppletEditorView: View {
     let store: TappletStore; let projectID: String
-    @State private var prompt = ""; @State private var working = false; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
+    @State private var prompt = ""; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
     @State private var previewLoadState: PreviewLoadState = .loading
     @State private var previewError: String?
     @State private var isMovingHead = false
     @State private var shareAccessError: TappletAPIError?
     @State private var sharePresentationID = UUID()
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } ?? store.examples.first { $0.id == projectID } }
+    private var working: Bool { store.refiningProjectIDs.contains(projectID) }
+    private var refinementError: String? { store.refinementErrors[projectID] }
     var body: some View { if let project {
         let presentationID = sharePresentationID
         VStack(spacing: 0) {
@@ -32,7 +34,7 @@ struct AppletEditorView: View {
                 showShare = false
             }
         }
-        .alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
+        .alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || refinementError != nil || previewError != nil }, set: { if !$0 { operationError = nil; store.refinementErrors[projectID] = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? refinementError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
     private func editor(_ project: ArtifactProject) -> some View {
         Form {
             Section("Ask Tapplet Studio") {
@@ -72,19 +74,21 @@ struct AppletEditorView: View {
                 }
                 Button(working ? "Updating…" : "Make this change") {
                     let submittedPrompt = prompt
-                    working = true
+                    // The editor can close before the change finishes; the store keeps its state.
+                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
+                    store.refinementErrors[projectID] = nil
                     Task {
-                        defer { working = false }
+                        defer { store.refiningProjectIDs.remove(projectID) }
                         do {
-                            let warnings = try await store.refine(submittedPrompt, projectID: project.id)
+                            let warnings = try await store.refine(submittedPrompt, projectID: projectID)
                             if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
                         } catch {
                             let presentation = store.present(error, during: .refinement)
-                            operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
+                            if !presentation.requestsWorkshopAccess { store.refinementErrors[projectID] = presentation.message }
                         }
                     }
                 }
-                .disabled(working || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(working || isMovingHead || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Undo") {
                     isMovingHead = true
                     Task {
@@ -93,7 +97,7 @@ struct AppletEditorView: View {
                         catch { showOperationError(error, during: .undo) }
                     }
                 }
-                .disabled(isMovingHead || project.source.revision.parentRevisionId == nil)
+                .disabled(isMovingHead || working || project.source.revision.parentRevisionId == nil)
             }
             Section("Details") { DetailsFields(store: store, project: project) }
             Section("Images") {
@@ -124,7 +128,7 @@ struct AppletEditorView: View {
                                 catch { showOperationError(error, during: .restore) }
                             }
                         }
-                        .disabled(isMovingHead || revision.id == project.artifact.headRevisionId)
+                        .disabled(isMovingHead || working || revision.id == project.artifact.headRevisionId)
                     }
                 }
             }
@@ -148,8 +152,9 @@ private struct ImageManagementView: View {
     @State private var decorative = false
     @State private var importsFile = false
     @State private var showsCamera = false
-    @State private var isWorking = false
     @State private var error: String?
+    // Shared with "Make this change": two changes at once would conflict on the head.
+    private var isWorking: Bool { store.refiningProjectIDs.contains(projectID) }
 
     var body: some View {
         ForEach(assetIDs, id: \.self) { assetID in
@@ -157,9 +162,9 @@ private struct ImageManagementView: View {
                 Label(assetID, systemImage: "photo")
                 Spacer()
                 Button("Remove", role: .destructive) {
-                    isWorking = true
+                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
                     Task {
-                        defer { isWorking = false }
+                        defer { store.refiningProjectIDs.remove(projectID) }
                         do { try await store.removeImage(assetID: assetID, projectID: projectID) }
                         catch { show(error) }
                     }
@@ -193,11 +198,10 @@ private struct ImageManagementView: View {
     }
 
     private func upload() {
-        guard let pendingData, !isWorking else { return }
+        guard let pendingData, store.refiningProjectIDs.insert(projectID).inserted else { return }
         error = nil
-        isWorking = true
         Task {
-            defer { isWorking = false }
+            defer { store.refiningProjectIDs.remove(projectID) }
             do {
                 try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
                 self.pendingData = nil; description = ""; decorative = false; photo = nil
