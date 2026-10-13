@@ -492,7 +492,9 @@ private enum RestoreFetch: Sendable {
     static func referencedAssetIDs(in html: String) -> Set<String> {
         let patterns = [
             #"\b(?:src|href|action)\s*=\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))"#,
-            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#
+            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#,
+            // The API also serves an image a script sets with a literal setAttribute("src", "assets/<id>").
+            #"\bsetAttribute(?:NS)?\(\s*(?:(?:"[^"]*"|'[^']*'|`[^`]*`|null)\s*,\s*)?["'`](?:[\w-]+:)?(?:src|href|action|formaction)["'`]\s*,\s*["'`]\s*assets/([A-Za-z0-9_-]+)\s*["'`]\s*\)"#
         ]
         var result: Set<String> = []
         for pattern in patterns {

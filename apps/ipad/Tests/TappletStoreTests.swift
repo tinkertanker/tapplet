@@ -713,11 +713,13 @@ final class TappletStoreTests: XCTestCase {
         <a href=' assets/image-two '>Image</a>
         <style>.card { background: url(assets/image-three) }</style>
         <script>const example = "assets/not-a-reference";</script>
+        <script>document.images[0].setAttribute("src", "assets/image-four");</script>
+        <button onclick="svg.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', ' assets/image-five ')">Go</button>
         """
 
         XCTAssertEqual(
             TappletStore.referencedAssetIDs(in: html),
-            ["image-one", "image-two", "image-three"]
+            ["image-one", "image-two", "image-three", "image-four", "image-five"]
         )
     }
 
