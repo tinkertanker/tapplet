@@ -409,7 +409,7 @@ private enum RestoreFetch: Sendable {
     func addImage(_ data: Data, description: String, decorative: Bool, projectID: String) async throws {
         guard decorative || !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppletImageError.descriptionRequired }
         let current = try project(projectID)
-        guard Self.referencedAssetIDs(in: current.source.html).count < 3 else { throw AppletImageError.limitReached }
+        guard Self.currentImageAssetIDs(in: current).count < 3 else { throw AppletImageError.limitReached }
         let image = try await Task.detached(priority: .userInitiated) {
             try AppletImageProcessor.prepare(data)
         }.value
@@ -453,16 +453,22 @@ private enum RestoreFetch: Sendable {
         let existingIDs = Set(project.localAssets.map(\.id))
         let missing = Self.referencedAssetIDs(in: project.source.html).subtracting(existingIDs)
         guard !missing.isEmpty else { return project }
+        // A script string such as "assets/images" need not name an image the API recorded.
+        let bestEffort = Self.scriptStringAssetIDs(in: project.source.html)
         let api = self.api
-        try await withThrowingTaskGroup(of: LocalAppletAssetFile.self) { group in
+        try await withThrowingTaskGroup(of: LocalAppletAssetFile?.self) { group in
             for assetID in missing {
                 group.addTask {
-                    let downloaded = try await api.downloadAsset(id: assetID)
-                    return try LocalAppletAssetStorage.store(downloaded, id: assetID)
+                    do {
+                        let downloaded = try await api.downloadAsset(id: assetID)
+                        return try LocalAppletAssetStorage.store(downloaded, id: assetID)
+                    } catch let error as TappletAPIError where error.isAssetNotFound && bestEffort.contains(assetID) {
+                        return nil
+                    }
                 }
             }
             for try await local in group {
-                project.localAssets.append(local)
+                if let local { project.localAssets.append(local) }
             }
         }
         return project
@@ -490,19 +496,38 @@ private enum RestoreFetch: Sendable {
         }
     }
     static func referencedAssetIDs(in html: String) -> Set<String> {
+        markupAssetIDs(in: html).union(scriptStringAssetIDs(in: html))
+    }
+    /// The images the head HTML shows, for the Images list and the three-image limit. A script string
+    /// that is exactly assets/<id> need not name an image, as in "assets/images" in a lesson on
+    /// folders, and the API records one only when it names an image this device may use, so such a
+    /// string counts once its image has downloaded.
+    static func currentImageAssetIDs(in project: ArtifactProject) -> Set<String> {
+        let html = project.source.html
+        let cached = Set(project.localAssets.map(\.id))
+        return markupAssetIDs(in: html).union(scriptStringAssetIDs(in: html).intersection(cached))
+    }
+    /// Images in markup, CSS and literal attribute writes; the API refuses a tapplet unless each is usable.
+    private static func markupAssetIDs(in html: String) -> Set<String> {
         let patterns = [
             #"\b(?:src|href|action)\s*=\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))"#,
-            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#
+            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#,
+            #"\bsetAttribute(?:NS)?\(\s*(?:(?:"[^"]*"|'[^']*'|`[^`]*`|null)\s*,\s*)?["'`](?:[\w-]+:)?(?:src|href|action|formaction)["'`]\s*,\s*["'`]\s*assets/([A-Za-z0-9_-]+)\s*["'`]\s*\)"#
         ]
         var result: Set<String> = []
         for pattern in patterns { result.formUnion(captures(of: pattern, in: html)) }
-        // The API also serves an image a script or event handler keeps in a string that is exactly
-        // assets/<id>, as in setAttribute("src", "assets/<id>"), img.src = `assets/<id>` or an array.
+        return result
+    }
+    /// The other script and event handler strings that are exactly assets/<id>, as in
+    /// img.src = `assets/<id>` or an array of image paths. The API serves such an image only when it
+    /// recorded it, which it does only when the string names an image this device may use.
+    private static func scriptStringAssetIDs(in html: String) -> Set<String> {
         let scripts = #"<script\b[^>]*>([\s\S]*?)</script\s*>|(?<![\w-])on[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')"#
+        var result: Set<String> = []
         for source in captures(of: scripts, in: html) {
             result.formUnion(captures(of: #"["'`]\s*assets/([A-Za-z0-9_-]+)\s*["'`]"#, in: source))
         }
-        return result
+        return result.subtracting(markupAssetIDs(in: html))
     }
     private static func captures(of pattern: String, in text: String) -> [String] {
         guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }

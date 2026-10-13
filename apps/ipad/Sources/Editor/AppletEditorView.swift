@@ -101,7 +101,7 @@ struct AppletEditorView: View {
             }
             Section("Details") { DetailsFields(store: store, project: project) }
             Section("Images") {
-                let referencedIDs = TappletStore.referencedAssetIDs(in: project.source.html)
+                let referencedIDs = TappletStore.currentImageAssetIDs(in: project)
                 ImageManagementView(store: store, projectID: project.id,
                                     assetIDs: referencedIDs.sorted(), isMovingHead: isMovingHead)
             }

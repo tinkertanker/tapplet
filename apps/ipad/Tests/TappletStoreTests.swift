@@ -545,6 +545,42 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoreKeepsTappletWhoseScriptStringNamesNoImage() async throws {
+        let imageID = "restore-\(UUID().uuidString)"
+        let project = makeProject(revisionID: "r1", html: """
+        <html><img src="assets/\(imageID)"><script>const folders = ["assets/images"];</script></html>
+        """)
+        let api = ArtifactAPIStub(
+            generated: project,
+            revised: project,
+            assetErrors: ["images": .server(404, "ASSET_NOT_FOUND", "Image unavailable.")]
+        )
+        let store = TappletStore(api: api, storageDirectory: temporaryDirectory(), bundle: Bundle(for: Self.self))
+        defer { store.projects.flatMap(\.localAssets).forEach { LocalAppletAssetStorage.remove($0) } }
+
+        let count = try await store.restoreFromTapplet()
+
+        XCTAssertEqual(count, 1)
+        XCTAssertNil(store.recoveryNotice)
+        let restored = try XCTUnwrap(store.projects.first)
+        XCTAssertEqual(restored.localAssets.map(\.id), [imageID])
+        XCTAssertEqual(TappletStore.currentImageAssetIDs(in: restored), [imageID])
+    }
+
+    @MainActor
+    func testCurrentImagesCountScriptStringsOnlyOnceTheirImageDownloaded() throws {
+        let cachedID = "script-\(UUID().uuidString)"
+        var project = makeProject(revisionID: "r1", html: """
+        <html><img src="assets/markup"><script>const paths = ["assets/images", `assets/\(cachedID)`];</script></html>
+        """)
+        project.localAssets = [try LocalAppletAssetStorage.store(syntheticImage(), id: cachedID)]
+        defer { project.localAssets.forEach { LocalAppletAssetStorage.remove($0) } }
+
+        XCTAssertEqual(TappletStore.referencedAssetIDs(in: project.source.html), ["markup", "images", cachedID])
+        XCTAssertEqual(TappletStore.currentImageAssetIDs(in: project), ["markup", cachedID])
+    }
+
+    @MainActor
     func testRestorePropagatesRegistrationFailures() async {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let api = ArtifactAPIStub(
