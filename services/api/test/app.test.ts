@@ -6,6 +6,7 @@ import { MODERATION_SYSTEM_PROMPT } from "../src/ai/prompts";
 import type { AssetStore, StoredAsset } from "../src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../src/auth";
 import { createStudioApp } from "../src/app";
+import { validateHtmlOutput } from "../src/generation";
 import { injectPublicHtml } from "../src/index";
 import { MemoryOperationalTraceSink } from "../src/operationalTrace";
 import { MemorySourceStore } from "../src/sourceStore";
@@ -345,6 +346,21 @@ describe("Tapplet API registration and public HTML", () => {
     expect(served).toContain('&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;');
     expect(served).toContain('sandbox="allow-scripts allow-modals"');
     expect(source).not.toContain("<base");
+  });
+
+  it("serves sources whose head or body starts without its written tag", () => {
+    for (const source of [
+      '<!doctype html><html lang="en"><style>p{}</style><head><title>T</title></head><body><p>Hi</p></body></html>',
+      '<!doctype html><html lang="en"><head><title>T</title><div>x</div></head><body><p>Hi</p></body></html>',
+      '<!doctype html><html lang="en"><head><title>T</title></head><p>x</p><body><p>Hi</p></body></html>',
+    ]) {
+      expect(() => validateHtmlOutput({ html: source }), source).not.toThrow();
+      const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
+      expect(served.match(/&lt;base /g), source).toHaveLength(1);
+      expect(served, source).toMatch(
+        /&lt;html lang=&quot;en&quot;&gt;(?:&lt;head&gt;)?&lt;base href=&quot;\/ABCDEFGHIJKLMNOPQRST\/&quot;&gt;&lt;meta http-equiv=&quot;Content-Security-Policy&quot;/,
+      );
+    }
   });
 
   it("injects one favicon link into the served head", () => {
