@@ -28,8 +28,58 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Fingerprint installed dependencies
+        id: dependencies
+        shell: bash
+        run: |
+          # First-party hooks/local dependencies may produce files outside
+          # node_modules. Always reinstall those rather than caching half a build.
+          fingerprint=$(
+            {
+              . /etc/os-release
+              printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$ID" "$VERSION_ID"
+              node --version
+              npm --version
+              npm config list --json
+              printf '%s\n' 'npm ci'
+              git ls-files -z | node -e '
+                const fs = require("node:fs");
+                const files = fs.readFileSync(0, "utf8").split("\0").filter(Boolean);
+                const requiresInstall = files.some(f => /(^|\/)binding\.gyp$/.test(f)) || files.filter(f => /(^|\/)package\.json$/.test(f)).some(f => {
+                  const p = JSON.parse(fs.readFileSync(f, "utf8"));
+                  const hooks = ["preinstall", "install", "postinstall", "prepublish", "preprepare", "prepare", "postprepare"];
+                  const deps = [p.dependencies, p.devDependencies, p.optionalDependencies, p.peerDependencies].flatMap(d => Object.values(d || {}));
+                  return hooks.some(h => p.scripts?.[h]) || deps.some(d => /^(file:|link:|workspace:|\.{0,2}\/)/.test(d));
+                });
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, `cacheable=${!requiresInstall}\n`);
+                const inputs = files.filter(f =>
+                  /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|\.npmrc)$/.test(f) || f === ".github/workflows/ci.yml");
+                process.stdout.write(inputs.join("\0") + "\0");
+              ' | xargs -0 sha256sum --
+            } | sha256sum | cut -d ' ' -f1
+          )
+          echo "key=node-installed-v1-$RUNNER_OS-$RUNNER_ARCH-$fingerprint" >> "$GITHUB_OUTPUT"
+      - name: Restore installed dependencies
+        id: installed
+        if: steps.dependencies.outputs.cacheable == 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          key: ${{ steps.dependencies.outputs.key }}
+          path: |
+            node_modules
+            services/api/node_modules
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+        if: steps.installed.outputs.cache-hit != 'true'
+      # Save the pristine install now, never after verification/build mutations.
+      - name: Save installed dependencies
+        if: steps.dependencies.outputs.cacheable == 'true' && steps.installed.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          key: ${{ steps.dependencies.outputs.key }}
+          path: |
+            node_modules
+            services/api/node_modules
+      - run: npx playwright install --with-deps --only-shell chromium webkit
       - run: npm run verify
       - run: npm run api:build
 
