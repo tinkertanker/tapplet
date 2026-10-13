@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  assetReferences,
   generateArtifact,
   InvalidModelOutputError,
   referencedAssetIds,
@@ -400,6 +401,11 @@ describe("HTML generation contract", () => {
       "second-image",
       "template-image",
     ]);
+    // Such a string need not name an image, unlike markup and attribute writes.
+    expect(assetReferences(candidate)).toEqual({
+      markup: ["asset-one"],
+      strings: ["first-image", "second-image", "template-image"],
+    });
   });
 
   it("frames cross-user exemplars as untrusted data", () => {

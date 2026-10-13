@@ -18,10 +18,10 @@ import {
 import type { ClassInference } from "./classInference";
 import type { StudioConfig } from "./env";
 import {
+  assetReferences,
   generateArtifact,
   type GenerationOptions,
   InvalidModelOutputError,
-  referencedAssetIds,
   reviseArtifact,
   validateHtmlOutput,
 } from "./generation";
@@ -430,9 +430,23 @@ export function createStudioApp(d: Deps) {
     );
   }
   async function assets(html: string, o: string, allowReferenced = false) {
-    const ids = referencedAssetIds(html);
-    await validateAssetReferences(ids, o, allowReferenced);
-    return ids;
+    const { markup, strings } = assetReferences(html);
+    await validateAssetReferences(markup, o, allowReferenced);
+    // A script string such as "assets/images" need not name an image: record
+    // one only when it names an image this device may use, as before such
+    // strings were recorded, rather than refusing the tapplet.
+    const usable = await Promise.all(
+      strings.map(async (x) => {
+        const record = d.assets ? await assetRecord(x) : null;
+        return record &&
+          (record.ownerHash === o ||
+            allowReferenced ||
+            (await d.repository.ownerReferencesAsset(o, x)))
+          ? [x]
+          : [];
+      }),
+    );
+    return [...markup, ...usable.flat()];
   }
   async function usableAssets(html: string, o: string): Promise<boolean> {
     try {
@@ -561,7 +575,7 @@ export function createStudioApp(d: Deps) {
           interactionPattern,
         };
       validateHtmlOutput({ html, designCard: card });
-      if (referencedAssetIds(html).length)
+      if (assetReferences(html).markup.length)
         throw new HttpError(
           422,
           "INVALID_SEED_ASSET",
