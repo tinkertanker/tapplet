@@ -854,6 +854,19 @@ test('guessing a spelling letter keeps keyboard focus on the letter keys', async
       await page.keyboard.press('Enter');
     }
     assert.equal(await focused(), 'next', 'a finished word moves focus to Next word');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'a', 'Next word moves focus to the new letter keys');
+    for (const word of ['enough', 'science', 'receipt', 'friend', 'rhythm']) {
+      for (const ch of new Set(word)) {
+        await page.focus(`[data-ch="${ch}"]`);
+        await page.keyboard.press('Enter');
+      }
+      assert.equal(await focused(), 'next');
+      await page.keyboard.press('Enter');
+    }
+    assert.equal(await focused(), 'again', 'Next word after the last word moves focus to Play again');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'a', 'Play again moves focus to the letter keys');
     await page.close();
   } finally {
     await browser.close();
