@@ -570,6 +570,26 @@ test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () 
   }
 });
 
+test('shadow lamp is exposed as a slider that reports where the lamp is', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/where-the-shadow-falls.html', 'utf8'));
+    const lamp = page.getByRole('slider', { name: 'Drag lamp left or right' });
+    assert.equal(await lamp.getAttribute('aria-valuetext'), 'left of the object');
+    await lamp.focus();
+    for (let press = 0; press < 12; press += 1) await page.keyboard.press('ArrowRight');
+    assert.equal(await lamp.getAttribute('aria-valuenow'), '360');
+    assert.equal(await lamp.getAttribute('aria-valuetext'), 'above the object');
+    for (let press = 0; press < 4; press += 1) await page.keyboard.press('ArrowRight');
+    assert.equal(await lamp.getAttribute('aria-valuetext'), 'right of the object');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('shadow rays never pass through the opaque object', async () => {
   const html = await readFile(
     path.resolve('apps/ipad/Resources/Examples/where-the-shadow-falls.html'),
