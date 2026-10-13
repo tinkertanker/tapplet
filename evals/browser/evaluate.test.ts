@@ -240,3 +240,14 @@ test("generic interactions move a range whose maximum is off its step", async ()
     assert.equal(result.viewports[0]?.behavior.passed, true);
   }
 });
+
+test("generic interactions fill colour, time and calendar inputs in their own formats", async () => {
+  const fixture = (type: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Typed input fixture</title><style>body{font:16px system-ui}input{width:200px;height:44px}</style></head><body><main><h1>Typed input fixture</h1><label for="pick">Pick <output id="shown"></output></label><input id="pick" type="${type}"></main><script>pick.oninput=()=>{shown.value=pick.value}</script></body></html>`;
+  for (const type of ["color", "time", "datetime-local", "month", "week"]) {
+    const result = await evaluateHtmlInBrowser(fixture(type), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(result.viewports[0]?.behavior.interactionErrorCount, 0, type);
+    assert.equal(result.viewports[0]?.behavior.changedControlCount, 1, type);
+  }
+});

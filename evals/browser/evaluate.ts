@@ -137,6 +137,15 @@ const DEFAULT_VIEWPORTS: EvaluationViewport[] = [
   { name: "ipad", width: 1024, height: 768 },
 ];
 const DEFAULT_SETTLE_TIME_MS = 100;
+const TYPED_INPUT_VALUES: Partial<Record<string, readonly [string, string]>> = {
+  number: ["1", "2"],
+  date: ["2026-08-29", "2026-08-30"],
+  time: ["08:30", "09:30"],
+  "datetime-local": ["2026-08-29T08:30", "2026-08-30T08:30"],
+  month: ["2026-08", "2026-09"],
+  week: ["2026-W35", "2026-W36"],
+  color: ["#000000", "#ffffff"],
+};
 const MIN_INTERACTION_PASS_RATE = 0.8;
 const STATE_FINGERPRINT_FUNCTION = String.raw`() => {
   const controlState = [...document.querySelectorAll("input,select,textarea")]
@@ -770,14 +779,11 @@ async function exerciseGenericControl(
       await control.fill(descriptor.value === maximum ? minimum : maximum, { timeout });
       return;
     }
-    const value = descriptor.type === "number"
-      ? (descriptor.value === "1" ? "2" : "1")
-      : descriptor.type === "date"
-        ? (descriptor.value === "2026-08-29" ? "2026-08-30" : "2026-08-29")
-        : descriptor.value === "Evaluation input"
-          ? "Alternate evaluation input"
-          : "Evaluation input";
-    await control.fill(value, { timeout });
+    // Typed inputs discard text that is not in their format, and fill
+    // rejects a value the input does not keep.
+    const [first, second] = TYPED_INPUT_VALUES[descriptor.type]
+      ?? ["Evaluation input", "Alternate evaluation input"];
+    await control.fill(descriptor.value === first ? second : first, { timeout });
     return;
   }
   await control.click({ timeout });
