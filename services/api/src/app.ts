@@ -399,10 +399,27 @@ export function createStudioApp(d: Deps) {
     if (d.assets?.getRecord) return d.assets.getRecord(id);
     return (await d.assets!.get(id))?.record ?? null;
   }
+  // A device may use an image it owns or one a tapplet of its own already
+  // uses. A remix may also use the images its source's owner could use, as the
+  // source revision recorded only those.
+  async function mayUseAsset(
+    record: AssetRecord,
+    x: string,
+    o: string,
+    sourceOwner?: string,
+  ): Promise<boolean> {
+    for (const owner of sourceOwner && sourceOwner !== o ? [o, sourceOwner] : [o])
+      if (
+        record.ownerHash === owner ||
+        (await d.repository.ownerReferencesAsset(owner, x))
+      )
+        return true;
+    return false;
+  }
   async function validateAssetReferences(
     ids: string[],
     o: string,
-    allowReferenced = false,
+    sourceOwner?: string,
   ) {
     const unique = [...new Set(ids)];
     if (unique.length && !d.assets)
@@ -414,12 +431,7 @@ export function createStudioApp(d: Deps) {
     return Promise.all(
       unique.map(async (x) => {
         const record = await assetRecord(x);
-        if (
-          !record ||
-          (record.ownerHash !== o &&
-            !allowReferenced &&
-            !(await d.repository.ownerReferencesAsset(o, x)))
-        )
+        if (!record || !(await mayUseAsset(record, x, o, sourceOwner)))
           throw new HttpError(
             422,
             "INVALID_ARTIFACT_ASSET",
@@ -429,19 +441,16 @@ export function createStudioApp(d: Deps) {
       }),
     );
   }
-  async function assets(html: string, o: string, allowReferenced = false) {
+  async function assets(html: string, o: string, sourceOwner?: string) {
     const { markup, strings } = assetReferences(html);
-    await validateAssetReferences(markup, o, allowReferenced);
+    await validateAssetReferences(markup, o, sourceOwner);
     // A script string such as "assets/images" need not name an image: record
     // one only when it names an image this device may use, as before such
     // strings were recorded, rather than refusing the tapplet.
     const usable = await Promise.all(
       strings.map(async (x) => {
         const record = d.assets ? await assetRecord(x) : null;
-        return record &&
-          (record.ownerHash === o ||
-            allowReferenced ||
-            (await d.repository.ownerReferencesAsset(o, x)))
+        return record && (await mayUseAsset(record, x, o, sourceOwner))
           ? [x]
           : [];
       }),
@@ -1372,7 +1381,7 @@ export function createStudioApp(d: Deps) {
             {
               artifact,
               revision: copy,
-              assetIds: await assets(html, o, !ownedArtifact),
+              assetIds: await assets(html, o, sourceArtifact.ownerHash),
             },
             d.config.maximumDraftsPerOwner,
           ))
