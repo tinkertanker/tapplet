@@ -106,7 +106,8 @@ export function validateHtmlArtifact(html, options = {}) {
   ) add('storage', 'Storage APIs are not allowed; tapplets must keep all state in memory.');
   for (const match of html.matchAll(/\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis)) {
     const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
-    if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value)) add('external-resource', `External CSS resource is not allowed: ${value}.`);
+    // An SVG reference such as fill="url(#gradient)" names an element in the document itself.
+    if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value) && !value.startsWith('#')) add('external-resource', `External CSS resource is not allowed: ${value}.`);
   }
 
   function validateJavaScript(source, sourceType) {
@@ -256,6 +257,13 @@ function absoluteStart(node) {
   return /^[\s\0-\x1f]*(?:(?!data:)[a-z][a-z\d+.-]*:|[\\/]{2})/i.test(start.replace(/[\t\n\r]/g, '')) ? start : undefined;
 }
 
+// A property such as el.dataset.src names a data-* attribute, which loads nothing.
+function datasetMember(node) {
+  return node.type === 'MemberExpression' && !node.computed
+    && node.object.type === 'MemberExpression' && !node.object.computed
+    && node.object.property.type === 'Identifier' && node.object.property.name === 'dataset';
+}
+
 function literalText(node) {
   if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
   if (node.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0]?.value.cooked ?? undefined;
@@ -329,7 +337,7 @@ function scriptSources(root, html) {
       // the URL scan reads no template literal as an attribute value.
       if (current.type === 'AssignmentExpression' && current.operator === '=') {
         const { left } = current;
-        const property = left.type === 'MemberExpression' && !left.computed && left.property.type === 'Identifier'
+        const property = left.type === 'MemberExpression' && !left.computed && left.property.type === 'Identifier' && !datasetMember(left)
           ? left.property.name
           : handler && left.type === 'Identifier' ? left.name : undefined;
         const written = property && /^(src|href|action|formaction)$/i.exec(property);
@@ -367,6 +375,8 @@ function scriptSources(root, html) {
     }
     visitJavaScript(program, (current) => {
       if (current.type === 'WithStatement') usesWith = true;
+      // el.dataset.action = "check" sets a data-action attribute.
+      if (current.type === 'AssignmentExpression' && datasetMember(current.left)) found.push(offset + current.left.property.start);
       if (current.type === 'VariableDeclarator') bind(current.id);
       else if (current.type === 'AssignmentExpression' && !handler) bind(current.left);
       else if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(current.type)) current.params.forEach(bind);

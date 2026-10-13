@@ -25,6 +25,8 @@ const snippets = [
   '<p>(src="https://outside.invalid")</p>',
   '<iframe srcdoc="hi"></iframe>',
   '<style>.a{fill:url(#gradient)}</style>',
+  '<svg><linearGradient id="g"></linearGradient><rect fill="url(#g)" marker-end="url( \'#arrow\' )"/></svg>',
+  '<svg><rect fill="url(https://outside.invalid/x.svg#g)"/></svg>',
   '<style>.a{background:url(assets/image-1)}</style>',
   '<button data-action="check" data-src="https://outside.invalid">Go</button>',
   '<script data-src="pool-1">const pool = 1;</script>',
@@ -64,6 +66,10 @@ const snippets = [
   // script assignment, not anywhere a name starts a line or follows punctuation.
   '<script>\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src</script>',
   '<button onclick="const href = this.dataset.href; void href">Go</button>',
+  // A dataset property names a data-* attribute, which loads nothing.
+  "<script>const b = document.body; b.dataset.action = 'check'; b.dataset.src = `pool-${1}`; b.dataset.href = 'https://outside.invalid/';</script>",
+  `<button onclick="this.dataset.action = 'reset'">Reset</button>`,
+  '<script>document.body.dataset.src = "x"; document.images[0].src = "https://outside.invalid/x.png";</script>',
   '<script>const poster = 1; [poster].find((poster) => poster === 1);</script>',
   '<script>const u = "https://outside.invalid/x.png"; document.body.innerHTML = `<img\n  src="${u}" alt="">`;</script>',
   '<script>const u = "https://outside.invalid/x.png"; document.body.innerHTML = "<img \\\nsrc=" + u + ">";</script>',

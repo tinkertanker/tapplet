@@ -106,10 +106,17 @@ function normalizeAssetUrl(value: string): string {
 export function referencedAssetIds(html: string): string[] {
   const ids: string[] = [];
   const document = parseHtml(html, { sourceCodeLocationInfo: true }),
-    values = [...urlValueRanges(document), ...scriptSources(document, html).urlValues];
+    scripts = scriptSources(document, html),
+    values = [...urlValueRanges(document), ...scripts.urlValues];
   for (const match of html.matchAll(URL_ATTRIBUTE)) {
     if (within(values, match.index ?? 0)) continue;
     const asset = MANAGED_ASSET.exec(normalizeAssetUrl(attributeValue(match)));
+    if (asset?.[1]) ids.push(asset[1]);
+  }
+  // A script can also show an image with setAttribute("src", "assets/<id>"),
+  // which the published tapplet serves only when it is recorded here.
+  for (const { value } of scripts.attributeWrites) {
+    const asset = MANAGED_ASSET.exec(normalizeAssetUrl(value));
     if (asset?.[1]) ids.push(asset[1]);
   }
   for (const match of html.matchAll(CSS_URL)) {
@@ -365,7 +372,8 @@ function scriptSources(
           property =
             left.type === "MemberExpression" &&
             !left.computed &&
-            left.property.type === "Identifier"
+            left.property.type === "Identifier" &&
+            !datasetMember(left)
               ? left.property.name
               : handler && left.type === "Identifier"
                 ? left.name
@@ -414,6 +422,13 @@ function scriptSources(
     }
     visitJavaScript(program, (current) => {
       if (current.type === "WithStatement") usesWith = true;
+      // el.dataset.action = "check" sets a data-action attribute.
+      if (
+        current.type === "AssignmentExpression" &&
+        current.left.type === "MemberExpression" &&
+        datasetMember(current.left)
+      )
+        found.push(base + current.left.property.start);
       if (current.type === "VariableDeclarator") bind(current.id);
       else if (current.type === "AssignmentExpression" && !handler) bind(current.left);
       else if (
@@ -499,6 +514,19 @@ function absoluteStart(node: AnyNode): string | undefined {
   return /^[\s\0-\x1f]*(?:(?!data:)[a-z][a-z\d+.-]*:|[\\/]{2})/i.test(start.replace(/[\t\n\r]/g, ""))
     ? start
     : undefined;
+}
+
+// A property such as el.dataset.src names a data-* attribute, which loads
+// nothing.
+function datasetMember(node: AnyNode): boolean {
+  return (
+    node.type === "MemberExpression" &&
+    !node.computed &&
+    node.object.type === "MemberExpression" &&
+    !node.object.computed &&
+    node.object.property.type === "Identifier" &&
+    node.object.property.name === "dataset"
+  );
 }
 
 function literalText(node: AnyNode): string | undefined {
@@ -713,7 +741,9 @@ function inspect(
           );
     for (const match of html.matchAll(CSS_URL)) {
       const value = normalizeAssetUrl(match[1] ?? match[2] ?? match[3] ?? "");
-      if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value))
+      // An SVG reference such as fill="url(#gradient)" or
+      // marker-end="url(#arrow)" names an element in the document itself.
+      if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value) && !value.startsWith("#"))
         issues.push({
           kind: "policy",
           message: "Unsupported CSS URL.",

@@ -93,6 +93,17 @@ describe("HTML generation contract", () => {
     }
   });
 
+  it("accepts SVG references to elements in the document", () => {
+    const candidate = html.replace(
+      "Hello",
+      '<svg><defs><linearGradient id="sky"><stop offset="0" stop-color="#9cf"/></linearGradient><marker id="arrow"><path d="M0 0L4 2L0 4"/></marker></defs><rect fill="url(#sky)" width="4" height="4"/><line marker-end="url( \'#arrow\' )" x2="4"/></svg>',
+    ).replace("</style>", ".bar{fill:url(#sky)}</style>");
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(() =>
+      validateHtmlOutput({ html: html.replace("Hello", '<svg><rect fill="url(https://outside.invalid/x.svg#sky)"/></svg>') }),
+    ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts custom data attributes named like URL attributes", () => {
     const candidate = html.replace(
       "Hello",
@@ -102,6 +113,22 @@ describe("HTML generation contract", () => {
     expect(() =>
       validateHtmlOutput({ html: html.replace("Hello", '<form action="https://outside.invalid/"></form>') }),
     ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts data attributes that scripts set through dataset", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'const button = document.createElement("button"); button.dataset.action = "check"; button.dataset.src = `pool-${1}`; button.dataset.href = "https://outside.invalid/"',
+    ).replace("Hello", `<button onclick="this.dataset.action = 'reset'">Reset</button>`);
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<script>document.images[0].src = "https://outside.invalid/x.png"; document.body.dataset.src = "x";</script>',
+      "<script>document.images[0].dataset.src = 1; document.images[0].src = `https://outside.invalid/${1}.png`;</script>",
+      '<script>document.forms[0].dataset["action"] = 1; document.forms[0].action = "https://outside.invalid/";</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
   });
 
   it("accepts a script variable named action", () => {
@@ -347,6 +374,18 @@ describe("HTML generation contract", () => {
   it("accepts complete self-contained HTML and extracts managed assets", () => {
     expect(validateHtmlOutput({ html })).toEqual({ html });
     expect(referencedAssetIds(html)).toEqual(["asset-one"]);
+  });
+
+  it("extracts managed assets that scripts set as literal attributes", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'document.images[0].setAttribute("src", "assets/swapped-image")',
+    ).replace(
+      "Hello",
+      `<svg><image id="i"/></svg><button onclick="document.getElementById('i').setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', ' assets/svg-image ')">Go</button>`,
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(referencedAssetIds(candidate).sort()).toEqual(["asset-one", "svg-image", "swapped-image"]);
   });
 
   it("frames cross-user exemplars as untrusted data", () => {
