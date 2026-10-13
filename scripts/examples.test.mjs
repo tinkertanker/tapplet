@@ -399,6 +399,28 @@ test('line golf keeps the next hole as set after Reset during the hole pause', a
   dom.window.close();
 });
 
+test('line golf Play again keeps keyboard focus on the course controls', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/line-golf.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  for (const [m, c] of [['2', '1'], ['-1', '2'], ['0', '1']]) {
+    document.getElementById('reset').click();
+    document.getElementById('m').value = m;
+    document.getElementById('c').value = c;
+    document.getElementById('check').click();
+  }
+  const again = document.getElementById('again');
+  assert.equal(again.style.display, 'inline-block');
+  again.focus();
+  again.click();
+  assert.equal(again.style.display, 'none');
+  assert.equal(document.activeElement, document.getElementById('m'));
+  dom.window.close();
+});
+
 test('fair-test variables and confounds give choice-specific feedback', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -830,6 +852,26 @@ test('choosing a conductor object keeps keyboard focus on that object', async ()
   dom.window.close();
 });
 
+test('conductor Try again keeps keyboard focus on the objects', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/conductor-or-insulator.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  for (let life = 0; life < 3; life += 1) {
+    [...document.querySelectorAll('#items button')].find((button) => button.textContent === 'Copper coin').click();
+    document.querySelector('[data-bin="insulator"]').click();
+  }
+  const again = document.getElementById('again');
+  assert.equal(again.style.display, 'block');
+  again.focus();
+  again.click();
+  assert.equal(again.style.display, 'none');
+  assert.equal(document.activeElement, document.querySelector('#items button'));
+  dom.window.close();
+});
+
 test('answering a times-tables question keeps keyboard focus on the next choices', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -850,6 +892,42 @@ test('answering a times-tables question keeps keyboard focus on the next choices
     await page.$eval('#choices button', (button) => button.click());
     await page.waitForFunction(() => !document.querySelector('#choices button:disabled'));
     assert.equal(await page.evaluate(() => document.activeElement === document.body), true, 'a tap without focus does not move focus');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('times-tables round changes keep keyboard focus on the next control', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/times-tables-lightning.html', 'utf8'));
+    const answer = () => page.$eval('#q', (q) => {
+      const [a, b] = q.textContent.match(/\d+/g).map(Number);
+      return String(a * b);
+    });
+    const focused = () => page.evaluate(() => (document.activeElement?.closest('#choices') ? 'choice' : document.activeElement?.id));
+    const right = await answer();
+    await page.locator('#choices button', { hasText: new RegExp(`^(?!${right}$)\\d+$`) }).first().focus();
+    await page.keyboard.press('Enter');
+    await page.evaluate('time = 0');
+    await page.waitForSelector('#end', { state: 'visible' });
+    assert.equal(await focused(), 'review', 'time running out mid-answer moves focus to Practise missed facts');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'choice', 'Practise missed facts moves focus to the choices');
+    await page.locator('#choices button', { hasText: new RegExp(`^${await answer()}$`) }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#again-play', { state: 'visible' });
+    assert.equal(await focused(), 'again-play', 'finishing the review moves focus to Play again');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'choice', 'Play again moves focus to the choices');
+    await page.evaluate('time = 1');
+    await page.waitForSelector('#end', { state: 'visible' });
+    assert.equal(await focused(), 'again', 'time running out between answers moves focus to Play again');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'choice', 'Play again after time up moves focus to the choices');
     await page.close();
   } finally {
     await browser.close();
