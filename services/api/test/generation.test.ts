@@ -388,6 +388,20 @@ describe("HTML generation contract", () => {
     expect(referencedAssetIds(candidate).sort()).toEqual(["asset-one", "svg-image", "swapped-image"]);
   });
 
+  it("extracts managed assets that scripts keep in strings", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      "const pictures = ['assets/first-image', \"assets/second-image\"]; document.images[0].setAttribute('src', pictures[1]); const extra = new Image(); extra.src = `assets/template-image`; Object.assign(extra, { src: `${pictures[0]}` })",
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(referencedAssetIds(candidate).sort()).toEqual([
+      "asset-one",
+      "first-image",
+      "second-image",
+      "template-image",
+    ]);
+  });
+
   it("frames cross-user exemplars as untrusted data", () => {
     const exemplar = {
       revisionId: "r9",

@@ -113,9 +113,10 @@ export function referencedAssetIds(html: string): string[] {
     const asset = MANAGED_ASSET.exec(normalizeAssetUrl(attributeValue(match)));
     if (asset?.[1]) ids.push(asset[1]);
   }
-  // A script can also show an image with setAttribute("src", "assets/<id>"),
-  // which the published tapplet serves only when it is recorded here.
-  for (const { value } of scripts.attributeWrites) {
+  // A script can also show an image it keeps in a string, as in
+  // setAttribute("src", "assets/<id>"), img.src = `assets/<id>` or an array of
+  // image paths; the published tapplet serves it only when it is recorded here.
+  for (const { value } of scripts.strings) {
     const asset = MANAGED_ASSET.exec(normalizeAssetUrl(value));
     if (asset?.[1]) ids.push(asset[1]);
   }
