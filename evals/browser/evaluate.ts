@@ -755,8 +755,9 @@ async function exerciseGenericControl(
   const descriptor = await control.evaluate((element) => {
     // A range snaps to its bounds and step, and fill rejects a value the
     // input does not keep, so ask a detached copy which ends it can reach.
+    // A file input throws when script sets its value.
     const [minimum = "", maximum = ""] = ["-1e308", "1e308"].map((extreme) => {
-      if (!(element instanceof HTMLInputElement)) return "";
+      if (!(element instanceof HTMLInputElement) || element.type !== "range") return "";
       const probe = element.cloneNode() as HTMLInputElement;
       probe.value = extreme;
       return probe.value;
@@ -797,6 +798,14 @@ async function exerciseGenericControl(
     if (descriptor.type === "range") {
       const { minimum, maximum } = descriptor;
       await control.fill(descriptor.value === maximum ? minimum : maximum, { timeout });
+      return;
+    }
+    // A file input cannot be filled; choose a small image as a student would.
+    if (descriptor.type === "file") {
+      await control.setInputFiles(
+        { name: "evaluation.png", mimeType: "image/png", buffer: TRANSPARENT_PNG },
+        { timeout },
+      );
       return;
     }
     // Typed inputs discard text that is not in their format, and fill

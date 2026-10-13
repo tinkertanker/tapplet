@@ -354,3 +354,15 @@ test("browser evaluator measures a labelled checkbox by its label's touch target
   );
   assert.equal(slider.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 1);
 });
+
+test("generic interactions choose a file for a file input", async () => {
+  const fixture = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>File fixture</title><style>body{font:16px system-ui}input{min-width:200px;min-height:48px}</style></head><body><main><h1>File fixture</h1><label for="photo">Your drawing</label><input id="photo" type="file" accept="image/*"><p id="chosen" aria-live="polite"></p></main><script>photo.onchange=()=>{chosen.textContent=photo.files.length+' file chosen'}</script></body></html>`;
+  const result = await evaluateHtmlInBrowser(fixture, {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(viewport.behavior.changedControlCount, 1);
+  assert.equal(viewport.behavior.passed, true);
+});
