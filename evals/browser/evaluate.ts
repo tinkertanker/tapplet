@@ -519,8 +519,12 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
       ).length,
       clippedControlCount,
       // Tapping a control's label activates it, so a labelled checkbox or
-      // radio is as large a target as its biggest label.
-      undersizedTouchTargetCount: controls.filter((element) => ![element, ...(element.labels ?? [])]
+      // radio is as large a target as its biggest label. A slider is only
+      // moved on its own track, so its label does not count.
+      undersizedTouchTargetCount: controls.filter((element) => ![
+        element,
+        ...(element instanceof HTMLInputElement && element.type === "range" ? [] : element.labels ?? []),
+      ]
         .map((target) => target.getBoundingClientRect())
         .some((rect) => rect.width >= 44 && rect.height >= 44)).length,
       overlappingControlPairCount: overlapCount,
