@@ -7,7 +7,7 @@
     "services/api"
   ],
   "engines": {
-    "node": ">=22.12 <23"
+    "node": ">=22.13 <23"
   },
   "scripts": {
     "api:dev": "npm run dev -w @tinkercademy/tapplet-api",
