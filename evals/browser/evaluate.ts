@@ -435,13 +435,22 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
       .filter((element) => !element.hasAttribute("disabled")
         && !element.matches(":disabled")
         && !element.closest("[inert]"));
-    // A labelled descendant names its control only while screen readers can reach it.
-    const exposed = (child) => {
-      for (let node = child; node; node = node.parentElement) {
+    // Text or a labelled image inside a control names it only while screen
+    // readers can reach it.
+    const exposed = (child, control) => {
+      for (let node = child; node && node !== control; node = node.parentElement) {
         if (node.getAttribute("aria-hidden") === "true"
           || getComputedStyle(node).display === "none") return false;
       }
       return getComputedStyle(child).visibility !== "hidden";
+    };
+    const exposedText = (control) => {
+      const walker = document.createTreeWalker(control, NodeFilter.SHOW_TEXT);
+      let text = "";
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.parentElement && exposed(node.parentElement, control)) text += node.textContent ?? "";
+      }
+      return text;
     };
     const accessibleName = element => {
       const labelledBy = element.getAttribute("aria-labelledby")
@@ -458,8 +467,9 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
       // Option text and default textarea text are values, not names. Other
       // controls are named by their content, including a labelled image.
       const content = formField ? "" : [
-        element.textContent ?? "",
-        ...[...element.querySelectorAll("img[alt],[aria-label]")].filter(exposed).map((child) =>
+        exposedText(element),
+        ...[...element.querySelectorAll("img[alt],[aria-label]")]
+          .filter((child) => exposed(child, element)).map((child) =>
           child.getAttribute("aria-label") ?? child.getAttribute("alt") ?? ""),
       ].join(" ").trim();
       return element.getAttribute("aria-label")?.trim()

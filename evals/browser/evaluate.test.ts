@@ -270,12 +270,23 @@ test("browser evaluator names a control by the image it contains", async () => {
     '<span aria-hidden="true"><img src="assets/diagram" alt="Play"></span>',
     '<img src="assets/diagram" alt="Play" style="display:none">',
     '<img src="assets/diagram" alt="Play" style="visibility:hidden">',
+    '<span aria-hidden="true">Play</span>',
+    '<span style="display:none">Play</span>',
+    '<span style="visibility:hidden">Play</span>',
   ]) {
     const hidden = await evaluateHtmlInBrowser(fixture("", image), {
       viewports: [{ name: "phone", width: 390, height: 844 }],
     });
     assert.equal(hidden.viewports[0]?.accessibilityBasic.unnamedControlCount, 1, image);
   }
+
+  // Hiding is judged inside the control, so an image names its button
+  // wherever a text label would.
+  const inHiddenRegion = await evaluateHtmlInBrowser(
+    fixture("A fraction diagram").replace("<button", '<div aria-hidden="true"><button').replace("</button>", "</button></div>"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(inHiddenRegion.viewports[0]?.accessibilityBasic.unnamedControlCount, 0);
 });
 
 test("browser evaluator does not treat script-only focus targets as controls", async () => {
