@@ -120,6 +120,50 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStarterPlanDoesNotReplaceTheBriefBeingMade() throws {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let submitted = try XCTUnwrap(StarterPlan.matching(exampleID: "times-tables-lightning"))
+        let later = try XCTUnwrap(StarterPlan.matching(exampleID: "line-golf"))
+        store.applyStarterPlan(submitted)
+        store.isCreatingGuidedDraft = true
+        store.selectedSection = .explore
+
+        store.applyStarterPlan(later)
+
+        XCTAssertEqual(store.guidedMakeDraft, submitted.draft, "Make must keep showing the answers being made")
+        XCTAssertEqual(store.guidedMakePinnedPlanID, submitted.id)
+        XCTAssertEqual(store.selectedSection, .make)
+    }
+
+    @MainActor
+    func testMakeFailureOutlivesTheMakeScreenUntilANewBriefStarts() throws {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let plan = try XCTUnwrap(StarterPlan.all.first)
+        store.applyStarterPlan(plan)
+        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"), during: .generation)
+
+        store.selectedSection = .explore
+        store.openMake()
+        XCTAssertNotNil(store.guidedMakeCreationError, "A failure reported while the teacher was elsewhere must still show")
+
+        store.applyStarterPlan(plan)
+        XCTAssertNil(store.guidedMakeCreationError)
+        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"), during: .generation)
+        store.resetGuidedMake()
+        XCTAssertNil(store.guidedMakeCreationError)
+    }
+
+    @MainActor
     func testRefinementUsesCurrentExpectedHeadAndReplacesSourceAfterSuccess() async throws {
         let original = makeProject(revisionID: "r1", html: "<html>Original</html>")
         let revised = makeProject(

@@ -69,9 +69,11 @@ struct ExploreView: View {
         .fullScreenCover(item: $preview) { project in
             StudentPreviewView(
                 project: project,
-                onUsePlan: StarterPlan.matching(exampleID: project.artifact.id).map { plan in
-                    { store.applyStarterPlan(plan) }
-                }
+                onUsePlan: store.isCreatingGuidedDraft
+                    ? nil
+                    : StarterPlan.matching(exampleID: project.artifact.id).map { plan in
+                        { store.applyStarterPlan(plan) }
+                    }
             )
         }
         .alert(

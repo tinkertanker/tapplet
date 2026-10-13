@@ -29,6 +29,8 @@ private enum RestoreFetch: Sendable {
     var guidedMakeDraft = GuidedBriefDraft(); var guidedMakeQuestionIndex = 0; var guidedMakeResponse = ""; var guidedMakeShowsSummary = false
     var guidedMakePreferredExampleRevisionId: String?
     var guidedMakePinnedPlanID: String?
+    // Kept here so a failure is still shown after leaving Make mid-generation.
+    var guidedMakeCreationError: TappletErrorPresentation?
     var isCreatingGuidedDraft = false
     private let api: any TappletAPI
     private let projectDirectory: URL
@@ -108,11 +110,15 @@ private enum RestoreFetch: Sendable {
         guidedMakeShowsSummary = false
         guidedMakePreferredExampleRevisionId = nil
         guidedMakePinnedPlanID = nil
+        guidedMakeCreationError = nil
     }
     func applyStarterPlan(_ plan: StarterPlan) {
+        // Make shows the answers being made, and clears them when it finishes.
+        guard !isCreatingGuidedDraft else { openMake(); return }
         guidedMakeDraft = plan.draft
         guidedMakePreferredExampleRevisionId = plan.exampleRevisionID
         guidedMakePinnedPlanID = plan.id
+        guidedMakeCreationError = nil
         guidedMakeShowsSummary = true
         guidedMakeQuestionIndex = 0
         guidedMakeResponse = ""
