@@ -518,7 +518,11 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
         rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth
       ).length,
       clippedControlCount,
-      undersizedTouchTargetCount: rectangles.filter((rect) => rect.width < 44 || rect.height < 44).length,
+      // Tapping a control's label activates it, so a labelled checkbox or
+      // radio is as large a target as its biggest label.
+      undersizedTouchTargetCount: controls.filter((element) => ![element, ...(element.labels ?? [])]
+        .map((target) => target.getBoundingClientRect())
+        .some((rect) => rect.width >= 44 && rect.height >= 44)).length,
       overlappingControlPairCount: overlapCount,
       minimumTextSizePixels: textSizes.length ? Math.min(...textSizes) : null,
     };

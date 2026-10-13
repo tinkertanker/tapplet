@@ -333,3 +333,18 @@ test("generic interactions do not type into read-only result fields", async () =
   assert.equal(viewport.behavior.interactionErrorCount, 0);
   assert.equal(viewport.behavior.passed, true);
 });
+
+test("browser evaluator measures a labelled checkbox by its label's touch target", async () => {
+  const fixture = (label: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Checkbox target fixture</title><style>body{font:16px system-ui}label{display:flex;align-items:center;gap:10px;min-height:48px}</style></head><body><main><h1>Checkbox target fixture</h1>${label}</main></body></html>`;
+  const labelled = await evaluateHtmlInBrowser(
+    fixture("<label><input type=\"checkbox\"> Different locations</label>"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(labelled.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 0);
+
+  const bare = await evaluateHtmlInBrowser(
+    fixture("<input type=\"checkbox\" aria-label=\"Different locations\">"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(bare.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 1);
+});
