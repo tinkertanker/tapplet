@@ -429,10 +429,12 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
         && rect.width > 0
         && rect.height > 0;
     };
-    // Like disabled controls, controls in an inert section are locked.
+    // Controls disabled directly or by a fieldset, or in an inert section, are locked.
     const controls = [...document.querySelectorAll(controlSelector)]
       .filter(isVisible)
-      .filter((element) => !element.hasAttribute("disabled") && !element.closest("[inert]"));
+      .filter((element) => !element.hasAttribute("disabled")
+        && !element.matches(":disabled")
+        && !element.closest("[inert]"));
     const accessibleName = element => {
       const labelledBy = element.getAttribute("aria-labelledby")
         ?.split(/\s+/)
@@ -681,7 +683,7 @@ async function exerciseGenericInteractions(
       return state / 4294967296;
     };
   })()`);
-  const controlSelector = ":is(button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[role='button']:not([aria-disabled='true'])):not([inert],[inert] *)";
+  const controlSelector = ":is(button,input,select,textarea,[role='button']:not([aria-disabled='true'])):not(:disabled,[disabled],[inert],[inert] *)";
   const countPage = await createEvaluationPage(context, runtime);
   let exercisedControlCount: number;
   try {
