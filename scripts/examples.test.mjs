@@ -699,6 +699,34 @@ test('ordering feedback marks each step, clears on moves, and counts correct pos
   }
 });
 
+test('moving a step up keeps keyboard focus on the moved step', async () => {
+  const cases = [
+    { file: 'cool-box-fair-test-lab.html', list: '#steps' },
+    { file: 'market-street-field-notes.html', list: '#steps' },
+    { file: 'paragraph-structure-sequencer.html', list: '#order' },
+  ];
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const example of cases) {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile(`apps/ipad/Resources/Examples/${example.file}`, 'utf8'));
+      const stepText = (index) => page.$$eval(`${example.list} [data-order-step]`, (steps, i) => steps[i].textContent.replace(/^\d+\. /, ''), index);
+      const moving = await stepText(2);
+      await page.focus(`${example.list} button[data-i="2"]`);
+      await page.keyboard.press('Enter');
+      assert.equal(await stepText(1), moving, `${example.file} first press moves the step`);
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.i), '1', `${example.file} focus follows the step`);
+      await page.keyboard.press('Enter');
+      assert.equal(await stepText(0), moving, `${example.file} second press moves it again`);
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.i), '1', `${example.file} focus stays in the list`);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test('town budget shares never go negative while dragging sliders', async () => {
   const html = await readFile(
     path.resolve('apps/ipad/Resources/Examples/town-council-budget.html'),
@@ -765,6 +793,21 @@ test('conductor sort feedback uses the right article for each bin', async () => 
     assert.match(document.getElementById('msg').textContent, expected);
     dom.window.close();
   }
+});
+
+test('choosing a conductor object keeps keyboard focus on that object', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/conductor-or-insulator.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  const foil = () => [...document.querySelectorAll('#items button')].find((button) => button.textContent === 'Aluminium foil');
+  foil().focus();
+  foil().click();
+  assert.equal(document.activeElement, foil());
+  assert.equal(foil().getAttribute('aria-pressed'), 'true');
+  dom.window.close();
 });
 
 test('every curated control has an accessible name', async () => {
