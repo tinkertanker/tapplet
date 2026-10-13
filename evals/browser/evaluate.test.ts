@@ -265,3 +265,14 @@ test("browser evaluator names a control by the image it contains", async () => {
   });
   assert.equal(decorative.viewports[0]?.accessibilityBasic.unnamedControlCount, 1);
 });
+
+test("browser evaluator does not treat script-only focus targets as controls", async () => {
+  const result = await evaluateHtmlInBrowser(
+    goodFixture.replace("<main>", '<main tabindex="-1">').replace("<h1>", '<h1 tabindex="-1">'),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(result.viewports[0]?.behavior.controlCount, 1);
+  assert.equal(result.viewports[0]?.renderedQuality.overlappingControlPairCount, 0);
+  assert.equal(result.viewports[0]?.renderedQuality.passed, true);
+  assert.equal(result.passed, true);
+});

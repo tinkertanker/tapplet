@@ -417,7 +417,9 @@ function productionSecurityHeaders(): Record<string, string> {
 
 async function collectDomMetrics(page: Page): Promise<DomMetrics> {
   return page.evaluate(String.raw`(() => {
-    const controlSelector = "button,input,select,textarea,a[href],[role='button'],[tabindex]";
+    // tabindex="-1" only makes a heading, region or message a focus target
+    // for script; it is not something a student taps.
+    const controlSelector = "button,input,select,textarea,a[href],[role='button'],[tabindex]:not([tabindex^='-'])";
     const isVisible = element => {
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
