@@ -48,6 +48,7 @@ describe("HTML generation contract", () => {
       '<script type="text/template">fetch("https://outside.invalid/")</script>',
       `<textarea><b onclick="fetch('https://outside.invalid/')">Go</b></textarea>`,
       `<p>&lt;b onclick="fetch('https://outside.invalid/')"&gt;</p>`,
+      '<div>a<table><script>fetch("https://outside.invalid/")</script>b</table></div>',
     ])
       expect(() => validateHtmlOutput({ html: html.replace("Hello", markup) })).toThrow(
         "Invalid generated HTML",

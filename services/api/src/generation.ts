@@ -168,14 +168,25 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
 
 // Source ranges of text in elements other than scripts that holds no markup,
 // such as a textarea's, which a script could insert as HTML; it runs no code.
-function proseRanges(node: DefaultTreeAdapterTypes.Node): Array<readonly [number, number]> {
+// The source must hold no tag either: text a table moves out of itself joins
+// the text before the table, whose range then spans the table's markup.
+function proseRanges(
+  node: DefaultTreeAdapterTypes.Node,
+  html: string,
+): Array<readonly [number, number]> {
   const ranges: Array<readonly [number, number]> = [];
   function visit(current: DefaultTreeAdapterTypes.Node) {
     if ("tagName" in current && current.tagName !== "script")
       for (const child of current.childNodes.filter(
         (child): child is DefaultTreeAdapterTypes.TextNode => child.nodeName === "#text",
       ))
-        if (!child.value.includes("<") && child.sourceCodeLocation)
+        if (
+          !child.value.includes("<") &&
+          child.sourceCodeLocation &&
+          !html
+            .slice(child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset)
+            .includes("<")
+        )
           ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
     if ("childNodes" in current) current.childNodes.forEach(visit);
     if ("content" in current) visit(current.content);
@@ -730,7 +741,7 @@ function inspect(
         message: "Embedded documents and base URLs are not allowed.",
       });
     const scripts = scriptSources(document, html),
-      prose = proseRanges(document);
+      prose = proseRanges(document, html);
     // Check real attributes, markup in script strings, stored markup such as
     // data attributes and property writes; a script variable named poster (for
     // a poster-design activity) and lesson text such as "1 poster = $3" load

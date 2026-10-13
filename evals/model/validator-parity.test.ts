@@ -70,6 +70,9 @@ const snippets = [
   '<script type="text/template">fetch("https://outside.invalid/")</script>',
   "<script>const step = \"Fetch (get the instruction)\";</script>",
   "<button onclick=\"fetch('x')\">Go</button>",
+  // Text a table moves before itself joins earlier text but not its markup.
+  '<div>a<table><script>fetch("x")</script>b</table></div>',
+  "<div>a<table><tr><td data-m='<video poster=x>'></td></tr>b</table></div>",
   // Script variables are exempt only where parsing finds a declaration or a
   // script assignment, not anywhere a name starts a line or follows punctuation.
   '<script>\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src</script>',

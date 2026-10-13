@@ -63,7 +63,7 @@ export function validateHtmlArtifact(html, options = {}) {
   const document = parseHtml(html, { sourceCodeLocationInfo: true });
   if (/<(?:base|iframe|object|embed)\b/i.test(html)) add('external-resource', 'Embedded documents and base URLs are not allowed.');
   const scripts = scriptSources(document, html);
-  const prose = proseRanges(document);
+  const prose = proseRanges(document, html);
   if (scripts.imports) add('package-import', 'Package and stylesheet imports are not allowed.');
   // "fetch (" and "import (" are also ordinary words in lesson text, as in
   // "Countries import (and export) rice", which calls nothing; scripts,
@@ -159,12 +159,19 @@ function attributeValue(match) {
 
 // Source ranges of text in elements other than scripts that holds no markup,
 // such as a textarea's, which a script could insert as HTML; it runs no code.
-function proseRanges(root) {
+// The source must hold no tag either: text a table moves out of itself joins
+// the text before the table, whose range then spans the table's markup.
+function proseRanges(root, html) {
   const ranges = [];
   function visit(node) {
     if ('tagName' in node && node.tagName !== 'script') {
       for (const child of node.childNodes) {
-        if (child.nodeName === '#text' && !child.value.includes('<') && child.sourceCodeLocation) {
+        if (
+          child.nodeName === '#text'
+          && !child.value.includes('<')
+          && child.sourceCodeLocation
+          && !html.slice(child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset).includes('<')
+        ) {
           ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
         }
       }
