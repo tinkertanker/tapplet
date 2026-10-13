@@ -5,7 +5,7 @@ import {
   validateSeedManifest,
 } from "../../scripts/lib/html-artifact.mjs";
 
-const repoRoot = path.resolve(process.env.INIT_CWD ?? process.cwd());
+const repoRoot = path.resolve(import.meta.dirname, "../..");
 const directory = path.join(repoRoot, "apps", "ipad", "Resources", "Examples");
 
 async function main(): Promise<void> {

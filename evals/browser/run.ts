@@ -11,7 +11,7 @@ interface SeedManifest {
 }
 
 async function main(): Promise<void> {
-  const repoRoot = resolve(process.env.INIT_CWD ?? process.cwd());
+  const repoRoot = resolve(import.meta.dirname, "../..");
   const directory = resolve(repoRoot, "apps/ipad/Resources/Examples");
   const manifestSource = await readFile(resolve(directory, "manifest.json"), "utf8");
   const manifest = JSON.parse(manifestSource) as SeedManifest;
