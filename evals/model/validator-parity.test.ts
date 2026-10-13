@@ -25,6 +25,8 @@ const snippets = [
   '<p>(src="https://outside.invalid")</p>',
   '<iframe srcdoc="hi"></iframe>',
   '<style>.a{fill:url(#gradient)}</style>',
+  '<svg><linearGradient id="g"></linearGradient><rect fill="url(#g)" marker-end="url( \'#arrow\' )"/></svg>',
+  '<svg><rect fill="url(https://outside.invalid/x.svg#g)"/></svg>',
   '<style>.a{background:url(assets/image-1)}</style>',
   '<button data-action="check" data-src="https://outside.invalid">Go</button>',
   '<script data-src="pool-1">const pool = 1;</script>',

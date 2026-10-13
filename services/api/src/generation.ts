@@ -713,7 +713,9 @@ function inspect(
           );
     for (const match of html.matchAll(CSS_URL)) {
       const value = normalizeAssetUrl(match[1] ?? match[2] ?? match[3] ?? "");
-      if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value))
+      // An SVG reference such as fill="url(#gradient)" or
+      // marker-end="url(#arrow)" names an element in the document itself.
+      if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value) && !value.startsWith("#"))
         issues.push({
           kind: "policy",
           message: "Unsupported CSS URL.",

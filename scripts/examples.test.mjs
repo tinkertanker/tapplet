@@ -116,13 +116,13 @@ test('rejects the URLs, multi-source and embedded markup the production validato
     '<script>document.body.innerHTML = `<img\nsrc="https://outside.invalid/x.png">`;</script>',
     '<p>\nhref="https://outside.invalid"</p>',
     '<iframe srcdoc="hi"></iframe>',
-    '<style>.a{fill:url(#gradient)}</style>',
   ]) {
     assert.equal(validateHtmlArtifact(validHtml.replace('</body>', `${snippet}</body>`)).valid, false, snippet);
   }
   for (const snippet of [
     '<a href="#top">Top</a>',
     '<img alt="" src="data:image/png;base64,AAAA">',
+    '<style>.a{fill:url(#gradient)}</style>',
     '<script>box.innerHTML = \'<button data-src="x"><img alt="" src="assets/image-1"></button>\';</script>',
     '<script>const poster = "Poster"; if (poster == "x") {}</script>',
   ]) {

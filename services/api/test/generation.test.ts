@@ -93,6 +93,17 @@ describe("HTML generation contract", () => {
     }
   });
 
+  it("accepts SVG references to elements in the document", () => {
+    const candidate = html.replace(
+      "Hello",
+      '<svg><defs><linearGradient id="sky"><stop offset="0" stop-color="#9cf"/></linearGradient><marker id="arrow"><path d="M0 0L4 2L0 4"/></marker></defs><rect fill="url(#sky)" width="4" height="4"/><line marker-end="url( \'#arrow\' )" x2="4"/></svg>',
+    ).replace("</style>", ".bar{fill:url(#sky)}</style>");
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(() =>
+      validateHtmlOutput({ html: html.replace("Hello", '<svg><rect fill="url(https://outside.invalid/x.svg#sky)"/></svg>') }),
+    ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts custom data attributes named like URL attributes", () => {
     const candidate = html.replace(
       "Hello",

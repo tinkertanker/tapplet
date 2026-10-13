@@ -106,7 +106,8 @@ export function validateHtmlArtifact(html, options = {}) {
   ) add('storage', 'Storage APIs are not allowed; tapplets must keep all state in memory.');
   for (const match of html.matchAll(/\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis)) {
     const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
-    if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value)) add('external-resource', `External CSS resource is not allowed: ${value}.`);
+    // An SVG reference such as fill="url(#gradient)" names an element in the document itself.
+    if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value) && !value.startsWith('#')) add('external-resource', `External CSS resource is not allowed: ${value}.`);
   }
 
   function validateJavaScript(source, sourceType) {
