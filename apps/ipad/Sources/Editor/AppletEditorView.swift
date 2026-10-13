@@ -207,7 +207,8 @@ private struct ImageManagementView: View {
             defer { store.refiningProjectIDs.remove(projectID) }
             do {
                 try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
-                self.pendingData = nil; description = ""; decorative = false; photo = nil
+                // Keep an image chosen while this one was being inserted, with its description.
+                if self.pendingData == pendingData { self.pendingData = nil; description = ""; decorative = false; photo = nil }
             } catch { show(error) }
         }
     }
