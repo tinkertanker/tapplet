@@ -88,7 +88,7 @@ struct AppletEditorView: View {
                         }
                     }
                 }
-                .disabled(working || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(working || isMovingHead || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Undo") {
                     isMovingHead = true
                     Task {
@@ -97,7 +97,7 @@ struct AppletEditorView: View {
                         catch { showOperationError(error, during: .undo) }
                     }
                 }
-                .disabled(isMovingHead || project.source.revision.parentRevisionId == nil)
+                .disabled(isMovingHead || working || project.source.revision.parentRevisionId == nil)
             }
             Section("Details") { DetailsFields(store: store, project: project) }
             Section("Images") {
@@ -128,7 +128,7 @@ struct AppletEditorView: View {
                                 catch { showOperationError(error, during: .restore) }
                             }
                         }
-                        .disabled(isMovingHead || revision.id == project.artifact.headRevisionId)
+                        .disabled(isMovingHead || working || revision.id == project.artifact.headRevisionId)
                     }
                 }
             }
@@ -152,8 +152,9 @@ private struct ImageManagementView: View {
     @State private var decorative = false
     @State private var importsFile = false
     @State private var showsCamera = false
-    @State private var isWorking = false
     @State private var error: String?
+    // Shared with "Make this change": two changes at once would conflict on the head.
+    private var isWorking: Bool { store.refiningProjectIDs.contains(projectID) }
 
     var body: some View {
         ForEach(assetIDs, id: \.self) { assetID in
@@ -161,9 +162,9 @@ private struct ImageManagementView: View {
                 Label(assetID, systemImage: "photo")
                 Spacer()
                 Button("Remove", role: .destructive) {
-                    isWorking = true
+                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
                     Task {
-                        defer { isWorking = false }
+                        defer { store.refiningProjectIDs.remove(projectID) }
                         do { try await store.removeImage(assetID: assetID, projectID: projectID) }
                         catch { show(error) }
                     }
@@ -197,11 +198,10 @@ private struct ImageManagementView: View {
     }
 
     private func upload() {
-        guard let pendingData, !isWorking else { return }
+        guard let pendingData, store.refiningProjectIDs.insert(projectID).inserted else { return }
         error = nil
-        isWorking = true
         Task {
-            defer { isWorking = false }
+            defer { store.refiningProjectIDs.remove(projectID) }
             do {
                 try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
                 self.pendingData = nil; description = ""; decorative = false; photo = nil

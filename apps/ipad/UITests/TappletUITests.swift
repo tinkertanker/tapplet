@@ -366,6 +366,15 @@ final class TappletUITests: XCTestCase {
         app.buttons["complete-test-refinement"].tap()
         XCTAssertTrue(app.staticTexts["UI test refinement complete"].waitUntilExists(timeout: 8))
         XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
+
+        // Undo while a change runs would make that change fail on the moved head.
+        XCTAssertTrue(app.buttons["Undo"].isEnabled)
+        app.buttons["refine-suggestion-lives"].tap()
+        app.buttons["Make this change"].tap()
+        XCTAssertTrue(app.buttons["complete-test-refinement"].waitUntilExists(timeout: 5))
+        XCTAssertFalse(app.buttons["Undo"].isEnabled)
+        app.buttons["complete-test-refinement"].tap()
+        XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
     }
 
     @MainActor
