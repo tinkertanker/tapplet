@@ -259,6 +259,8 @@ describe("HTML generation contract", () => {
       "<script>const link = document.createElement('a'); link.href = `#${document.images[0].src = 'https://outside.invalid/x.png'}`;</script>",
       '<script type="text/template"><a href="#top"><img src="https://outside.invalid/x.png"></a></script>',
       `<script>const href = "#x' src='https://outside.invalid/x.png"; document.body.innerHTML = "<img alt='" + href + "'>";</script>`,
+      `<script>document.body.innerHTML = '<img alt="' + '<a href="#x src=https://outside.invalid/x.png">';</script>`,
+      '<div data-href="#x&#32;src=https://outside.invalid/x.png"></div><script>document.body.innerHTML = "<img " + document.querySelector("div").dataset.href + ">";</script>',
     ])
       expect(
         () => validateHtmlOutput({ html: html.replace("Hello", capability) }),

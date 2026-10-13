@@ -170,7 +170,10 @@ function urlAttributeOffsets(root) {
 
 // Source ranges of the values of real attributes named like URL attributes,
 // such as href="#action=go" or data-href="#/route?src=x", that hold no markup.
-// A name inside such a value loads nothing; the value itself is checked.
+// A name inside such a value loads nothing; the value itself is checked. A
+// value with a name at its start or after white space, a slash, a quote or a
+// substitution is not skipped: markup built around it, or preceding markup
+// that leaves a value open, could make that name a real attribute.
 function urlValueRanges(root, offset = 0) {
   const ranges = [];
   function visit(node) {
@@ -178,7 +181,12 @@ function urlValueRanges(root, offset = 0) {
       for (const attribute of node.attrs) {
         const qualified = attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name;
         const location = node.sourceCodeLocation?.attrs?.[qualified];
-        if (location && /(?:^|[:-])(?:src|href|action|formaction)$/.test(qualified) && !attribute.value.includes('<')) {
+        if (
+          location &&
+          /(?:^|[:-])(?:src|href|action|formaction)$/.test(qualified) &&
+          !attribute.value.includes('<') &&
+          !/(?:^|[\s/"'\0\uFFFD])(?:src|href|action|formaction)\s*=/i.test(attribute.value)
+        ) {
           ranges.push([offset + location.startOffset + qualified.length, offset + location.endOffset]);
         }
       }

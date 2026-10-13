@@ -170,7 +170,10 @@ function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
 
 // Source ranges of the values of real attributes named like URL attributes,
 // such as href="#action=go" or data-href="#/route?src=x", that hold no markup.
-// A name inside such a value loads nothing; the value itself is checked.
+// A name inside such a value loads nothing; the value itself is checked. A
+// value with a name at its start or after white space, a slash, a quote or a
+// substitution is not skipped: markup built around it, or preceding markup
+// that leaves a value open, could make that name a real attribute.
 function urlValueRanges(
   node: DefaultTreeAdapterTypes.Node,
   offset = 0,
@@ -186,7 +189,8 @@ function urlValueRanges(
         if (
           location &&
           /(?:^|[:-])(?:src|href|action|formaction)$/.test(qualified) &&
-          !attribute.value.includes("<")
+          !attribute.value.includes("<") &&
+          !/(?:^|[\s/"'\0\uFFFD])(?:src|href|action|formaction)\s*=/i.test(attribute.value)
         )
           ranges.push([offset + location.startOffset + qualified.length, offset + location.endOffset]);
       }

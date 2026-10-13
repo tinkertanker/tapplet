@@ -118,6 +118,8 @@ const snippets = [
   "<script>const link = document.createElement('a'); link.href = `#${document.images[0].src = 'https://outside.invalid/x.png'}`;</script>",
   '<script type="text/template"><a href="#top"><img src="https://outside.invalid/x.png"></a></script>',
   `<script>const href = "#x' src='https://outside.invalid/x.png"; document.body.innerHTML = "<img alt='" + href + "'>";</script>`,
+  `<script>document.body.innerHTML = '<img alt="' + '<a href="#x src=https://outside.invalid/x.png">';</script>`,
+  '<div data-href="#x&#32;src=https://outside.invalid/x.png"></div>',
   // External URLs that scripts write as template literals.
   "<script>const image = new Image(); image.src = `https://outside.invalid/${1}.png`;</script>",
   '<script>document.images[0].setAttribute("src", `https://outside.invalid/${1}.png`);</script>',
