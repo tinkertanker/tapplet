@@ -842,10 +842,14 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.revisions.size).toBe(1);
   });
 
-  it("does not offer exemplars whose images this device cannot use", async () => {
+  it.each([
+    '<img src="assets/foreign-image" alt="A fraction wall">',
+    // A script that keeps the image in a string, which the source recorded.
+    '<img id="wall" alt="A fraction wall"><script>const walls = ["assets/foreign-image"]; document.getElementById("wall").setAttribute("src", walls[0]);</script>',
+  ])("does not offer exemplars whose images this device cannot use: %s", async (body) => {
     const html = (body: string) =>
       `<!doctype html><html lang="en"><head><title>Fractions</title></head><body>${body}</body></html>`;
-    const foreign = html('<img src="assets/foreign-image" alt="A fraction wall">');
+    const foreign = html(body);
     const sourceHash = "foreign-source";
     await sources.putSource(sourceHash, foreign);
     const timestamp = "2026-08-01T00:00:00Z";
@@ -1049,6 +1053,85 @@ describe("Tapplet API registration and public HTML", () => {
     expect(await repository.ownerReferencesAsset(ownerHash, "own-image")).toBe(true);
     expect(await repository.ownerReferencesAsset(ownerHash, "foreign-image")).toBe(false);
     expect(await repository.ownerReferencesAsset(ownerHash, "images")).toBe(false);
+  });
+
+  it("does not let a remix use an image its published source could not use", async () => {
+    const ownerHash = await ownerHashFrom(
+      authenticated("/v1/artifacts"),
+      secret,
+      Date.parse("2026-08-02T00:00:00Z"),
+      repository,
+    );
+    const record = (id: string, owner: string) => ({
+      id,
+      ownerHash: owner,
+      objectKey: `assets/${owner}/${id}.jpg`,
+      contentType: "image/jpeg",
+      byteLength: 3,
+      width: 1,
+      height: 1,
+      sha256: "hash",
+      alternativeText: "A picture",
+      decorative: false,
+      createdAt: "2026-08-01T00:00:00Z",
+    });
+    const records = new Map([
+      ["own-image", record("own-image", ownerHash)],
+      ["foreign-image", record("foreign-image", "other-owner")],
+    ]);
+    const provider = new FixtureModelProvider();
+    vi.spyOn(provider, "generate").mockResolvedValue({
+      html: `<!doctype html><html lang="en"><head><title>Pictures</title></head><body><img id="photo" alt="A picture"><script>const pictures = ["assets/own-image", "assets/foreign-image"]; document.getElementById("photo").setAttribute("src", pictures[0]);</script></body></html>`,
+    });
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      assets: {
+        get: vi.fn(),
+        getRecord: vi.fn(async (id: string) => records.get(id) ?? null),
+      } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const first = (await (
+      await app.fetch(authenticated("/v1/artifacts/generate", "POST", creationBrief))
+    ).json()) as { artifact: { id: string }; headRevision: { id: string } };
+    expect(
+      (
+        await app.fetch(
+          authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+            expectedHeadRevisionId: first.headRevision.id,
+          }),
+        )
+      ).status,
+    ).toBe(201);
+
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    const asOther = (path: string, method = "GET", body?: unknown) =>
+      new Request(`https://api.test${path}`, {
+        method,
+        headers: {
+          "x-device-token": otherToken,
+          origin: "https://studio.test",
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    const remix = await app.fetch(
+      asOther(`/v1/revisions/${first.headRevision.id}/remix`, "POST", {}),
+    );
+    expect(remix.status).toBe(201);
+    const otherHash = await ownerHashFrom(
+      asOther("/v1/artifacts"),
+      secret,
+      Date.parse("2026-08-02T00:00:00Z"),
+      repository,
+    );
+    expect(await repository.ownerReferencesAsset(otherHash, "own-image")).toBe(true);
+    expect(await repository.ownerReferencesAsset(otherHash, "foreign-image")).toBe(false);
   });
 
   it("removes deleted screenshots without racing shared content-addressed sources", async () => {
