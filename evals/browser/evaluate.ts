@@ -723,19 +723,29 @@ async function exerciseGenericControl(
 ): Promise<void> {
   const timeout = Math.max(500, settleTimeMs * 5);
   await control.scrollIntoViewIfNeeded({ timeout });
-  const descriptor = await control.evaluate((element) => ({
-    tag: element.tagName.toLocaleLowerCase(),
-    type: element instanceof HTMLInputElement ? element.type.toLocaleLowerCase() : "",
-    value: element instanceof HTMLInputElement
-      || element instanceof HTMLSelectElement
-      || element instanceof HTMLTextAreaElement
-      ? element.value
-      : "",
-    minimum: element instanceof HTMLInputElement ? element.min : "",
-    maximum: element instanceof HTMLInputElement ? element.max : "",
-    selectedIndex: element instanceof HTMLSelectElement ? element.selectedIndex : -1,
-    optionCount: element instanceof HTMLSelectElement ? element.options.length : 0,
-  }));
+  const descriptor = await control.evaluate((element) => {
+    // A range snaps to its bounds and step, and fill rejects a value the
+    // input does not keep, so ask a detached copy which ends it can reach.
+    const [minimum = "", maximum = ""] = ["-1e308", "1e308"].map((extreme) => {
+      if (!(element instanceof HTMLInputElement)) return "";
+      const probe = element.cloneNode() as HTMLInputElement;
+      probe.value = extreme;
+      return probe.value;
+    });
+    return {
+      tag: element.tagName.toLocaleLowerCase(),
+      type: element instanceof HTMLInputElement ? element.type.toLocaleLowerCase() : "",
+      value: element instanceof HTMLInputElement
+        || element instanceof HTMLSelectElement
+        || element instanceof HTMLTextAreaElement
+        ? element.value
+        : "",
+      minimum,
+      maximum,
+      selectedIndex: element instanceof HTMLSelectElement ? element.selectedIndex : -1,
+      optionCount: element instanceof HTMLSelectElement ? element.options.length : 0,
+    };
+  });
   if (descriptor.tag === "select") {
     if (descriptor.optionCount > 1) {
       const index = descriptor.selectedIndex === 0 ? 1 : 0;
@@ -756,8 +766,7 @@ async function exerciseGenericControl(
       return;
     }
     if (descriptor.type === "range") {
-      const minimum = descriptor.minimum || "0";
-      const maximum = descriptor.maximum || "100";
+      const { minimum, maximum } = descriptor;
       await control.fill(descriptor.value === maximum ? minimum : maximum, { timeout });
       return;
     }

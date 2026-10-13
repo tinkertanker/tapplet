@@ -224,3 +224,19 @@ test("browser evaluator does not name an unlabelled select after its options", a
   );
   assert.equal(labelled.viewports[0]?.accessibilityBasic.unnamedControlCount, 0);
 });
+
+test("generic interactions move a range whose maximum is off its step", async () => {
+  const fixture = (range: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Range fixture</title><style>body{font:16px system-ui}input{width:200px;height:44px}</style></head><body><main><h1>Range fixture</h1><label for="speed">Speed <output id="shown">0</output></label>${range}</main><script>speed.oninput=()=>{shown.value=speed.value}</script></body></html>`;
+  for (const range of [
+    '<input id="speed" type="range" min="0" max="25" step="2" value="0">',
+    '<input id="speed" type="range" min="0" max="25" step="2" value="24">',
+    '<input id="speed" type="range" value="100">',
+  ]) {
+    const result = await evaluateHtmlInBrowser(fixture(range), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(result.viewports[0]?.behavior.interactionErrorCount, 0);
+    assert.equal(result.viewports[0]?.behavior.changedControlCount, 1);
+    assert.equal(result.viewports[0]?.behavior.passed, true);
+  }
+});
