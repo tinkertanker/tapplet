@@ -80,7 +80,9 @@ final class AppletPreviewSecurityTests: XCTestCase {
         coordinator.installProtection(in: configuration.userContentController)
         coordinator.load(source)
 
-        await fulfillment(of: [ready], timeout: 10)
+        // The first web view in the test process cold-starts WebKit's helper
+        // processes, which takes over 10 s on a slow CI runner.
+        await fulfillment(of: [ready], timeout: 30)
         XCTAssertEqual(loadState, .ready)
         XCTAssertNil(presentableError)
         XCTAssertEqual(webView.snapshotCount, takesSnapshot ? 1 : 0)
