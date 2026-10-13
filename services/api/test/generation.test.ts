@@ -212,6 +212,26 @@ describe("HTML generation contract", () => {
       ).toThrow(InvalidModelOutputError);
   });
 
+  it("rejects external URLs that scripts write as template literals", () => {
+    for (const capability of [
+      "<script>const image = new Image(); image.src = `https://outside.invalid/${1}.png`;</script>",
+      "<script>document.images[0].src = `https://outside.invalid/x.png`;</script>",
+      "<script>document.links[0].href = `//outside.invalid/`;</script>",
+      '<script>document.images[0].setAttribute("src", `https://outside.invalid/${1}.png`);</script>',
+      '<img alt="" src="assets/a" onerror="src = `https://outside.invalid/${1}.png`">',
+      '<img alt="" src="assets/a" onerror="src = `https://outside.invalid/${&quot;x&quot;}.png`">',
+    ])
+      expect(
+        () => validateHtmlOutput({ html: html.replace("Hello", capability) }),
+        capability,
+      ).toThrow(InvalidModelOutputError);
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      "const id = 'asset-one'; document.images[0].src = `assets/${id}`; document.images[0].src = `data:image/png;base64,${'AAAA'}`; const link = document.createElement('a'); link.href = `#${id}`;",
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+  });
+
   it("ignores URL attribute names inside fragment links and other URL values", () => {
     for (const fragment of [
       '<a href="#action=go">Go</a>',

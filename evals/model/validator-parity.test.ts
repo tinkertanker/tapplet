@@ -118,6 +118,11 @@ const snippets = [
   "<script>const link = document.createElement('a'); link.href = `#${document.images[0].src = 'https://outside.invalid/x.png'}`;</script>",
   '<script type="text/template"><a href="#top"><img src="https://outside.invalid/x.png"></a></script>',
   `<script>const href = "#x' src='https://outside.invalid/x.png"; document.body.innerHTML = "<img alt='" + href + "'>";</script>`,
+  // External URLs that scripts write as template literals.
+  "<script>const image = new Image(); image.src = `https://outside.invalid/${1}.png`;</script>",
+  '<script>document.images[0].setAttribute("src", `https://outside.invalid/${1}.png`);</script>',
+  '<img alt="" src="assets/image-1" onerror="src = `https://outside.invalid/${&quot;x&quot;}.png`">',
+  "<script>const id = 'image-1'; document.images[0].src = `assets/${id}`; document.links[0].href = `#${id}`;</script>",
 ];
 
 test("the eval's HTML check accepts and rejects what production accepts and rejects", () => {

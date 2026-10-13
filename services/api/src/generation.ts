@@ -354,6 +354,23 @@ function scriptSources(
           if (offset !== undefined) urlValues.push(...markupValueRanges(raw, offset + start));
         }
       }
+      // img.src = `https://...` and, in an event handler, src = `https://...`:
+      // the URL scan reads no template literal as an attribute value.
+      if (current.type === "AssignmentExpression" && current.operator === "=") {
+        const { left } = current,
+          property =
+            left.type === "MemberExpression" &&
+            !left.computed &&
+            left.property.type === "Identifier"
+              ? left.property.name
+              : handler && left.type === "Identifier"
+                ? left.name
+                : undefined,
+          written = property && /^(src|href|action|formaction)$/i.exec(property),
+          url = absoluteStart(current.right);
+        if (written?.[1] && url !== undefined)
+          attributeWrites.push({ attribute: written[1].toLowerCase(), value: url });
+      }
       // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
       if (
         current.type !== "CallExpression" ||
@@ -366,7 +383,7 @@ function scriptSources(
           ? current.arguments.slice(1)
           : current.arguments,
         attribute = name && literalText(name),
-        url = value && literalText(value),
+        url = value && (literalText(value) ?? absoluteStart(value)),
         match = attribute && /^(?:[\w-]+:)?(src|href|action|formaction)$/i.exec(attribute);
       if (match?.[1] && url !== undefined)
         attributeWrites.push({ attribute: match[1].toLowerCase(), value: url });
@@ -433,7 +450,7 @@ function scriptSources(
               start - EVENT_HANDLER_PREFIX.length,
               true,
             );
-          else collect(`${EVENT_HANDLER_PREFIX}${attribute.value}\n}`, "script");
+          else collect(`${EVENT_HANDLER_PREFIX}${attribute.value}\n}`, "script", undefined, true);
         }
       const type = (
         current.attrs.find((attribute) => attribute.name === "type")?.value ?? ""
@@ -467,6 +484,13 @@ function scriptSources(
   }
   visit(node);
   return { ranges, strings, urlValues, declarations, attributeWrites, imports };
+}
+
+// The start of a template literal that already makes it an absolute URL, as
+// in `https://example.com/${name}.png`; data URLs are checked elsewhere.
+function absoluteStart(node: AnyNode): string | undefined {
+  const start = node.type === "TemplateLiteral" ? (node.quasis[0]?.value.cooked ?? "") : "";
+  return /^\s*(?:(?!data:)[a-z][a-z\d+.-]*:|\/\/)/i.test(start) ? start : undefined;
 }
 
 function literalText(node: AnyNode): string | undefined {

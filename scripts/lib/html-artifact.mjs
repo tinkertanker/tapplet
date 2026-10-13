@@ -239,6 +239,13 @@ function visitJavaScript(value, visit) {
   }
 }
 
+// The start of a template literal that already makes it an absolute URL, as
+// in `https://example.com/${name}.png`; data URLs are checked elsewhere.
+function absoluteStart(node) {
+  const start = node.type === 'TemplateLiteral' ? (node.quasis[0]?.value.cooked ?? '') : '';
+  return /^\s*(?:(?!data:)[a-z][a-z\d+.-]*:|\/\/)/i.test(start) ? start : undefined;
+}
+
 function literalText(node) {
   if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
   if (node.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0]?.value.cooked ?? undefined;
@@ -308,6 +315,17 @@ function scriptSources(root, html) {
           if (offset !== undefined) urlValues.push(...markupValueRanges(raw, offset + start));
         }
       }
+      // img.src = `https://...` and, in an event handler, src = `https://...`:
+      // the URL scan reads no template literal as an attribute value.
+      if (current.type === 'AssignmentExpression' && current.operator === '=') {
+        const { left } = current;
+        const property = left.type === 'MemberExpression' && !left.computed && left.property.type === 'Identifier'
+          ? left.property.name
+          : handler && left.type === 'Identifier' ? left.name : undefined;
+        const written = property && /^(src|href|action|formaction)$/i.exec(property);
+        const url = absoluteStart(current.right);
+        if (written?.[1] && url !== undefined) attributeWrites.push({ attribute: written[1].toLowerCase(), value: url });
+      }
       // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
       if (
         current.type !== 'CallExpression'
@@ -317,7 +335,7 @@ function scriptSources(root, html) {
       ) return;
       const [name, value] = current.callee.property.name === 'setAttributeNS' ? current.arguments.slice(1) : current.arguments;
       const attribute = name && literalText(name);
-      const url = value && literalText(value);
+      const url = value && (literalText(value) ?? absoluteStart(value));
       const match = attribute && /^(?:[\w-]+:)?(src|href|action|formaction)$/i.exec(attribute);
       if (match?.[1] && url !== undefined) attributeWrites.push({ attribute: match[1].toLowerCase(), value: url });
     });
@@ -363,7 +381,7 @@ function scriptSources(root, html) {
           const source = start !== undefined ? verbatim(start, location.endOffset - (prefix[1] ? 1 : 0), attribute.value) : undefined;
           if (location) ranges.push([location.startOffset, location.endOffset]);
           if (source !== undefined) collect(`${EVENT_HANDLER_PREFIX}${source}\n}`, 'script', start - EVENT_HANDLER_PREFIX.length, true);
-          else collect(`${EVENT_HANDLER_PREFIX}${attribute.value}\n}`, 'script');
+          else collect(`${EVENT_HANDLER_PREFIX}${attribute.value}\n}`, 'script', undefined, true);
         }
       }
       const type = (node.attrs.find(({ name }) => name === 'type')?.value ?? '').trim().toLowerCase();
