@@ -308,3 +308,17 @@ test("browser evaluator treats controls in a disabled fieldset as disabled", asy
   assert.equal(viewport.accessibilityBasic.focusFailureCount, 0);
   assert.equal(result.passed, true);
 });
+
+test("generic interactions skip native buttons marked aria-disabled", async () => {
+  const result = await evaluateHtmlInBrowser(
+    goodFixture.replace(
+      '<p id="feedback"',
+      '<button type="button" aria-disabled="true">Next step</button><p id="feedback"',
+    ),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(result.passed, true);
+});

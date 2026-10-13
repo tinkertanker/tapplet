@@ -683,7 +683,7 @@ async function exerciseGenericInteractions(
       return state / 4294967296;
     };
   })()`);
-  const controlSelector = ":is(button,input,select,textarea,[role='button']:not([aria-disabled='true'])):not(:disabled,[disabled],[inert],[inert] *)";
+  const controlSelector = ":is(button,input,select,textarea,[role='button']):not(:disabled,[disabled],[aria-disabled='true'],[inert],[inert] *)";
   const countPage = await createEvaluationPage(context, runtime);
   let exercisedControlCount: number;
   try {
