@@ -830,6 +830,26 @@ test('choosing a conductor object keeps keyboard focus on that object', async ()
   dom.window.close();
 });
 
+test('conductor Try again keeps keyboard focus on the objects', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/conductor-or-insulator.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  for (let life = 0; life < 3; life += 1) {
+    [...document.querySelectorAll('#items button')].find((button) => button.textContent === 'Copper coin').click();
+    document.querySelector('[data-bin="insulator"]').click();
+  }
+  const again = document.getElementById('again');
+  assert.equal(again.style.display, 'block');
+  again.focus();
+  again.click();
+  assert.equal(again.style.display, 'none');
+  assert.equal(document.activeElement, document.querySelector('#items button'));
+  dom.window.close();
+});
+
 test('answering a times-tables question keeps keyboard focus on the next choices', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
