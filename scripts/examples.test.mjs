@@ -526,6 +526,51 @@ test('plant-cell matches are listed as structure beside job', async () => {
   }
 });
 
+test('plant-cell wall and membrane markers sit on their own layers at every width', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const width of [390, 820, 1024]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile('apps/ipad/Resources/Examples/plant-cell-hotspots.html', 'utf8'));
+      const [wall, membrane] = await page.evaluate(() => {
+        const cell = document.querySelector('.cell').getBoundingClientRect();
+        return [0, 1].map((index) => {
+          const spot = document.querySelector(`.hot[data-i="${index}"]`).getBoundingClientRect();
+          return spot.left + spot.width / 2 - cell.left;
+        });
+      });
+      assert.ok(wall >= 0 && wall <= 18, `cell wall marker centre ${wall}px is on the 18px wall at ${width}px`);
+      assert.ok(membrane > wall && membrane <= 25, `membrane marker centre ${membrane}px is just inside the wall at ${width}px`);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('mean-and-median scores can be moved without dragging', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/mean-and-median.html', 'utf8'));
+    const score = page.getByRole('slider', { name: 'Score 1', exact: true });
+    assert.equal(await page.getByRole('slider').count(), 7);
+    await score.focus();
+    for (let press = 0; press < 8; press += 1) await page.keyboard.press('ArrowRight');
+    assert.equal(await score.getAttribute('aria-valuenow'), '11');
+    assert.equal(await page.textContent('#mean'), '7.0');
+    await page.selectOption('#which', 'mean');
+    await page.selectOption('#why', 'all');
+    await page.click('#check');
+    assert.match(await page.textContent('#feedback'), /^The mean was pulled/);
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -541,6 +586,26 @@ test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () 
     await page.focus('#lamp');
     for (let press = 0; press < 6; press += 1) await page.keyboard.press('ArrowRight');
     assert.ok(await offset() < 1, 'moved beam apex follows the lamp');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('shadow lamp is exposed as a slider that reports where the lamp is', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/where-the-shadow-falls.html', 'utf8'));
+    const lamp = page.getByRole('slider', { name: 'Drag lamp left or right' });
+    assert.equal(await lamp.getAttribute('aria-valuetext'), 'left of the object');
+    await lamp.focus();
+    for (let press = 0; press < 12; press += 1) await page.keyboard.press('ArrowRight');
+    assert.equal(await lamp.getAttribute('aria-valuenow'), '360');
+    assert.equal(await lamp.getAttribute('aria-valuetext'), 'above the object');
+    for (let press = 0; press < 4; press += 1) await page.keyboard.press('ArrowRight');
+    assert.equal(await lamp.getAttribute('aria-valuetext'), 'right of the object');
     await page.close();
   } finally {
     await browser.close();
