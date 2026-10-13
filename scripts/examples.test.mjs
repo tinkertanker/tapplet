@@ -399,6 +399,28 @@ test('line golf keeps the next hole as set after Reset during the hole pause', a
   dom.window.close();
 });
 
+test('line golf Play again keeps keyboard focus on the course controls', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/line-golf.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  for (const [m, c] of [['2', '1'], ['-1', '2'], ['0', '1']]) {
+    document.getElementById('reset').click();
+    document.getElementById('m').value = m;
+    document.getElementById('c').value = c;
+    document.getElementById('check').click();
+  }
+  const again = document.getElementById('again');
+  assert.equal(again.style.display, 'inline-block');
+  again.focus();
+  again.click();
+  assert.equal(again.style.display, 'none');
+  assert.equal(document.activeElement, document.getElementById('m'));
+  dom.window.close();
+});
+
 test('fair-test variables and confounds give choice-specific feedback', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
