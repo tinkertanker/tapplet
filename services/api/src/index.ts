@@ -144,7 +144,8 @@ export function injectPublicHtml(source: string, slug: string): string {
   // the base, not about:srcdoc, so following it would replace the activity
   // with a blocked page. Keep such links inside the document, as in Studio.
   // Like validation, read an SVG xlink:href and ignore surrounding white space.
-  const fragmentLinks = `<script>addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[*|href],area[href]"),h=a?(a.getAttribute("href")??a.getAttributeNS("http://www.w3.org/1999/xlink","href")??"").trim():"";if(h[0]!=="#"||e.defaultPrevented)return;e.preventDefault();const f=h.slice(1);if(location.hash.slice(1)!==f)location.hash=f;else if(f)document.getElementById(f)?.scrollIntoView();else scrollTo(0,0)})</script>`;
+  // The click path, unlike closest(), reaches a link inside an open shadow root.
+  const fragmentLinks = `<script>addEventListener("click",e=>{const a=e.composedPath().find(n=>n instanceof Element&&n.matches("a[*|href],area[href]")),h=a?(a.getAttribute("href")??a.getAttributeNS("http://www.w3.org/1999/xlink","href")??"").trim():"";if(h[0]!=="#"||e.defaultPrevented)return;e.preventDefault();const f=h.slice(1);if(location.hash.slice(1)!==f)location.hash=f;else if(f)document.getElementById(f)?.scrollIntoView();else scrollTo(0,0)})</script>`;
   const activity = `${source.slice(0, headEnd)}<base href="/${slug}/"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'">${fragmentLinks}${source.slice(headEnd)}`;
   // An opaque top-level sandbox can still navigate itself. Keep untrusted HTML
   // in srcdoc: the parent's frame-src 'none' blocks its document navigations,
