@@ -729,15 +729,18 @@ function inspect(
         kind: "policy",
         message: "Embedded documents and base URLs are not allowed.",
       });
-    const scripts = scriptSources(document, html);
+    const scripts = scriptSources(document, html),
+      prose = proseRanges(document);
     // Check real attributes, markup in script strings, stored markup such as
     // data attributes and property writes; a script variable named poster (for
-    // a poster-design activity) loads nothing.
+    // a poster-design activity) and lesson text such as "1 poster = $3" load
+    // nothing.
     if (
       hasMultiSourceAttribute(document) ||
       scripts.strings.some(({ value }) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value)) ||
       [...html.matchAll(/(?<![\w-])(?:srcset|poster)\s*=(?![=>])/gi)].some(
-        (match) => !scripts.declarations.has(match.index ?? 0),
+        (match) =>
+          !scripts.declarations.has(match.index ?? 0) && !within(prose, match.index ?? 0),
       ) ||
       /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
     )
@@ -793,7 +796,6 @@ function inspect(
     // "fetch (" and "import (" are also ordinary words in lesson text, as in
     // "Countries import (and export) rice", which calls nothing; scripts,
     // handlers and other markup are still checked.
-    const prose = proseRanges(document);
     if (
       /\b(?:XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i.test(html) ||
       [...html.matchAll(/\b(?:fetch|import)\s*\(/gi)].some(

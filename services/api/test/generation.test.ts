@@ -323,6 +323,9 @@ describe("HTML generation contract", () => {
       'let poster = document.getElementById("poster"); poster.dataset.ready = "1"; poster = [poster].find((poster) => poster === poster)',
     ).replace("Hello", `<button onclick="const poster = this.dataset.poster; void poster">Go</button>`);
     expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    // Lesson text names a poster too.
+    const prose = html.replace("Hello", "<p>1 poster = $3, so 4 posters cost $12.</p><td>Poster=2</td>");
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
     for (const capability of [
       `<script>document.body.innerHTML = '<img src="assets/a" srcset="https://outside.invalid/x.png 2x">'</script>`,
       "<script>document.body.innerHTML = `<video\n  poster=\"https://outside.invalid/x.png\"></video>`</script>",
