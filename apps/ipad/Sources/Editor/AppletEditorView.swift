@@ -5,19 +5,22 @@ import UniformTypeIdentifiers
 
 struct AppletEditorView: View {
     let store: TappletStore; let projectID: String
-    @State private var prompt = ""; @State private var working = false; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
+    @State private var prompt = ""; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
     @State private var previewLoadState: PreviewLoadState = .loading
     @State private var previewError: String?
+    @State private var isMovingHead = false
     @State private var shareAccessError: TappletAPIError?
     @State private var sharePresentationID = UUID()
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } ?? store.examples.first { $0.id == projectID } }
+    private var working: Bool { store.refiningProjectIDs.contains(projectID) }
+    private var refinementError: String? { store.refinementErrors[projectID] }
     var body: some View { if let project {
         let presentationID = sharePresentationID
         VStack(spacing: 0) {
         HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { sharePresentationID = UUID(); showShare = true }.buttonStyle(.borderedProminent) } }
             .padding().background(TappletTheme.surface)
         HStack(spacing: 0) { AppletPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
-            VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { operationError = error.localizedDescription } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
+            VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { showOperationError(error, during: .generation) } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
     }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }
         .sheet(isPresented: $showShare, onDismiss: {
             if let error = shareAccessError {
@@ -31,7 +34,7 @@ struct AppletEditorView: View {
                 showShare = false
             }
         }
-        .alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
+        .alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || refinementError != nil || previewError != nil }, set: { if !$0 { operationError = nil; store.refinementErrors[projectID] = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? refinementError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
     private func editor(_ project: ArtifactProject) -> some View {
         Form {
             Section("Ask Tapplet Studio") {
@@ -47,6 +50,8 @@ struct AppletEditorView: View {
                     .accessibilityIdentifier("latest-revision-comment")
                 }
                 TextEditor(text: $prompt).frame(height: 90)
+                    .accessibilityLabel("Change to make")
+                    .accessibilityHint("Describe what Tapplet Studio should change in this tapplet.")
                 if ProcessInfo.processInfo.arguments.contains("--ui-testing-reset"),
                    ProcessInfo.processInfo.arguments.contains("--ui-testing-held-refinement"),
                    store.uiTestingRefinementIsWaiting {
@@ -69,32 +74,36 @@ struct AppletEditorView: View {
                 }
                 Button(working ? "Updating…" : "Make this change") {
                     let submittedPrompt = prompt
-                    working = true
+                    // The editor can close before the change finishes; the store keeps its state.
+                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
+                    store.refinementErrors[projectID] = nil
                     Task {
-                        defer { working = false }
+                        defer { store.refiningProjectIDs.remove(projectID) }
                         do {
-                            let warnings = try await store.refine(submittedPrompt, projectID: project.id)
+                            let warnings = try await store.refine(submittedPrompt, projectID: projectID)
                             if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
                         } catch {
                             let presentation = store.present(error, during: .refinement)
-                            operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
+                            if !presentation.requestsWorkshopAccess { store.refinementErrors[projectID] = presentation.message }
                         }
                     }
                 }
-                .disabled(working || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(working || isMovingHead || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Undo") {
+                    isMovingHead = true
                     Task {
+                        defer { isMovingHead = false }
                         do { try await store.undo(projectID: project.id) }
-                        catch { operationError = error.localizedDescription }
+                        catch { showOperationError(error, during: .undo) }
                     }
                 }
-                .disabled(project.source.revision.parentRevisionId == nil)
+                .disabled(isMovingHead || working || project.source.revision.parentRevisionId == nil)
             }
             Section("Details") { DetailsFields(store: store, project: project) }
             Section("Images") {
-                let referencedIDs = TappletStore.referencedAssetIDs(in: project.source.html)
+                let referencedIDs = TappletStore.currentImageAssetIDs(in: project)
                 ImageManagementView(store: store, projectID: project.id,
-                                    assetIDs: referencedIDs.sorted())
+                                    assetIDs: referencedIDs.sorted(), isMovingHead: isMovingHead)
             }
             Section("History") {
                 ForEach(project.revisions.reversed()) { revision in
@@ -112,12 +121,14 @@ struct AppletEditorView: View {
                                 .frame(width: 64, height: 44).clipped()
                         }
                         Button("Restore") {
+                            isMovingHead = true
                             Task {
+                                defer { isMovingHead = false }
                                 do { try await store.restore(revision: revision, projectID: project.id) }
-                                catch { operationError = error.localizedDescription }
+                                catch { showOperationError(error, during: .restore) }
                             }
                         }
-                        .disabled(revision.id == project.artifact.headRevisionId)
+                        .disabled(isMovingHead || working || revision.id == project.artifact.headRevisionId)
                     }
                 }
             }
@@ -125,12 +136,17 @@ struct AppletEditorView: View {
         .formStyle(.grouped)
         .accessibilityIdentifier("tapplet-editor-form")
     }
+    private func showOperationError(_ error: Error, during operation: TappletOperation) {
+        let presentation = store.present(error, during: operation)
+        operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
+    }
 }
 
 private struct ImageManagementView: View {
     let store: TappletStore
     let projectID: String
     let assetIDs: [String]
+    let isMovingHead: Bool
     @State private var photo: PhotosPickerItem?
     @State private var pendingData: Data?
     @State private var description = ""
@@ -138,6 +154,8 @@ private struct ImageManagementView: View {
     @State private var importsFile = false
     @State private var showsCamera = false
     @State private var error: String?
+    // Shared with "Make this change", Undo and Restore: two changes at once would conflict on the head.
+    private var isWorking: Bool { store.refiningProjectIDs.contains(projectID) || isMovingHead }
 
     var body: some View {
         ForEach(assetIDs, id: \.self) { assetID in
@@ -145,11 +163,15 @@ private struct ImageManagementView: View {
                 Label(assetID, systemImage: "photo")
                 Spacer()
                 Button("Remove", role: .destructive) {
+                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
+                    store.refinementErrors[projectID] = nil
                     Task {
+                        defer { store.refiningProjectIDs.remove(projectID) }
                         do { try await store.removeImage(assetID: assetID, projectID: projectID) }
-                        catch { self.error = error.localizedDescription }
+                        catch { show(error) }
                     }
                 }
+                .disabled(isWorking)
             }
         }
         PhotosPicker("Choose from Photos", selection: $photo, matching: .images)
@@ -159,39 +181,55 @@ private struct ImageManagementView: View {
             TextField("Describe this image", text: $description, axis: .vertical)
             Toggle("Decorative image", isOn: $decorative)
             Button("Upload and ask Tapplet Studio to insert") { upload() }
-                .disabled(!decorative && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isWorking || (!decorative && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
         }
         if let error { Text(error).foregroundStyle(TappletTheme.danger) }
         Text("Images are prepared and checked on this iPad. AI review warnings do not block uploads; check flagged images before sharing.")
             .font(.footnote).foregroundStyle(.secondary)
-        .onChange(of: photo) { _, item in Task { pendingData = try? await item?.loadTransferable(type: Data.self) } }
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            Task {
+                let data = try? await item.loadTransferable(type: Data.self)
+                // A slow photo load must not replace an image chosen after it.
+                if photo == item { pendingData = data }
+            }
+        }
         .fileImporter(isPresented: $importsFile, allowedContentTypes: [.image]) { result in
-            do { let url = try result.get(); guard url.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }; defer { url.stopAccessingSecurityScopedResource() }; pendingData = try Data(contentsOf: url) }
+            do { let url = try result.get(); guard url.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }; defer { url.stopAccessingSecurityScopedResource() }; pendingData = try Data(contentsOf: url); photo = nil }
             catch { self.error = error.localizedDescription }
         }
         .sheet(isPresented: $showsCamera) {
             CameraImagePicker { data in
                 showsCamera = false
-                if let data { pendingData = data }
+                if let data { pendingData = data; photo = nil }
             }
         }
     }
 
     private func upload() {
-        guard let pendingData else { return }
+        guard let pendingData, store.refiningProjectIDs.insert(projectID).inserted else { return }
         error = nil
+        store.refinementErrors[projectID] = nil
         Task {
+            defer { store.refiningProjectIDs.remove(projectID) }
             do {
                 try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
-                self.pendingData = nil; description = ""; decorative = false; photo = nil
-            } catch { self.error = error.localizedDescription }
+                // Keep an image chosen while this one was being inserted, with its description.
+                if self.pendingData == pendingData { self.pendingData = nil; description = ""; decorative = false; photo = nil }
+            } catch { show(error) }
         }
+    }
+
+    // Kept in the store, like a failed change, so it is still shown if the editor was reopened meanwhile.
+    private func show(_ error: Error) {
+        let presentation = store.present(error, during: .image)
+        if !presentation.requestsWorkshopAccess { store.refinementErrors[projectID] = presentation.message }
     }
 }
 
 private struct DetailsFields: View { let store: TappletStore; let project: ArtifactProject; @State private var draft: Artifact; @State private var error: String?
     init(store: TappletStore, project: ArtifactProject) { self.store = store; self.project = project; _draft = State(initialValue: project.artifact) }
-    var body: some View { Group { TextField("Title", text: $draft.title); TextField("Summary", text: $draft.summary, axis: .vertical); TextField("Subject", text: optional($draft.subject)); TextField("Level", text: optional($draft.level)); TextField("Locale", text: optional($draft.locale)); TextField("Learning objective", text: optional($draft.learningObjective), axis: .vertical); TextField("Tags (comma separated)", text: Binding(get: { draft.tags.joined(separator: ", ") }, set: { draft.tags = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } })); Button("Save details") { Task { do { try await store.updateDetails(draft); error = nil } catch { self.error = error.localizedDescription } } }; if let error { Text(error).foregroundStyle(TappletTheme.danger) } }
+    var body: some View { Group { TextField("Title", text: $draft.title); TextField("Summary", text: $draft.summary, axis: .vertical); TextField("Subject", text: optional($draft.subject)); TextField("Level", text: optional($draft.level)); TextField("Locale", text: optional($draft.locale)); TextField("Learning objective", text: optional($draft.learningObjective), axis: .vertical); TextField("Tags (comma separated)", text: Binding(get: { draft.tags.joined(separator: ", ") }, set: { draft.tags = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } })); Button("Save details") { Task { var details = draft; details.tags.removeAll { $0.isEmpty }; let optionalFields: [WritableKeyPath<Artifact, String?>] = [\.subject, \.level, \.locale, \.learningObjective]; for field in optionalFields where details[keyPath: field]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { details[keyPath: field] = nil }; do { try await store.updateDetails(details); error = nil } catch { let presentation = store.present(error, during: .directSave); self.error = presentation.requestsWorkshopAccess ? nil : presentation.message } } }; if let error { Text(error).foregroundStyle(TappletTheme.danger) } }
     }
     private func optional(_ value: Binding<String?>) -> Binding<String> { Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 }) }
 }

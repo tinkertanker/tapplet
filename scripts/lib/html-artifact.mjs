@@ -1,7 +1,13 @@
 import { parse as parseJavaScript } from 'acorn';
-import { parse as parseHtml } from 'parse5';
+import { parse as parseHtml, parseFragment } from 'parse5';
 
 export const MAX_HTML_BYTES = 200_000;
+
+// formaction is checked here as well as src, href and action. The value is
+// matched in a lookahead so a value never hides a later name, as in
+// `var action = href = "https://..."`.
+const URL_ATTRIBUTE = /\b(src|href|action|formaction)(?=\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))/gis;
+const MANAGED_ASSET = /^assets\/[A-Za-z0-9_-]+$/;
 
 const JAVASCRIPT_TYPES = new Set([
   '', 'application/ecmascript', 'application/javascript',
@@ -45,29 +51,83 @@ export function validateHtmlArtifact(html, options = {}) {
   if (!/<script\b[^>]*>[\s\S]*<\/script>/i.test(html)) add('inline-js', 'Include inline JavaScript for the interaction.');
 
   const forbidden = [
-    [/<script\b[^>]*\bsrc\s*=/i, 'external-script', 'External script sources are not allowed.'],
-    [/<link\b[^>]*\brel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
-    [/@import\s|\bimport\s*(?:\(|["'{*])|\brequire\s*\(/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
-    [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(|\bnavigator\.sendBeacon\s*\(/i, 'network', 'Network APIs are not allowed.'],
+    [/<link\b[^>]*(?<![\w-])rel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
   ];
   forbidden.forEach(([pattern, code, message]) => {
     if (pattern.test(html)) add(code, message);
   });
 
-  for (const match of html.matchAll(/\b(?:src|srcset|href|xlink:href|action|formaction|poster)\s*=\s*(?:(["'])(.*?)\1|([^\s>]+))/gi)) {
-    const value = (match[2] ?? match[3] ?? '').trim();
-    if (value && !value.startsWith('#') && !value.startsWith('data:') && !/^assets\/[A-Za-z0-9_-]+$/.test(value)) {
-      add('external-resource', `External resource reference is not allowed: ${value}.`);
+  // URL rules match the API's validateHtmlOutput so evaluations and live
+  // checks accept and reject the same tapplets production does.
+  const document = parseHtml(html, { sourceCodeLocationInfo: true });
+  if (/<(?:base|iframe|object|embed)\b/i.test(html)) add('external-resource', 'Embedded documents and base URLs are not allowed.');
+  const scripts = scriptSources(document, html);
+  const prose = proseRanges(document, html);
+  // "import" is also an ordinary word in lesson text, as in "import rice
+  // from Thailand" before a <label for="from">; scripts are still checked.
+  if (
+    scripts.imports
+    || /@import\b/i.test(html)
+    || [...html.matchAll(/\b(?:import\b(?=\s*(?:\(|[^;]*?from\s*)["'])|require(?=\s*\(["']))/gi)].some((match) => !within(prose, match.index ?? 0))
+  ) add('package-import', 'Package and stylesheet imports are not allowed.');
+  // "fetch (" and "import (" are also ordinary words in lesson text, as in
+  // "Countries import (and export) rice", which calls nothing; scripts,
+  // handlers and other markup are still checked.
+  if (
+    /\b(?:XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i.test(html)
+    || [...html.matchAll(/\b(?:fetch|import)\s*\(/gi)].some((match) => !within(prose, match.index ?? 0))
+  ) add('network', 'Network APIs are not allowed.');
+  // Check real attributes, markup in script strings, stored markup such as
+  // data attributes and property writes; a script variable named poster (for
+  // a poster-design activity) and lesson text such as "1 poster = $3" load
+  // nothing.
+  if (
+    hasMultiSourceAttribute(document)
+    || scripts.strings.some(({ value }) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value))
+    || [...html.matchAll(/(?<![\w-])(?:srcset|poster)\s*=(?![=>])/gi)].some((match) => !scripts.declarations.has(match.index ?? 0) && !within(prose, match.index ?? 0))
+    || [...html.matchAll(/\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/gi)].some((match) => !within(prose, match.index ?? 0))
+  ) add('external-resource', 'Redirecting and multi-source URLs are not allowed.');
+  const checkUrl = (attribute, value) => {
+    const allowed = MANAGED_ASSET.test(value)
+      || (attribute === 'href' && value.startsWith('#'))
+      || (attribute === 'src' && /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(value));
+    if (!allowed) add('external-resource', `External resource reference is not allowed: ${attribute}="${value}".`);
+  };
+  const attributeOffsets = urlAttributeOffsets(document);
+  const urlValues = [...urlValueRanges(document), ...scripts.urlValues];
+  for (const match of html.matchAll(URL_ATTRIBUTE)) {
+    const index = match.index ?? 0;
+    // data-action, data-src and similar custom attributes load nothing, nor
+    // does a name inside a URL value such as href="#action=go".
+    if (html[index - 1] === '-' || within(urlValues, index)) continue;
+    // A script variable named src, href, action or formaction loads nothing.
+    // Markup in script strings, other text and property writes are checked.
+    if (!attributeOffsets.has(index) && scripts.declarations.has(index)) continue;
+    // Lesson text such as "Action = Reaction" loads nothing; a quoted value
+    // in text, written like markup, is still checked.
+    if (match[4] !== undefined && within(prose, index)) continue;
+    checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
+  }
+  for (const { attribute, value } of scripts.attributeWrites) checkUrl(attribute, value.trim());
+  for (const { value: string, urlValues: values } of scripts.strings) {
+    for (const match of string.matchAll(URL_ATTRIBUTE)) {
+      if (string[(match.index ?? 0) - 1] !== '-' && !within(values, match.index ?? 0)) checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
     }
   }
-  for (const match of html.matchAll(/\burl\(\s*(?:(["'])(.*?)\1|([^\s)]+))\s*\)/gi)) {
-    const value = (match[2] ?? match[3] ?? '').trim();
-    if (value && !value.startsWith('#') && !value.startsWith('data:') && !/^assets\/[A-Za-z0-9_-]+$/.test(value)) {
-      add('external-resource', `External CSS resource is not allowed: ${value}.`);
-    }
+  if (
+    /\b(?:localStorage|sessionStorage|indexedDB)\b|\bcaches\.(?:open|match|matchAll|has|keys|delete)\b|document\.cookie/i.test(html)
+    // "caches" is also an ordinary word in visible text, but any reference
+    // in a script or event handler can reach the Cache API.
+    || scripts.ranges.some(([start, end]) => /\bcaches\b/i.test(html.slice(start, end)))
+  ) add('storage', 'Storage APIs are not allowed; tapplets must keep all state in memory.');
+  for (const match of html.matchAll(/\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis)) {
+    // Lesson text such as "Copy the URL(s)" loads nothing.
+    if (within(prose, match.index ?? 0) && !match[0].includes('<')) continue;
+    const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+    // An SVG reference such as fill="url(#gradient)" names an element in the document itself.
+    if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value) && !value.startsWith('#')) add('external-resource', `External CSS resource is not allowed: ${value}.`);
   }
 
-  const document = parseHtml(html, { sourceCodeLocationInfo: true });
   function validateJavaScript(source, sourceType) {
     try {
       parseJavaScript(source, { ecmaVersion: 'latest', sourceType });
@@ -101,6 +161,332 @@ export function validateHtmlArtifact(html, options = {}) {
   visit(document);
 
   return { valid: issues.length === 0, bytes, issues };
+}
+
+function attributeValue(match) {
+  return match[2] ?? match[3] ?? match[4] ?? '';
+}
+
+// Source ranges of text in elements other than scripts and styles that holds
+// no markup, such as a textarea's, which a script could insert as HTML; it runs
+// no code and loads nothing.
+// The source must hold no tag either: text a table moves out of itself joins
+// the text before the table, whose range then spans the table's markup. In a
+// select, nor may the source since the tag or node before the text: the parser
+// drops tags there, such as <style>, that browsers keep, leaving their CSS as
+// text.
+function proseRanges(root, html) {
+  const ranges = [];
+  function visit(node, selected = false) {
+    const inSelect = selected || ('tagName' in node && node.tagName === 'select');
+    if ('tagName' in node && node.tagName !== 'script' && node.tagName !== 'style') {
+      node.childNodes.forEach((child, index) => {
+        const location = child.sourceCodeLocation;
+        const start = !inSelect
+          ? location?.startOffset
+          : index === 0
+            ? node.sourceCodeLocation?.startTag?.endOffset
+            : node.childNodes[index - 1].sourceCodeLocation?.endOffset;
+        if (
+          child.nodeName === '#text'
+          && !child.value.includes('<')
+          && location
+          && start !== undefined
+          && start <= location.startOffset
+          && !html.slice(start, location.endOffset).includes('<')
+        ) {
+          ranges.push([location.startOffset, location.endOffset]);
+        }
+      });
+    }
+    if ('childNodes' in node) node.childNodes.forEach((child) => visit(child, inSelect));
+    if ('content' in node) visit(node.content, inSelect);
+  }
+  visit(root);
+  return ranges;
+}
+
+// Source offsets of the src, href and action names in real attributes,
+// including prefixed names such as xlink:href.
+function urlAttributeOffsets(root) {
+  const offsets = new Set();
+  function visit(node) {
+    if ('tagName' in node) {
+      for (const attribute of node.attrs) {
+        const qualified = attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name;
+        const name = /(?:^|:)(src|href|action|formaction)$/.exec(qualified)?.[1];
+        const start = node.sourceCodeLocation?.attrs?.[qualified]?.startOffset;
+        if (name && start !== undefined) offsets.add(start + qualified.length - name.length);
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(root);
+  return offsets;
+}
+
+// Source ranges of the values of real attributes named like URL attributes,
+// such as href="#action=go" or data-href="#/route?src=x", that hold no markup.
+// A name inside such a value loads nothing; the value itself is checked. A
+// value with a name at its start or after white space, a slash, a quote or a
+// substitution is not skipped: markup built around it, or preceding markup
+// that leaves a value open, could make that name a real attribute.
+function urlValueRanges(root, offset = 0) {
+  const ranges = [];
+  function visit(node) {
+    if ('tagName' in node) {
+      for (const attribute of node.attrs) {
+        const qualified = attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name;
+        const location = node.sourceCodeLocation?.attrs?.[qualified];
+        if (
+          location &&
+          /(?:^|[:-])(?:src|href|action|formaction)$/.test(qualified) &&
+          !attribute.value.includes('<') &&
+          !/(?:^|[\s/"'\0\uFFFD])(?:src|href|action|formaction)\s*=/i.test(attribute.value)
+        ) {
+          ranges.push([offset + location.startOffset + qualified.length, offset + location.endOffset]);
+        }
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(root);
+  return ranges;
+}
+
+// The ranges less each position, from index from of text on, that follows
+// white space, a slash, a quote or a NUL standing for a template substitution:
+// once markup is built around the text, a name there could start a real
+// attribute.
+function separatedRanges(ranges, text, offset, from) {
+  return ranges.flatMap(([start, end]) => {
+    const parts = [];
+    let part = start;
+    for (let index = Math.max(start, offset + from); index < end; index++) {
+      if (/[\s/"'\0]/.test(text[index - offset - 1] ?? '')) {
+        if (index > part) parts.push([part, index]);
+        part = index + 1;
+      }
+    }
+    if (end > part) parts.push([part, end]);
+    return parts;
+  });
+}
+
+// The same ranges in markup a script string holds, such as
+// '<a href="#action=go">'. A substitution could end a value, so it hides no
+// name that could start an attribute after it.
+function markupValueRanges(text, offset = 0) {
+  if (!text.includes('<') || !/\b(?:src|href|action|formaction)\s*=/i.test(text)) return [];
+  const ranges = urlValueRanges(parseFragment(text, { sourceCodeLocationInfo: true }), offset);
+  const substitution = text.indexOf('\0');
+  return substitution < 0 ? ranges : separatedRanges(ranges, text, offset, substitution + 1);
+}
+
+function within(ranges, index) {
+  return ranges.some(([start, end]) => index >= start && index < end);
+}
+
+function hasMultiSourceAttribute(node) {
+  if ('tagName' in node && node.attrs.some(({ name }) => name === 'srcset' || name === 'poster')) return true;
+  if ('childNodes' in node && node.childNodes.some(hasMultiSourceAttribute)) return true;
+  return 'content' in node && hasMultiSourceAttribute(node.content);
+}
+
+const EVENT_HANDLER_PREFIX = 'function eventHandler(event) {\n';
+
+function visitJavaScript(value, visit) {
+  if (Array.isArray(value)) value.forEach((item) => visitJavaScript(item, visit));
+  else if (value && typeof value === 'object' && typeof value.type === 'string') {
+    visit(value);
+    Object.values(value).forEach((item) => visitJavaScript(item, visit));
+  }
+}
+
+// The start of a template literal that already makes it an absolute URL, as
+// in `https://example.com/${name}.png`; data URLs are checked elsewhere. Like
+// a browser, ignore tabs, newlines and leading control characters, and read a
+// backslash as a slash.
+function absoluteStart(node) {
+  const start = node.type === 'TemplateLiteral' ? (node.quasis[0]?.value.cooked ?? '') : '';
+  return /^[\s\0-\x1f]*(?:(?!data:)[a-z][a-z\d+.-]*:|[\\/]{2})/i.test(start.replace(/[\t\n\r]/g, '')) ? start : undefined;
+}
+
+// A property such as el.dataset.src names a data-* attribute, which loads nothing.
+function datasetMember(node) {
+  return node.type === 'MemberExpression' && !node.computed
+    && node.object.type === 'MemberExpression' && !node.object.computed
+    && node.object.property.type === 'Identifier' && node.object.property.name === 'dataset';
+}
+
+function literalText(node) {
+  if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
+  if (node.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0]?.value.cooked ?? undefined;
+  return undefined;
+}
+
+// Source ranges of inline scripts and event handlers, their cooked string and
+// template literal text, where markup such as innerHTML can still load URLs,
+// with the ranges of URL values inside that text, the same URL value ranges in
+// the html, the source offsets of script variables named like URL attributes,
+// the literal URLs scripts pass to setAttribute, and whether any script
+// imports or re-exports another module.
+function scriptSources(root, html) {
+  const ranges = [];
+  const strings = [];
+  const urlValues = [];
+  const declarations = new Set();
+  const attributeWrites = [];
+  let imports = false;
+  // offset is where source starts in html when html holds it verbatim.
+  function collect(source, sourceType, offset, handler = false) {
+    let program;
+    try {
+      program = parseJavaScript(source, { ecmaVersion: 'latest', sourceType });
+    } catch {
+      // Invalid syntax, including a module statement in a classic script, is
+      // reported separately.
+      return;
+    }
+    const fragmentLinks = new Set();
+    visitJavaScript(program, (current) => {
+      // import "https://...", export * from "https://...", import(url).
+      if (
+        current.type === 'ImportDeclaration'
+        || current.type === 'ImportExpression'
+        || current.type === 'ExportAllDeclaration'
+        || (current.type === 'ExportNamedDeclaration' && current.source)
+      ) imports = true;
+      // A fragment link such as "#action=go" given to an href loads nothing,
+      // whatever names it holds.
+      const [target, assigned] = current.type === 'AssignmentExpression' && current.operator === '='
+        ? [current.left, current.right]
+        : current.type === 'VariableDeclarator'
+          ? [current.id, current.init]
+          : current.type === 'AssignmentPattern'
+            ? [current.left, current.right]
+            : current.type === 'PropertyDefinition' && !current.computed ? [current.key, current.value] : [];
+      const targetName = target?.type === 'Identifier' || target?.type === 'PrivateIdentifier'
+        ? target.name
+        : target?.type === 'MemberExpression' && !target.computed && target.property.type === 'Identifier' ? target.property.name : undefined;
+      const link = assigned ? literalText(assigned) : undefined;
+      if (assigned && targetName && /^href$/i.test(targetName) && link?.startsWith('#') && !link.includes('<')) fragmentLinks.add(assigned);
+      // String and template text, with each substitution as one NUL; in the
+      // html the source text with substitutions blanked keeps its offsets.
+      if ((current.type === 'Literal' && typeof current.value === 'string') || current.type === 'TemplateLiteral') {
+        const quasis = current.type === 'TemplateLiteral' ? current.quasis : [];
+        const value = current.type === 'Literal' ? current.value : quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join('\0');
+        const start = current.start + 1;
+        const raw = current.type === 'Literal'
+          ? source.slice(start, current.end - 1)
+          : quasis.map((quasi, index) => source.slice(quasi.start, quasi.end) + '\0'.repeat((quasis[index + 1]?.start ?? quasi.end) - quasi.end)).join('');
+        if (fragmentLinks.has(current)) {
+          strings.push({ value, urlValues: separatedRanges([[0, value.length]], value, 0, 0) });
+          if (offset !== undefined) urlValues.push(...separatedRanges([[offset + start, offset + start + raw.length]], raw, offset + start, 0));
+        } else {
+          strings.push({ value, urlValues: markupValueRanges(value) });
+          if (offset !== undefined) urlValues.push(...markupValueRanges(raw, offset + start));
+        }
+      }
+      // img.src = `https://...` and, in an event handler, src = `https://...`:
+      // the URL scan reads no template literal as an attribute value.
+      if (current.type === 'AssignmentExpression' && current.operator === '=') {
+        const { left } = current;
+        const property = left.type === 'MemberExpression' && !left.computed && left.property.type === 'Identifier' && !datasetMember(left)
+          ? left.property.name
+          : handler && left.type === 'Identifier' ? left.name : undefined;
+        const written = property && /^(src|href|action|formaction)$/i.exec(property);
+        const url = absoluteStart(current.right);
+        if (written?.[1] && url !== undefined) attributeWrites.push({ attribute: written[1].toLowerCase(), value: url });
+      }
+      // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
+      if (
+        current.type !== 'CallExpression'
+        || current.callee.type !== 'MemberExpression'
+        || current.callee.property.type !== 'Identifier'
+        || !/^setAttribute(?:NS)?$/.test(current.callee.property.name)
+      ) return;
+      const [name, value] = current.callee.property.name === 'setAttributeNS' ? current.arguments.slice(1) : current.arguments;
+      const attribute = name && literalText(name);
+      const url = value && (literalText(value) ?? absoluteStart(value));
+      const match = attribute && /^(?:[\w-]+:)?(src|href|action|formaction)$/i.exec(attribute);
+      if (match?.[1] && url !== undefined) attributeWrites.push({ attribute: match[1].toLowerCase(), value: url });
+    });
+    if (offset === undefined) return;
+    // A script variable loads nothing, but in an event handler or a with
+    // statement a bare name such as src can assign the element's property.
+    const found = [];
+    let usesWith = false;
+    // Names bound through destructuring and defaults count; a member target
+    // such as img.src is still checked.
+    function bind(target) {
+      if (target?.type === 'Identifier') {
+        if (/^(?:src|href|action|formaction|srcset|poster)$/i.test(target.name)) found.push(offset + target.start);
+      } else if (target?.type === 'ObjectPattern') {
+        target.properties.forEach((property) => bind(property.type === 'Property' ? property.value : property));
+      } else if (target?.type === 'ArrayPattern') target.elements.forEach(bind);
+      else if (target?.type === 'AssignmentPattern') bind(target.left);
+      else if (target?.type === 'RestElement') bind(target.argument);
+    }
+    visitJavaScript(program, (current) => {
+      if (current.type === 'WithStatement') usesWith = true;
+      // el.dataset.action = "check" sets a data-action attribute.
+      if (current.type === 'AssignmentExpression' && datasetMember(current.left)) found.push(offset + current.left.property.start);
+      if (current.type === 'VariableDeclarator') bind(current.id);
+      else if (current.type === 'AssignmentExpression' && !handler) bind(current.left);
+      else if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(current.type)) current.params.forEach(bind);
+      else if (current.type === 'CatchClause') bind(current.param);
+      // A class field defines its own property and runs no element setter.
+      else if (current.type === 'PropertyDefinition' && !current.computed) bind(current.key);
+    });
+    if (!usesWith) for (const start of found) declarations.add(start);
+  }
+  // The html text from start to end when it is exactly the parsed value.
+  function verbatim(start, end, value) {
+    const source = html.slice(start, end);
+    return source.replace(/\r\n?/g, '\n') === value ? source : undefined;
+  }
+  function visit(node) {
+    if ('tagName' in node) {
+      for (const attribute of node.attrs) {
+        if (/^on[a-z]+$/.test(attribute.name)) {
+          const location = node.sourceCodeLocation?.attrs?.[attribute.name];
+          const prefix = location ? /^[^=]*=\s*(["']?)/.exec(html.slice(location.startOffset, location.endOffset)) : null;
+          const start = location && prefix ? location.startOffset + prefix[0].length : undefined;
+          const source = start !== undefined ? verbatim(start, location.endOffset - (prefix[1] ? 1 : 0), attribute.value) : undefined;
+          if (location) ranges.push([location.startOffset, location.endOffset]);
+          if (source !== undefined) collect(`${EVENT_HANDLER_PREFIX}${source}\n}`, 'script', start - EVENT_HANDLER_PREFIX.length, true);
+          else collect(`${EVENT_HANDLER_PREFIX}${attribute.value}\n}`, 'script', undefined, true);
+        }
+      }
+      const type = (node.attrs.find(({ name }) => name === 'type')?.value ?? '').trim().toLowerCase();
+      if (node.tagName === 'script' && (type === 'module' || JAVASCRIPT_TYPES.has(type))) {
+        const text = node.childNodes.filter((child) => child.nodeName === '#text');
+        for (const child of text) {
+          if (child.sourceCodeLocation) ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
+        }
+        const sourceType = type === 'module' ? 'module' : 'script';
+        const location = text.length === 1 ? text[0].sourceCodeLocation : undefined;
+        const source = location ? verbatim(location.startOffset, location.endOffset, text[0].value) : undefined;
+        if (source !== undefined) collect(source, sourceType, location.startOffset);
+        else collect(text.map((child) => child.value).join(''), sourceType);
+      } else if (node.tagName === 'script') {
+        // A data block such as <script type="text/template"> holds markup.
+        for (const child of node.childNodes) {
+          if (child.nodeName === '#text' && child.sourceCodeLocation) {
+            const { startOffset, endOffset } = child.sourceCodeLocation;
+            urlValues.push(...markupValueRanges(html.slice(startOffset, endOffset), startOffset));
+          }
+        }
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(root);
+  return { ranges, strings, urlValues, declarations, attributeWrites, imports };
 }
 
 export function validateSeedManifest(manifest, options = {}) {

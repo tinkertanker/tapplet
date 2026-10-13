@@ -435,6 +435,10 @@ enum TappletAPIError: LocalizedError, Equatable, Sendable {
         if case .server(404, let code, _) = self { return code == "ARTIFACT_NOT_FOUND" }
         return false
     }
+    var isAssetNotFound: Bool {
+        if case .server(404, let code, _) = self { return code == "ASSET_NOT_FOUND" }
+        return false
+    }
     var requiresRefresh: Bool {
         if requiresRegistration { return true }
         if case .server(422, let code, _) = self { return code == "PUBLICATION_EXPIRY_LIMIT_REACHED" }

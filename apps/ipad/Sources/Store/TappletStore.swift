@@ -29,7 +29,12 @@ private enum RestoreFetch: Sendable {
     var guidedMakeDraft = GuidedBriefDraft(); var guidedMakeQuestionIndex = 0; var guidedMakeResponse = ""; var guidedMakeShowsSummary = false
     var guidedMakePreferredExampleRevisionId: String?
     var guidedMakePinnedPlanID: String?
+    // Kept here so a failure is still shown after leaving Make mid-generation.
+    var guidedMakeCreationError: TappletErrorPresentation?
     var isCreatingGuidedDraft = false
+    // Kept here so a reopened editor shows a change still being made, and its failure.
+    var refiningProjectIDs: Set<String> = []
+    var refinementErrors: [String: String] = [:]
     private let api: any TappletAPI
     private let projectDirectory: URL
     private let isUITesting: Bool
@@ -108,11 +113,15 @@ private enum RestoreFetch: Sendable {
         guidedMakeShowsSummary = false
         guidedMakePreferredExampleRevisionId = nil
         guidedMakePinnedPlanID = nil
+        guidedMakeCreationError = nil
     }
     func applyStarterPlan(_ plan: StarterPlan) {
+        // Make shows the answers being made, and clears them when it finishes.
+        guard !isCreatingGuidedDraft else { openMake(); return }
         guidedMakeDraft = plan.draft
         guidedMakePreferredExampleRevisionId = plan.exampleRevisionID
         guidedMakePinnedPlanID = plan.id
+        guidedMakeCreationError = nil
         guidedMakeShowsSummary = true
         guidedMakeQuestionIndex = 0
         guidedMakeResponse = ""
@@ -182,9 +191,11 @@ private enum RestoreFetch: Sendable {
         ), preferredExampleRevisionId: guidedMakeEffectivePreferredExampleRevisionId)
         let result = try await api.generate(request: request)
         presentAdvisories(result.warnings)
-        upsert(result.value)
-        open(result.value)
-        return result.value
+        // A model can reuse an image from one of this device's own exemplars.
+        let generated = await withMissingAssets(result.value)
+        upsert(generated)
+        open(generated)
+        return generated
     }
     func remix(_ example: ArtifactProject) async throws {
         let project: ArtifactProject
@@ -249,11 +260,22 @@ private enum RestoreFetch: Sendable {
     }
     func restore(revision: ArtifactRevision, projectID: String) async throws {
         let current = try project(projectID)
-        upsert(try await api.setHead(id: projectID, revisionId: revision.id, expectedHeadRevisionId: current.artifact.headRevisionId))
+        let moved = try await api.setHead(id: projectID, revisionId: revision.id, expectedHeadRevisionId: current.artifact.headRevisionId)
+        upsert(await withMissingAssets(moved))
     }
     func undo(projectID: String) async throws {
         let current = try project(projectID); guard let parent = current.source.revision.parentRevisionId else { return }
-        upsert(try await api.setHead(id: projectID, revisionId: parent, expectedHeadRevisionId: current.artifact.headRevisionId))
+        let moved = try await api.setHead(id: projectID, revisionId: parent, expectedHeadRevisionId: current.artifact.headRevisionId)
+        upsert(await withMissingAssets(moved))
+    }
+    /// An earlier revision can reference images this iPad never downloaded, for
+    /// example after Restore tapplets. Cache them before the offline preview loads it.
+    private func withMissingAssets(_ incoming: ArtifactProject) async -> ArtifactProject {
+        var project = incoming
+        let incomingIDs = Set(project.localAssets.map(\.id))
+        let cached = projects.first { $0.id == incoming.id }?.localAssets ?? []
+        project.localAssets.append(contentsOf: cached.filter { !incomingIDs.contains($0.id) })
+        return (try? await cacheAssets(in: project)) ?? project
     }
     func updateDetails(_ artifact: Artifact) async throws {
         let result = try await api.updateArtifact(artifact)
@@ -321,7 +343,13 @@ private enum RestoreFetch: Sendable {
     func restoreFromTapplet() async throws -> Int {
         isRestoringFromTapplet = true
         defer { isRestoringFromTapplet = false }
-        let artifacts = try await api.listArtifacts()
+        let artifacts: [Artifact]
+        do {
+            artifacts = try await api.listArtifacts()
+        } catch let error as TappletAPIError where error.requiresRegistration {
+            _ = present(error, during: .restore)
+            throw error
+        }
         let fetched = await fetchRestoreProjects(artifacts)
         var count = 0
         var failures = 0
@@ -381,7 +409,7 @@ private enum RestoreFetch: Sendable {
     func addImage(_ data: Data, description: String, decorative: Bool, projectID: String) async throws {
         guard decorative || !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppletImageError.descriptionRequired }
         let current = try project(projectID)
-        guard Self.referencedAssetIDs(in: current.source.html).count < 3 else { throw AppletImageError.limitReached }
+        guard Self.currentImageAssetIDs(in: current).count < 3 else { throw AppletImageError.limitReached }
         let image = try await Task.detached(priority: .userInitiated) {
             try AppletImageProcessor.prepare(data)
         }.value
@@ -425,16 +453,22 @@ private enum RestoreFetch: Sendable {
         let existingIDs = Set(project.localAssets.map(\.id))
         let missing = Self.referencedAssetIDs(in: project.source.html).subtracting(existingIDs)
         guard !missing.isEmpty else { return project }
+        // A script string such as "assets/images" need not name an image the API recorded.
+        let bestEffort = Self.scriptStringAssetIDs(in: project.source.html)
         let api = self.api
-        try await withThrowingTaskGroup(of: LocalAppletAssetFile.self) { group in
+        try await withThrowingTaskGroup(of: LocalAppletAssetFile?.self) { group in
             for assetID in missing {
                 group.addTask {
-                    let downloaded = try await api.downloadAsset(id: assetID)
-                    return try LocalAppletAssetStorage.store(downloaded, id: assetID)
+                    do {
+                        let downloaded = try await api.downloadAsset(id: assetID)
+                        return try LocalAppletAssetStorage.store(downloaded, id: assetID)
+                    } catch let error as TappletAPIError where error.isAssetNotFound && bestEffort.contains(assetID) {
+                        return nil
+                    }
                 }
             }
             for try await local in group {
-                project.localAssets.append(local)
+                if let local { project.localAssets.append(local) }
             }
         }
         return project
@@ -462,21 +496,48 @@ private enum RestoreFetch: Sendable {
         }
     }
     static func referencedAssetIDs(in html: String) -> Set<String> {
+        markupAssetIDs(in: html).union(scriptStringAssetIDs(in: html))
+    }
+    /// The images the head HTML shows, for the Images list and the three-image limit. A script string
+    /// that is exactly assets/<id> need not name an image, as in "assets/images" in a lesson on
+    /// folders, and the API records one only when it names an image this device may use, so such a
+    /// string counts once its image has downloaded.
+    static func currentImageAssetIDs(in project: ArtifactProject) -> Set<String> {
+        let html = project.source.html
+        let cached = Set(project.localAssets.map(\.id))
+        return markupAssetIDs(in: html).union(scriptStringAssetIDs(in: html).intersection(cached))
+    }
+    /// Images in markup, CSS and literal attribute writes; the API refuses a tapplet unless each is usable.
+    private static func markupAssetIDs(in html: String) -> Set<String> {
         let patterns = [
             #"\b(?:src|href|action)\s*=\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))"#,
-            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#
+            #"\burl\(\s*(?:"\s*assets/([A-Za-z0-9_-]+)\s*"|'\s*assets/([A-Za-z0-9_-]+)\s*'|assets/([A-Za-z0-9_-]+))\s*\)"#,
+            #"\bsetAttribute(?:NS)?\(\s*(?:(?:"[^"]*"|'[^']*'|`[^`]*`|null)\s*,\s*)?["'`](?:[\w-]+:)?(?:src|href|action|formaction)["'`]\s*,\s*["'`]\s*assets/([A-Za-z0-9_-]+)\s*["'`]\s*\)"#
         ]
         var result: Set<String> = []
-        for pattern in patterns {
-            guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
-            let range = NSRange(html.startIndex..., in: html)
-            for match in expression.matches(in: html, range: range) {
-                for capture in 1..<match.numberOfRanges {
-                    guard match.range(at: capture).location != NSNotFound,
-                          let range = Range(match.range(at: capture), in: html)
-                    else { continue }
-                    result.insert(String(html[range]))
-                }
+        for pattern in patterns { result.formUnion(captures(of: pattern, in: html)) }
+        return result
+    }
+    /// The other script and event handler strings that are exactly assets/<id>, as in
+    /// img.src = `assets/<id>` or an array of image paths. The API serves such an image only when it
+    /// recorded it, which it does only when the string names an image this device may use.
+    private static func scriptStringAssetIDs(in html: String) -> Set<String> {
+        let scripts = #"<script\b[^>]*>([\s\S]*?)</script\s*>|(?<![\w-])on[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')"#
+        var result: Set<String> = []
+        for source in captures(of: scripts, in: html) {
+            result.formUnion(captures(of: #"["'`]\s*assets/([A-Za-z0-9_-]+)\s*["'`]"#, in: source))
+        }
+        return result.subtracting(markupAssetIDs(in: html))
+    }
+    private static func captures(of pattern: String, in text: String) -> [String] {
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        var result: [String] = []
+        for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            for capture in 1..<match.numberOfRanges {
+                guard match.range(at: capture).location != NSNotFound,
+                      let range = Range(match.range(at: capture), in: text)
+                else { continue }
+                result.append(String(text[range]))
             }
         }
         return result

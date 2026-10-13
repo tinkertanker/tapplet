@@ -137,6 +137,15 @@ const DEFAULT_VIEWPORTS: EvaluationViewport[] = [
   { name: "ipad", width: 1024, height: 768 },
 ];
 const DEFAULT_SETTLE_TIME_MS = 100;
+const TYPED_INPUT_VALUES: Partial<Record<string, readonly [string, string]>> = {
+  number: ["1", "2"],
+  date: ["2026-08-29", "2026-08-30"],
+  time: ["08:30", "09:30"],
+  "datetime-local": ["2026-08-29T08:30", "2026-08-30T08:30"],
+  month: ["2026-08", "2026-09"],
+  week: ["2026-W35", "2026-W36"],
+  color: ["#000000", "#ffffff"],
+};
 const MIN_INTERACTION_PASS_RATE = 0.8;
 const STATE_FINGERPRINT_FUNCTION = String.raw`() => {
   const controlState = [...document.querySelectorAll("input,select,textarea")]
@@ -408,7 +417,9 @@ function productionSecurityHeaders(): Record<string, string> {
 
 async function collectDomMetrics(page: Page): Promise<DomMetrics> {
   return page.evaluate(String.raw`(() => {
-    const controlSelector = "button,input,select,textarea,a[href],[role='button'],[tabindex]";
+    // tabindex="-1" only makes a heading, region or message a focus target
+    // for script; it is not something a student taps.
+    const controlSelector = "button,input,select,textarea,a[href],[role='button'],[tabindex]:not([tabindex^='-'])";
     const isVisible = element => {
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
@@ -418,25 +429,54 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
         && rect.width > 0
         && rect.height > 0;
     };
+    // Controls disabled directly or by a fieldset, or in an inert section, are locked.
     const controls = [...document.querySelectorAll(controlSelector)]
       .filter(isVisible)
-      .filter((element) => !element.hasAttribute("disabled"));
+      .filter((element) => !element.hasAttribute("disabled")
+        && !element.matches(":disabled")
+        && !element.closest("[inert]"));
+    // Text or a labelled image inside a control names it only while screen
+    // readers can reach it.
+    const exposed = (child, control) => {
+      for (let node = child; node && node !== control; node = node.parentElement) {
+        if (node.getAttribute("aria-hidden") === "true"
+          || getComputedStyle(node).display === "none") return false;
+      }
+      return getComputedStyle(child).visibility !== "hidden";
+    };
+    const exposedText = (control) => {
+      const walker = document.createTreeWalker(control, NodeFilter.SHOW_TEXT);
+      let text = "";
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.parentElement && exposed(node.parentElement, control)) text += node.textContent ?? "";
+      }
+      return text;
+    };
     const accessibleName = element => {
       const labelledBy = element.getAttribute("aria-labelledby")
         ?.split(/\s+/)
         .map((id) => document.getElementById(id)?.textContent ?? "")
         .join(" ")
         .trim();
-      const labels = element instanceof HTMLInputElement
+      const formField = element instanceof HTMLInputElement
         || element instanceof HTMLSelectElement
-        || element instanceof HTMLTextAreaElement
+        || element instanceof HTMLTextAreaElement;
+      const labels = formField
         ? [...(element.labels ?? [])].map((label) => label.textContent ?? "").join(" ").trim()
         : "";
+      // Option text and default textarea text are values, not names. Other
+      // controls are named by their content, including a labelled image.
+      const content = formField ? "" : [
+        exposedText(element),
+        ...[...element.querySelectorAll("img[alt],[aria-label]")]
+          .filter((child) => exposed(child, element)).map((child) =>
+          child.getAttribute("aria-label") ?? child.getAttribute("alt") ?? ""),
+      ].join(" ").trim();
       return element.getAttribute("aria-label")?.trim()
         || labelledBy
         || labels
         || element.getAttribute("alt")?.trim()
-        || element.textContent?.trim()
+        || content
         || element.getAttribute("title")?.trim()
         || (element instanceof HTMLInputElement
           && ["button", "submit", "reset"].includes(element.type)
@@ -496,7 +536,15 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
         rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth
       ).length,
       clippedControlCount,
-      undersizedTouchTargetCount: rectangles.filter((rect) => rect.width < 44 || rect.height < 44).length,
+      // Tapping a control's label activates it, so a labelled checkbox or
+      // radio is as large a target as its biggest label. A slider is only
+      // moved on its own track, so its label does not count.
+      undersizedTouchTargetCount: controls.filter((element) => ![
+        element,
+        ...(element instanceof HTMLInputElement && element.type === "range" ? [] : element.labels ?? []),
+      ]
+        .map((target) => target.getBoundingClientRect())
+        .some((rect) => rect.width >= 44 && rect.height >= 44)).length,
       overlappingControlPairCount: overlapCount,
       minimumTextSizePixels: textSizes.length ? Math.min(...textSizes) : null,
     };
@@ -661,7 +709,8 @@ async function exerciseGenericInteractions(
       return state / 4294967296;
     };
   })()`);
-  const controlSelector = "button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[role='button']:not([aria-disabled='true'])";
+  // Read-only fields show a result; they cannot be typed into.
+  const controlSelector = ":is(button,input,select,textarea,[role='button']):not(:disabled,[disabled],[aria-disabled='true'],[inert],[inert] *,:is(input:not([type=checkbox],[type=radio],[type=button],[type=submit],[type=reset]),textarea)[readonly])";
   const countPage = await createEvaluationPage(context, runtime);
   let exercisedControlCount: number;
   try {
@@ -721,19 +770,30 @@ async function exerciseGenericControl(
 ): Promise<void> {
   const timeout = Math.max(500, settleTimeMs * 5);
   await control.scrollIntoViewIfNeeded({ timeout });
-  const descriptor = await control.evaluate((element) => ({
-    tag: element.tagName.toLocaleLowerCase(),
-    type: element instanceof HTMLInputElement ? element.type.toLocaleLowerCase() : "",
-    value: element instanceof HTMLInputElement
-      || element instanceof HTMLSelectElement
-      || element instanceof HTMLTextAreaElement
-      ? element.value
-      : "",
-    minimum: element instanceof HTMLInputElement ? element.min : "",
-    maximum: element instanceof HTMLInputElement ? element.max : "",
-    selectedIndex: element instanceof HTMLSelectElement ? element.selectedIndex : -1,
-    optionCount: element instanceof HTMLSelectElement ? element.options.length : 0,
-  }));
+  const descriptor = await control.evaluate((element) => {
+    // A range snaps to its bounds and step, and fill rejects a value the
+    // input does not keep, so ask a detached copy which ends it can reach.
+    // A file input throws when script sets its value.
+    const [minimum = "", maximum = ""] = ["-1e308", "1e308"].map((extreme) => {
+      if (!(element instanceof HTMLInputElement) || element.type !== "range") return "";
+      const probe = element.cloneNode() as HTMLInputElement;
+      probe.value = extreme;
+      return probe.value;
+    });
+    return {
+      tag: element.tagName.toLocaleLowerCase(),
+      type: element instanceof HTMLInputElement ? element.type.toLocaleLowerCase() : "",
+      value: element instanceof HTMLInputElement
+        || element instanceof HTMLSelectElement
+        || element instanceof HTMLTextAreaElement
+        ? element.value
+        : "",
+      minimum,
+      maximum,
+      selectedIndex: element instanceof HTMLSelectElement ? element.selectedIndex : -1,
+      optionCount: element instanceof HTMLSelectElement ? element.options.length : 0,
+    };
+  });
   if (descriptor.tag === "select") {
     if (descriptor.optionCount > 1) {
       const index = descriptor.selectedIndex === 0 ? 1 : 0;
@@ -754,19 +814,23 @@ async function exerciseGenericControl(
       return;
     }
     if (descriptor.type === "range") {
-      const minimum = descriptor.minimum || "0";
-      const maximum = descriptor.maximum || "100";
+      const { minimum, maximum } = descriptor;
       await control.fill(descriptor.value === maximum ? minimum : maximum, { timeout });
       return;
     }
-    const value = descriptor.type === "number"
-      ? (descriptor.value === "1" ? "2" : "1")
-      : descriptor.type === "date"
-        ? (descriptor.value === "2026-08-29" ? "2026-08-30" : "2026-08-29")
-        : descriptor.value === "Evaluation input"
-          ? "Alternate evaluation input"
-          : "Evaluation input";
-    await control.fill(value, { timeout });
+    // A file input cannot be filled; choose a small image as a student would.
+    if (descriptor.type === "file") {
+      await control.setInputFiles(
+        { name: "evaluation.png", mimeType: "image/png", buffer: TRANSPARENT_PNG },
+        { timeout },
+      );
+      return;
+    }
+    // Typed inputs discard text that is not in their format, and fill
+    // rejects a value the input does not keep.
+    const [first, second] = TYPED_INPUT_VALUES[descriptor.type]
+      ?? ["Evaluation input", "Alternate evaluation input"];
+    await control.fill(descriptor.value === first ? second : first, { timeout });
     return;
   }
   await control.click({ timeout });

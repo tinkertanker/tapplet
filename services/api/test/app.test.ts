@@ -6,6 +6,7 @@ import { MODERATION_SYSTEM_PROMPT } from "../src/ai/prompts";
 import type { AssetStore, StoredAsset } from "../src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../src/auth";
 import { createStudioApp } from "../src/app";
+import { validateHtmlOutput } from "../src/generation";
 import { injectPublicHtml } from "../src/index";
 import { MemoryOperationalTraceSink } from "../src/operationalTrace";
 import { MemorySourceStore } from "../src/sourceStore";
@@ -345,6 +346,33 @@ describe("Tapplet API registration and public HTML", () => {
     expect(served).toContain('&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;');
     expect(served).toContain('sandbox="allow-scripts allow-modals"');
     expect(source).not.toContain("<base");
+  });
+
+  it("serves sources whose head or body starts without its written tag", () => {
+    for (const source of [
+      '<!doctype html><html lang="en"><style>p{}</style><head><title>T</title></head><body><p>Hi</p></body></html>',
+      '<!doctype html><html lang="en"><head><title>T</title><div>x</div></head><body><p>Hi</p></body></html>',
+      '<!doctype html><html lang="en"><head><title>T</title></head><p>x</p><body><p>Hi</p></body></html>',
+    ]) {
+      expect(() => validateHtmlOutput({ html: source }), source).not.toThrow();
+      const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
+      expect(served.match(/&lt;base /g), source).toHaveLength(1);
+      expect(served, source).toMatch(
+        /&lt;html lang=&quot;en&quot;&gt;(?:&lt;head&gt;)?&lt;base href=&quot;\/ABCDEFGHIJKLMNOPQRST\/&quot;&gt;&lt;meta http-equiv=&quot;Content-Security-Policy&quot;/,
+      );
+    }
+  });
+
+  it("serves sources that start with a byte order mark before the doctype", () => {
+    for (const prefix of ["﻿", " "]) {
+      const source = `${prefix}<!doctype html><html lang="en"><head><title>T</title></head><body><p>Hi</p></body></html>`;
+      expect(() => validateHtmlOutput({ html: source })).not.toThrow();
+      const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
+      expect(served).toContain(
+        `srcdoc="&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;connect-src 'none'&quot;&gt;&lt;script&gt;`,
+      );
+      expect(served).toContain(`&lt;/script&gt;${prefix}&lt;!doctype html&gt;`);
+    }
   });
 
   it("injects one favicon link into the served head", () => {
@@ -814,6 +842,104 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.revisions.size).toBe(1);
   });
 
+  it.each([
+    '<img src="assets/foreign-image" alt="A fraction wall">',
+    // A script that keeps the image in a string, which the source recorded.
+    '<img id="wall" alt="A fraction wall"><script>const walls = ["assets/foreign-image"]; document.getElementById("wall").setAttribute("src", walls[0]);</script>',
+  ])("does not offer exemplars whose images this device cannot use: %s", async (body) => {
+    const html = (body: string) =>
+      `<!doctype html><html lang="en"><head><title>Fractions</title></head><body>${body}</body></html>`;
+    const foreign = html(body);
+    const sourceHash = "foreign-source";
+    await sources.putSource(sourceHash, foreign);
+    const timestamp = "2026-08-01T00:00:00Z";
+    const otherArtifact = {
+      id: "other-artifact",
+      ownerHash: "other-owner",
+      title: "Fraction wall",
+      summary: "Compare fractions on a fraction wall",
+      subject: "mathematics",
+      level: "Primary 5",
+      locale: "en-SG",
+      learningObjective: "Compare fractions",
+      tags: ["fractions"],
+      creationBrief: "Private brief",
+      generationBrief: "{}",
+      headRevisionId: "other-revision",
+      remixedFromRevisionId: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const otherRevision: RevisionRecord = {
+      id: "other-revision",
+      artifactId: otherArtifact.id,
+      parentRevisionId: null,
+      sourceHash,
+      sourceBytes: foreign.length,
+      kind: "generation",
+      instruction: null,
+      designCard: null,
+      exemplars: [],
+      modelVersion: "fixture",
+      promptVersion: "test",
+      screenshotKey: null,
+      createdAt: timestamp,
+    };
+    await repository.createArtifact({
+      artifact: otherArtifact,
+      revision: otherRevision,
+      assetIds: ["foreign-image"],
+    });
+    expect(
+      await repository.publish(
+        "other-publication-slug",
+        otherArtifact,
+        otherRevision,
+        "2026-12-01T00:00:00Z",
+        timestamp,
+        "Fraction wall fractions mathematics",
+      ),
+    ).not.toBeNull();
+
+    // A model that reuses its exemplars' images.
+    const provider = new FixtureModelProvider();
+    const offered: string[][] = [];
+    vi.spyOn(provider, "generate").mockImplementation(async (brief, exemplars) => {
+      offered.push(exemplars.map((exemplar) => exemplar.revisionId));
+      const images = exemplars
+        .flatMap((exemplar) => exemplar.html.match(/<img[^>]*>/g) ?? [])
+        .join("");
+      return { html: html(`<h1>${brief.learningObjective}</h1>${images}`) };
+    });
+    const getRecord = vi.fn().mockResolvedValue({
+      id: "foreign-image",
+      ownerHash: "other-owner",
+      objectKey: "assets/other/foreign-image.jpg",
+      contentType: "image/jpeg",
+      byteLength: 3,
+      width: 1,
+      height: 1,
+      sha256: "hash",
+      alternativeText: "A fraction wall",
+      decorative: false,
+      createdAt: timestamp,
+    });
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      assets: { get: vi.fn(), getRecord } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const response = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(response.status).toBe(201);
+    expect(offered).toEqual([[]]);
+  });
+
   it("inserts an owned required image when the model repair still omits it", async () => {
     const generated = await app.fetch(
       authenticated("/v1/artifacts/generate", "POST", creationBrief),
@@ -876,6 +1002,136 @@ describe("Tapplet API registration and public HTML", () => {
     expect(await repository.ownerReferencesAsset(ownerHash, "required-image")).toBe(
       true,
     );
+  });
+
+  it("keeps a tapplet whose script strings name images this device cannot use", async () => {
+    const ownerHash = await ownerHashFrom(
+      authenticated("/v1/artifacts"),
+      secret,
+      Date.parse("2026-08-02T00:00:00Z"),
+      repository,
+    );
+    const record = (id: string, owner: string) => ({
+      id,
+      ownerHash: owner,
+      objectKey: `assets/${owner}/${id}.jpg`,
+      contentType: "image/jpeg",
+      byteLength: 3,
+      width: 1,
+      height: 1,
+      sha256: "hash",
+      alternativeText: "A picture",
+      decorative: false,
+      createdAt: "2026-08-01T00:00:00Z",
+    });
+    const records = new Map([
+      ["own-image", record("own-image", ownerHash)],
+      ["foreign-image", record("foreign-image", "other-owner")],
+    ]);
+    const provider = new FixtureModelProvider();
+    // A lesson on folders names "assets/images", which is no stored image.
+    vi.spyOn(provider, "generate").mockResolvedValue({
+      html: `<!doctype html><html lang="en"><head><title>Folders</title></head><body><img id="photo" alt="A picture"><script>const folders = ["assets/images", "src/js"]; const pictures = ["assets/own-image", "assets/foreign-image"]; document.getElementById("photo").setAttribute("src", pictures[0]);</script></body></html>`,
+    });
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      assets: {
+        get: vi.fn(),
+        getRecord: vi.fn(async (id: string) => records.get(id) ?? null),
+      } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const response = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+
+    expect(response.status).toBe(201);
+    expect(await repository.ownerReferencesAsset(ownerHash, "own-image")).toBe(true);
+    expect(await repository.ownerReferencesAsset(ownerHash, "foreign-image")).toBe(false);
+    expect(await repository.ownerReferencesAsset(ownerHash, "images")).toBe(false);
+  });
+
+  it("does not let a remix use an image its published source could not use", async () => {
+    const ownerHash = await ownerHashFrom(
+      authenticated("/v1/artifacts"),
+      secret,
+      Date.parse("2026-08-02T00:00:00Z"),
+      repository,
+    );
+    const record = (id: string, owner: string) => ({
+      id,
+      ownerHash: owner,
+      objectKey: `assets/${owner}/${id}.jpg`,
+      contentType: "image/jpeg",
+      byteLength: 3,
+      width: 1,
+      height: 1,
+      sha256: "hash",
+      alternativeText: "A picture",
+      decorative: false,
+      createdAt: "2026-08-01T00:00:00Z",
+    });
+    const records = new Map([
+      ["own-image", record("own-image", ownerHash)],
+      ["foreign-image", record("foreign-image", "other-owner")],
+    ]);
+    const provider = new FixtureModelProvider();
+    vi.spyOn(provider, "generate").mockResolvedValue({
+      html: `<!doctype html><html lang="en"><head><title>Pictures</title></head><body><img id="photo" alt="A picture"><script>const pictures = ["assets/own-image", "assets/foreign-image"]; document.getElementById("photo").setAttribute("src", pictures[0]);</script></body></html>`,
+    });
+    app = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      assets: {
+        get: vi.fn(),
+        getRecord: vi.fn(async (id: string) => records.get(id) ?? null),
+      } as unknown as AssetStore,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const first = (await (
+      await app.fetch(authenticated("/v1/artifacts/generate", "POST", creationBrief))
+    ).json()) as { artifact: { id: string }; headRevision: { id: string } };
+    expect(
+      (
+        await app.fetch(
+          authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+            expectedHeadRevisionId: first.headRevision.id,
+          }),
+        )
+      ).status,
+    ).toBe(201);
+
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    const asOther = (path: string, method = "GET", body?: unknown) =>
+      new Request(`https://api.test${path}`, {
+        method,
+        headers: {
+          "x-device-token": otherToken,
+          origin: "https://studio.test",
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    const remix = await app.fetch(
+      asOther(`/v1/revisions/${first.headRevision.id}/remix`, "POST", {}),
+    );
+    expect(remix.status).toBe(201);
+    const otherHash = await ownerHashFrom(
+      asOther("/v1/artifacts"),
+      secret,
+      Date.parse("2026-08-02T00:00:00Z"),
+      repository,
+    );
+    expect(await repository.ownerReferencesAsset(otherHash, "own-image")).toBe(true);
+    expect(await repository.ownerReferencesAsset(otherHash, "foreign-image")).toBe(false);
   });
 
   it("removes deleted screenshots without racing shared content-addressed sources", async () => {
@@ -1091,6 +1347,249 @@ describe("Tapplet API registration and public HTML", () => {
       artifact: { creationBrief: string };
     };
     expect(own.artifact.creationBrief).toContain("row 3");
+  });
+
+  it("accepts briefs and details within their character limits in Chinese", async () => {
+    const passage = "小明和妈妈去菜市场买菜，他们买了三斤青菜和两条鱼。".repeat(160).slice(0, 3_500);
+    const brief = {
+      ...creationBrief.brief,
+      learnerContext: "Primary 4 Chinese",
+      sourceContent: passage,
+    };
+    const text = `学生\n${brief.learnerContext}\n\n阅读材料\n${passage}`;
+    expect(passage.length).toBeLessThanOrEqual(4_000);
+    expect(text.length).toBeLessThanOrEqual(6_000);
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        creationBrief: text,
+        brief,
+      }),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: { id: string; title: string; summary: string; creationBrief: string };
+    };
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: "比较词语",
+        summary: passage.slice(0, 1_000),
+        creationBrief: `${text}\n\n${passage.slice(0, 2_000)}`,
+      }),
+    );
+    expect(saved.status).toBe(200);
+  });
+
+  it("accepts the Studio creation brief when every answer is within its limit", async () => {
+    const answers = {
+      learnerContext: "L".repeat(300),
+      learningObjective: "O".repeat(600),
+      studentAction: "A".repeat(600),
+      sourceContent: "S".repeat(4_000),
+      feedback: "F".repeat(1_000),
+      classroomFit: "C".repeat(1_000),
+    };
+    // Tapplet Studio joins each question with its answer.
+    const text = [
+      ["Who are you teaching?", answers.learnerContext],
+      ["What should they understand or be able to do?", answers.learningObjective],
+      ["What should students do on screen?", answers.studentAction],
+      ["What must the tapplet include?", answers.sourceContent],
+      ["How should the tapplet respond?", answers.feedback],
+      ["How will this fit into the lesson?", answers.classroomFit],
+    ]
+      .map(([question, answer]) => `${question}\n${answer}`)
+      .join("\n\n");
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        creationBrief: text,
+        brief: answers,
+      }),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: { id: string; title: string; summary: string; creationBrief: string };
+    };
+    expect(artifact.creationBrief).toBe(text);
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: "Renamed",
+        summary: artifact.summary,
+        creationBrief: artifact.creationBrief,
+      }),
+    );
+    expect(saved.status).toBe(200);
+  });
+
+  it("returns details saved while a refinement was running", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string; summary: string; creationBrief: string };
+      headRevision: { id: string };
+    };
+    const provider = new FixtureModelProvider(),
+      revise = provider.revise.bind(provider);
+    vi.spyOn(provider, "revise").mockImplementation(async (...args) => {
+      const saved = await app.fetch(
+        authenticated(`/v1/artifacts/${first.artifact.id}`, "PATCH", {
+          title: "Saved during refinement",
+          summary: first.artifact.summary,
+          tags: ["saved"],
+          creationBrief: first.artifact.creationBrief,
+        }),
+      );
+      expect(saved.status).toBe(200);
+      return revise(...args);
+    });
+    const refining = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const revised = await refining.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}/revisions`, "POST", {
+        instruction: "Use a number line",
+        expectedHeadRevisionId: first.headRevision.id,
+      }),
+    );
+    expect(revised.status).toBe(201);
+    const body = (await revised.json()) as {
+      artifact: { title: string; tags: string[]; headRevisionId: string };
+      headRevision: { id: string };
+    };
+    expect(body.artifact).toMatchObject({
+      title: "Saved during refinement",
+      tags: ["saved"],
+      headRevisionId: body.headRevision.id,
+    });
+  });
+
+  it("publishes details saved during the publication review", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string; summary: string; creationBrief: string };
+      headRevision: { id: string };
+    };
+    const provider = new FixtureModelProvider(),
+      moderate = provider.moderate.bind(provider);
+    vi.spyOn(provider, "moderate").mockImplementation(async () => {
+      const saved = await app.fetch(
+        authenticated(`/v1/artifacts/${first.artifact.id}`, "PATCH", {
+          title: "Saved during review",
+          summary: "Newer summary",
+          creationBrief: first.artifact.creationBrief,
+        }),
+      );
+      expect(saved.status).toBe(200);
+      return moderate();
+    });
+    const publishing = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const published = await publishing.fetch(
+      authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+        expectedHeadRevisionId: first.headRevision.id,
+      }),
+    );
+    expect(published.status).toBe(201);
+    await expect(published.json()).resolves.toMatchObject({
+      publication: { title: "Saved during review" },
+    });
+    const search = await app.fetch(authenticated("/v1/examples/search?q=fractions"));
+    await expect(search.json()).resolves.toMatchObject({
+      examples: [{ title: "Saved during review", descriptor: expect.stringContaining("Newer summary") }],
+    });
+  });
+
+  it("saves details that echo the metadata generation stored", async () => {
+    const learnerContext = `Primary 5 Mathematics, mixed-ability class of 38 pupils ${"who need extra visual support ".repeat(4)}`.trim();
+    const learningObjective = `Compare fractions with unlike denominators ${"by reasoning about equivalent fractions and benchmarks ".repeat(4)}`.trim();
+    expect(learnerContext.length).toBeGreaterThan(100);
+    expect(learningObjective.length).toBeGreaterThan(200);
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, learnerContext, learningObjective },
+      }),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: {
+        id: string;
+        title: string;
+        summary: string;
+        subject: string | null;
+        level: string | null;
+        locale: string | null;
+        learningObjective: string | null;
+        tags: string[];
+        creationBrief: string;
+      };
+    };
+    expect(artifact.level).toBe(learnerContext);
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: artifact.title,
+        summary: artifact.summary,
+        subject: artifact.subject,
+        level: artifact.level,
+        locale: artifact.locale,
+        learningObjective: artifact.learningObjective,
+        tags: artifact.tags,
+        creationBrief: artifact.creationBrief,
+      }),
+    );
+    expect(saved.status).toBe(200);
+    await expect(saved.json()).resolves.toMatchObject({
+      artifact: { title: artifact.title, level: learnerContext },
+    });
+  });
+
+  it("saves details for a tapplet whose design card has a blank description", async () => {
+    const provider = new FixtureModelProvider(),
+      generate = provider.generate.bind(provider);
+    vi.spyOn(provider, "generate").mockImplementation(async (...args) => ({
+      ...(await generate(...args)),
+      designCard: { title: "Fraction race", description: " " },
+    }));
+    const generating = createStudioApp({
+      repository,
+      provider,
+      config,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const generated = await generating.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(generated.status).toBe(201);
+    const { artifact } = (await generated.json()) as {
+      artifact: { id: string; title: string; summary: string; creationBrief: string };
+    };
+    expect(artifact.summary).toBe(creationBrief.brief.studentAction);
+
+    const saved = await app.fetch(
+      authenticated(`/v1/artifacts/${artifact.id}`, "PATCH", {
+        title: artifact.title,
+        summary: artifact.summary,
+        tags: ["fractions"],
+        creationBrief: artifact.creationBrief,
+      }),
+    );
+    expect(saved.status).toBe(200);
   });
 
   it("keeps flagged metadata and remix titles with advisory warnings", async () => {

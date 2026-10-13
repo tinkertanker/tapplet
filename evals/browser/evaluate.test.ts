@@ -208,3 +208,184 @@ test("browser evaluator blocks same-origin API-shaped requests and rejects unrea
   assert.equal(unreachable.viewports[0]?.behavior.passed, false);
   assert.equal(unreachable.passed, false);
 });
+
+test("browser evaluator does not name an unlabelled select after its options", async () => {
+  const fixture = (select: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Select name fixture</title><style>body{font:16px system-ui}select{min-width:120px;min-height:48px}</style></head><body><main><h1>Select name fixture</h1><p id="question">Which evidence tests the claim?</p>${select}</main></body></html>`;
+  const unlabelled = await evaluateHtmlInBrowser(
+    fixture('<select><option value="">Choose…</option><option>Temperatures</option></select>'),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(unlabelled.viewports[0]?.accessibilityBasic.unnamedControlCount, 1);
+  assert.equal(unlabelled.viewports[0]?.accessibilityBasic.passed, false);
+
+  const labelled = await evaluateHtmlInBrowser(
+    fixture('<select aria-labelledby="question"><option value="">Choose…</option><option>Temperatures</option></select>'),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(labelled.viewports[0]?.accessibilityBasic.unnamedControlCount, 0);
+});
+
+test("generic interactions move a range whose maximum is off its step", async () => {
+  const fixture = (range: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Range fixture</title><style>body{font:16px system-ui}input{width:200px;height:44px}</style></head><body><main><h1>Range fixture</h1><label for="speed">Speed <output id="shown">0</output></label>${range}</main><script>speed.oninput=()=>{shown.value=speed.value}</script></body></html>`;
+  for (const range of [
+    '<input id="speed" type="range" min="0" max="25" step="2" value="0">',
+    '<input id="speed" type="range" min="0" max="25" step="2" value="24">',
+    '<input id="speed" type="range" value="100">',
+  ]) {
+    const result = await evaluateHtmlInBrowser(fixture(range), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(result.viewports[0]?.behavior.interactionErrorCount, 0);
+    assert.equal(result.viewports[0]?.behavior.changedControlCount, 1);
+    assert.equal(result.viewports[0]?.behavior.passed, true);
+  }
+});
+
+test("generic interactions fill colour, time and calendar inputs in their own formats", async () => {
+  const fixture = (type: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Typed input fixture</title><style>body{font:16px system-ui}input{width:200px;height:44px}</style></head><body><main><h1>Typed input fixture</h1><label for="pick">Pick <output id="shown"></output></label><input id="pick" type="${type}"></main><script>pick.oninput=()=>{shown.value=pick.value}</script></body></html>`;
+  for (const type of ["color", "time", "datetime-local", "month", "week"]) {
+    const result = await evaluateHtmlInBrowser(fixture(type), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(result.viewports[0]?.behavior.interactionErrorCount, 0, type);
+    assert.equal(result.viewports[0]?.behavior.changedControlCount, 1, type);
+  }
+});
+
+test("browser evaluator names a control by the image it contains", async () => {
+  const fixture = (alt: string, image = `<img src="assets/diagram" alt="${alt}">`) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Image button fixture</title><style>body{font:16px system-ui}button{min-width:120px;min-height:48px}img{width:100px;height:40px}</style></head><body><main><h1>Image button fixture</h1><button type="button" id="pick">${image}</button><p id="feedback"></p></main><script>pick.onclick=()=>{feedback.textContent='Chosen'}</script></body></html>`;
+  const named = await evaluateHtmlInBrowser(fixture("A fraction diagram"), {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  assert.equal(named.viewports[0]?.accessibilityBasic.unnamedControlCount, 0);
+  assert.equal(named.viewports[0]?.accessibilityBasic.passed, true);
+
+  const decorative = await evaluateHtmlInBrowser(fixture(""), {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  assert.equal(decorative.viewports[0]?.accessibilityBasic.unnamedControlCount, 1);
+
+  for (const image of [
+    '<img src="assets/diagram" alt="Play" aria-hidden="true">',
+    '<span aria-hidden="true"><img src="assets/diagram" alt="Play"></span>',
+    '<img src="assets/diagram" alt="Play" style="display:none">',
+    '<img src="assets/diagram" alt="Play" style="visibility:hidden">',
+    '<span aria-hidden="true">Play</span>',
+    '<span style="display:none">Play</span>',
+    '<span style="visibility:hidden">Play</span>',
+  ]) {
+    const hidden = await evaluateHtmlInBrowser(fixture("", image), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(hidden.viewports[0]?.accessibilityBasic.unnamedControlCount, 1, image);
+  }
+
+  // Hiding is judged inside the control, so an image names its button
+  // wherever a text label would.
+  const inHiddenRegion = await evaluateHtmlInBrowser(
+    fixture("A fraction diagram").replace("<button", '<div aria-hidden="true"><button').replace("</button>", "</button></div>"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(inHiddenRegion.viewports[0]?.accessibilityBasic.unnamedControlCount, 0);
+});
+
+test("browser evaluator does not treat script-only focus targets as controls", async () => {
+  const result = await evaluateHtmlInBrowser(
+    goodFixture.replace("<main>", '<main tabindex="-1">').replace("<h1>", '<h1 tabindex="-1">'),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(result.viewports[0]?.behavior.controlCount, 1);
+  assert.equal(result.viewports[0]?.renderedQuality.overlappingControlPairCount, 0);
+  assert.equal(result.viewports[0]?.renderedQuality.passed, true);
+  assert.equal(result.passed, true);
+});
+
+test("browser evaluator treats controls in an inert section as locked, like disabled ones", async () => {
+  const result = await evaluateHtmlInBrowser(
+    goodFixture.replace(
+      '<p id="feedback"',
+      '<section inert><h2>Next step</h2><button type="button">Locked one</button><button type="button">Locked two</button></section><p id="feedback"',
+    ),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.controlCount, 1);
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(viewport.accessibilityBasic.focusFailureCount, 0);
+  assert.equal(result.passed, true);
+});
+
+test("browser evaluator treats controls in a disabled fieldset as disabled", async () => {
+  const result = await evaluateHtmlInBrowser(
+    goodFixture.replace(
+      '<p id="feedback"',
+      '<fieldset disabled><legend>Next step</legend><button type="button">Locked one</button><input type="checkbox" aria-label="Locked choice"></fieldset><p id="feedback"',
+    ),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.controlCount, 1);
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(viewport.accessibilityBasic.focusFailureCount, 0);
+  assert.equal(result.passed, true);
+});
+
+test("generic interactions skip native buttons marked aria-disabled", async () => {
+  const result = await evaluateHtmlInBrowser(
+    goodFixture.replace(
+      '<p id="feedback"',
+      '<button type="button" aria-disabled="true">Next step</button><p id="feedback"',
+    ),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(result.passed, true);
+});
+
+test("generic interactions do not type into read-only result fields", async () => {
+  const fixture = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Read-only fixture</title><style>body{font:16px system-ui}input,textarea{width:200px;min-height:48px}</style></head><body><main><h1>Read-only fixture</h1><label for="width">Width</label><input id="width" type="number" value="3"><label for="area">Area</label><input id="area" readonly value="9"><label for="note">Working</label><textarea id="note" readonly>3 × 3</textarea></main><script>width.oninput=()=>{area.value=String(width.value*3)}</script></body></html>`;
+  const result = await evaluateHtmlInBrowser(fixture, {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(viewport.behavior.passed, true);
+});
+
+test("browser evaluator measures a labelled checkbox by its label's touch target", async () => {
+  const fixture = (label: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Checkbox target fixture</title><style>body{font:16px system-ui}label{display:flex;align-items:center;gap:10px;min-height:48px}</style></head><body><main><h1>Checkbox target fixture</h1>${label}</main></body></html>`;
+  const labelled = await evaluateHtmlInBrowser(
+    fixture("<label><input type=\"checkbox\"> Different locations</label>"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(labelled.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 0);
+
+  const bare = await evaluateHtmlInBrowser(
+    fixture("<input type=\"checkbox\" aria-label=\"Different locations\">"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(bare.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 1);
+
+  const slider = await evaluateHtmlInBrowser(
+    fixture("<label>Angle <input type=\"range\"></label>"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(slider.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 1);
+});
+
+test("generic interactions choose a file for a file input", async () => {
+  const fixture = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>File fixture</title><style>body{font:16px system-ui}input{min-width:200px;min-height:48px}</style></head><body><main><h1>File fixture</h1><label for="photo">Your drawing</label><input id="photo" type="file" accept="image/*"><p id="chosen" aria-live="polite"></p></main><script>photo.onchange=()=>{chosen.textContent=photo.files.length+' file chosen'}</script></body></html>`;
+  const result = await evaluateHtmlInBrowser(fixture, {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(viewport.behavior.changedControlCount, 1);
+  assert.equal(viewport.behavior.passed, true);
+});

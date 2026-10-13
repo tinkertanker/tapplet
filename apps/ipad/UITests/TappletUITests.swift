@@ -207,6 +207,8 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(code.waitUntilExists(timeout: 5))
         code.tap()
         code.typeText("SHORT")
+        let hint = app.staticTexts["Enter your six-digit code. For an older code, use its last six letters."]
+        XCTAssertEqual(hint.value as? String, "Code too short", "A short code must not be signalled by colour alone")
 
         let activate = app.buttons["activate-workshop-access"]
         XCTAssertTrue(activate.isEnabled)
@@ -313,6 +315,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
         let prompt = app.textViews.firstMatch
         XCTAssertTrue(prompt.waitUntilExists(timeout: 3))
+        XCTAssertEqual(prompt.label, "Change to make", "VoiceOver must name the refinement field")
         app.buttons["refine-suggestion-timer"].tap()
         let submitted = prompt.value as? String ?? ""
         XCTAssertFalse(submitted.isEmpty)
@@ -338,6 +341,40 @@ final class TappletUITests: XCTestCase {
         complete.tap()
         XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
         XCTAssertEqual(prompt.value as? String, "", "An unchanged submitted prompt should still clear")
+    }
+
+    @MainActor
+    func testReopenedEditorShowsAChangeStillBeingMade() {
+        let app = launchApp(extraArguments: ["--ui-testing-held-refinement"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitUntilExists(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
+        app.buttons["refine-suggestion-timer"].tap()
+        app.buttons["Make this change"].tap()
+        XCTAssertTrue(app.buttons["complete-test-refinement"].waitUntilExists(timeout: 5))
+
+        app.buttons["Back"].firstMatch.tap()
+        selectSidebarItem(label: "My Tapplets", in: app)
+        let open = app.buttons["Open"]
+        XCTAssertTrue(open.waitUntilExists(timeout: 5))
+        open.tap()
+
+        XCTAssertTrue(app.buttons["Updating…"].waitUntilExists(timeout: 5), "A reopened editor must show the change still running")
+        XCTAssertFalse(app.buttons["Make this change"].exists)
+        app.buttons["complete-test-refinement"].tap()
+        XCTAssertTrue(app.staticTexts["UI test refinement complete"].waitUntilExists(timeout: 8))
+        XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
+
+        // Undo while a change runs would make that change fail on the moved head.
+        XCTAssertTrue(app.buttons["Undo"].isEnabled)
+        app.buttons["refine-suggestion-lives"].tap()
+        app.buttons["Make this change"].tap()
+        XCTAssertTrue(app.buttons["complete-test-refinement"].waitUntilExists(timeout: 5))
+        XCTAssertFalse(app.buttons["Undo"].isEnabled)
+        app.buttons["complete-test-refinement"].tap()
+        XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
     }
 
     @MainActor
