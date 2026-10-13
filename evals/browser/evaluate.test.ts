@@ -347,4 +347,10 @@ test("browser evaluator measures a labelled checkbox by its label's touch target
     { viewports: [{ name: "phone", width: 390, height: 844 }] },
   );
   assert.equal(bare.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 1);
+
+  const slider = await evaluateHtmlInBrowser(
+    fixture("<label>Angle <input type=\"range\"></label>"),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  assert.equal(slider.viewports[0]?.renderedQuality.undersizedTouchTargetCount, 1);
 });
