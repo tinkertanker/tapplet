@@ -549,6 +549,28 @@ test('plant-cell wall and membrane markers sit on their own layers at every widt
   }
 });
 
+test('mean-and-median scores can be moved without dragging', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/mean-and-median.html', 'utf8'));
+    const score = page.getByRole('slider', { name: 'Score 1', exact: true });
+    assert.equal(await page.getByRole('slider').count(), 7);
+    await score.focus();
+    for (let press = 0; press < 8; press += 1) await page.keyboard.press('ArrowRight');
+    assert.equal(await score.getAttribute('aria-valuenow'), '11');
+    assert.equal(await page.textContent('#mean'), '7.0');
+    await page.selectOption('#which', 'mean');
+    await page.selectOption('#why', 'all');
+    await page.click('#check');
+    assert.match(await page.textContent('#feedback'), /^The mean was pulled/);
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
