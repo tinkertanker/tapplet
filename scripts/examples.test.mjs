@@ -1001,6 +1001,20 @@ test('cutting part of the reason is called out as cutting a key fact', async () 
   dom.window.close();
 });
 
+test('fraction divisor feedback does not deny that dividing both parts keeps the value', async () => {
+  const html = await readFile(path.resolve('apps/ipad/Resources/Examples/fraction-equivalence-diagnostic.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  for (const divisor of ['3', '4']) {
+    document.querySelector(`#q3 [data-d="${divisor}"]`).click();
+    const feedback = document.getElementById('f3').textContent;
+    // 4÷3 over 2 and 1 over 1.5 still equal 2/3; only the whole-number parts differ.
+    assert.doesNotMatch(feedback, /not 2\/3/);
+    assert.match(feedback, /not 2 and 3\./);
+  }
+  dom.window.close();
+});
+
 test('no curated control sits inside an image, whose children assistive tech hides', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
