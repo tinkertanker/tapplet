@@ -795,6 +795,21 @@ test('conductor sort feedback uses the right article for each bin', async () => 
   }
 });
 
+test('choosing a conductor object keeps keyboard focus on that object', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/conductor-or-insulator.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  const foil = () => [...document.querySelectorAll('#items button')].find((button) => button.textContent === 'Aluminium foil');
+  foil().focus();
+  foil().click();
+  assert.equal(document.activeElement, foil());
+  assert.equal(foil().getAttribute('aria-pressed'), 'true');
+  dom.window.close();
+});
+
 test('every curated control has an accessible name', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
