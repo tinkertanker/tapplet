@@ -1015,6 +1015,19 @@ test('fraction divisor feedback does not deny that dividing both parts keeps the
   dom.window.close();
 });
 
+test('inclusive-language feedback describes the notice\'s action, not a clean-up', async () => {
+  const html = await readFile(path.resolve('apps/ipad/Resources/Examples/persuasive-language-lab.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  const item = document.querySelector('.item');
+  item.querySelector('button[data-ok]').click();
+  const feedback = item.querySelector('.msg').textContent;
+  // The notice asks readers to bring their own containers to cut waste.
+  assert.doesNotMatch(feedback, /clean-up/);
+  assert.match(feedback, /cutting waste/);
+  dom.window.close();
+});
+
 test('no curated control sits inside an image, whose children assistive tech hides', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
