@@ -220,6 +220,9 @@ describe("HTML generation contract", () => {
       '<script>document.images[0].setAttribute("src", `https://outside.invalid/${1}.png`);</script>',
       '<img alt="" src="assets/a" onerror="src = `https://outside.invalid/${1}.png`">',
       '<img alt="" src="assets/a" onerror="src = `https://outside.invalid/${&quot;x&quot;}.png`">',
+      "<script>document.images[0].src = `\\\\\\\\outside.invalid/${1}.png`;</script>",
+      "<script>document.images[0].src = `/\\\\outside.invalid/${1}.png`;</script>",
+      "<script>document.images[0].src = `ht\\ttps://outside.invalid/${1}.png`;</script>",
     ])
       expect(
         () => validateHtmlOutput({ html: html.replace("Hello", capability) }),

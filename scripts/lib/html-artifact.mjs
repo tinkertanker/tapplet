@@ -248,10 +248,12 @@ function visitJavaScript(value, visit) {
 }
 
 // The start of a template literal that already makes it an absolute URL, as
-// in `https://example.com/${name}.png`; data URLs are checked elsewhere.
+// in `https://example.com/${name}.png`; data URLs are checked elsewhere. Like
+// a browser, ignore tabs, newlines and leading control characters, and read a
+// backslash as a slash.
 function absoluteStart(node) {
   const start = node.type === 'TemplateLiteral' ? (node.quasis[0]?.value.cooked ?? '') : '';
-  return /^\s*(?:(?!data:)[a-z][a-z\d+.-]*:|\/\/)/i.test(start) ? start : undefined;
+  return /^[\s\0-\x1f]*(?:(?!data:)[a-z][a-z\d+.-]*:|[\\/]{2})/i.test(start.replace(/[\t\n\r]/g, '')) ? start : undefined;
 }
 
 function literalText(node) {

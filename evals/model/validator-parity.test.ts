@@ -124,6 +124,8 @@ const snippets = [
   "<script>const image = new Image(); image.src = `https://outside.invalid/${1}.png`;</script>",
   '<script>document.images[0].setAttribute("src", `https://outside.invalid/${1}.png`);</script>',
   '<img alt="" src="assets/image-1" onerror="src = `https://outside.invalid/${&quot;x&quot;}.png`">',
+  "<script>document.images[0].src = `/\\\\outside.invalid/${1}.png`;</script>",
+  "<script>document.images[0].src = `ht\\ttps://outside.invalid/${1}.png`;</script>",
   "<script>const id = 'image-1'; document.images[0].src = `assets/${id}`; document.links[0].href = `#${id}`;</script>",
 ];
 
