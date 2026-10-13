@@ -182,6 +182,22 @@ describe("HTML generation contract", () => {
       ).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts lesson text such as Action = Reaction", () => {
+    const prose = html.replace(
+      "Hello",
+      "<p>Newton's third law: Action = Reaction.</p><li>Every action = an equal and opposite reaction</li><textarea>src = source</textarea>",
+    );
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const capability of [
+      "<p>Action = Reaction.</p><form action=https://outside.invalid/></form>",
+      '<p>Action = Reaction.</p><p>href="https://outside.invalid/"</p>',
+      `<p>Action = Reaction.</p><button onclick="this.innerHTML = '<img src=https://outside.invalid/x.png>'">Go</button>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts script variables named src and href", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',

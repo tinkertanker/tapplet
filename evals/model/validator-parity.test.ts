@@ -111,6 +111,8 @@ const snippets = [
   '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',
   "<p>1 poster = $3</p><textarea>Poster=2</textarea>",
   "<p>Pen = $1. Poster = $3.</p>",
+  "<p>Newton's third law: Action = Reaction.</p><textarea>src = source</textarea>",
+  '<p>Action = Reaction.</p><p>href="https://outside.invalid/"</p>',
   `<p>Pen = $1. Poster = $3.</p><video onclick="this. poster = 'https://outside.invalid/x.png'"></video>`,
   '<textarea>&lt;video poster="https://outside.invalid/x.png"&gt;</textarea>',
   '<script type="text/template"><img srcset="assets/image-1 1x"></script>',

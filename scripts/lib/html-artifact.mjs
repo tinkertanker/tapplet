@@ -103,6 +103,9 @@ export function validateHtmlArtifact(html, options = {}) {
     // A script variable named src, href, action or formaction loads nothing.
     // Markup in script strings, other text and property writes are checked.
     if (!attributeOffsets.has(index) && scripts.declarations.has(index)) continue;
+    // Lesson text such as "Action = Reaction" loads nothing; a quoted value
+    // in text, written like markup, is still checked.
+    if (match[4] !== undefined && within(prose, index)) continue;
     checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
   }
   for (const { attribute, value } of scripts.attributeWrites) checkUrl(attribute, value.trim());
