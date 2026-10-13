@@ -435,6 +435,14 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
       .filter((element) => !element.hasAttribute("disabled")
         && !element.matches(":disabled")
         && !element.closest("[inert]"));
+    // A labelled descendant names its control only while screen readers can reach it.
+    const exposed = (child) => {
+      for (let node = child; node; node = node.parentElement) {
+        if (node.getAttribute("aria-hidden") === "true"
+          || getComputedStyle(node).display === "none") return false;
+      }
+      return getComputedStyle(child).visibility !== "hidden";
+    };
     const accessibleName = element => {
       const labelledBy = element.getAttribute("aria-labelledby")
         ?.split(/\s+/)
@@ -451,7 +459,7 @@ async function collectDomMetrics(page: Page): Promise<DomMetrics> {
       // controls are named by their content, including a labelled image.
       const content = formField ? "" : [
         element.textContent ?? "",
-        ...[...element.querySelectorAll("img[alt],[aria-label]")].map((child) =>
+        ...[...element.querySelectorAll("img[alt],[aria-label]")].filter(exposed).map((child) =>
           child.getAttribute("aria-label") ?? child.getAttribute("alt") ?? ""),
       ].join(" ").trim();
       return element.getAttribute("aria-label")?.trim()

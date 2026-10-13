@@ -253,7 +253,7 @@ test("generic interactions fill colour, time and calendar inputs in their own fo
 });
 
 test("browser evaluator names a control by the image it contains", async () => {
-  const fixture = (alt: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Image button fixture</title><style>body{font:16px system-ui}button{min-width:120px;min-height:48px}img{width:100px;height:40px}</style></head><body><main><h1>Image button fixture</h1><button type="button" id="pick"><img src="assets/diagram" alt="${alt}"></button><p id="feedback"></p></main><script>pick.onclick=()=>{feedback.textContent='Chosen'}</script></body></html>`;
+  const fixture = (alt: string, image = `<img src="assets/diagram" alt="${alt}">`) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Image button fixture</title><style>body{font:16px system-ui}button{min-width:120px;min-height:48px}img{width:100px;height:40px}</style></head><body><main><h1>Image button fixture</h1><button type="button" id="pick">${image}</button><p id="feedback"></p></main><script>pick.onclick=()=>{feedback.textContent='Chosen'}</script></body></html>`;
   const named = await evaluateHtmlInBrowser(fixture("A fraction diagram"), {
     viewports: [{ name: "phone", width: 390, height: 844 }],
   });
@@ -264,6 +264,18 @@ test("browser evaluator names a control by the image it contains", async () => {
     viewports: [{ name: "phone", width: 390, height: 844 }],
   });
   assert.equal(decorative.viewports[0]?.accessibilityBasic.unnamedControlCount, 1);
+
+  for (const image of [
+    '<img src="assets/diagram" alt="Play" aria-hidden="true">',
+    '<span aria-hidden="true"><img src="assets/diagram" alt="Play"></span>',
+    '<img src="assets/diagram" alt="Play" style="display:none">',
+    '<img src="assets/diagram" alt="Play" style="visibility:hidden">',
+  ]) {
+    const hidden = await evaluateHtmlInBrowser(fixture("", image), {
+      viewports: [{ name: "phone", width: 390, height: 844 }],
+    });
+    assert.equal(hidden.viewports[0]?.accessibilityBasic.unnamedControlCount, 1, image);
+  }
 });
 
 test("browser evaluator does not treat script-only focus targets as controls", async () => {
