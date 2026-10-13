@@ -53,7 +53,7 @@ const cases = [
 ] as const;
 
 async function main(): Promise<void> {
-  const repoRoot = resolve(process.env.INIT_CWD ?? process.cwd());
+  const repoRoot = resolve(import.meta.dirname, "../..");
   const environment = await productionEvaluationEnvironment(repoRoot, process.env);
   const plan = parseEvaluationPlan({ ...environment, EVAL_BROWSER: "false" });
   if (

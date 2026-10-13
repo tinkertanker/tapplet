@@ -205,7 +205,7 @@ export function createEvaluationProvider(
 }
 
 async function main(): Promise<void> {
-  const repoRoot = resolve(process.env.INIT_CWD ?? process.cwd());
+  const repoRoot = resolve(import.meta.dirname, "../..");
   const manifestPath = resolve(repoRoot, "evals/model/artifact-requests.json");
   const manifestSource = await readFile(manifestPath, "utf8");
   const manifest = JSON.parse(manifestSource) as EvaluationManifest;
