@@ -369,8 +369,9 @@ describe("Tapplet API registration and public HTML", () => {
       expect(() => validateHtmlOutput({ html: source })).not.toThrow();
       const served = injectPublicHtml(source, "ABCDEFGHIJKLMNOPQRST");
       expect(served).toContain(
-        `srcdoc="&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;connect-src 'none'&quot;&gt;${prefix}&lt;!doctype html&gt;`,
+        `srcdoc="&lt;base href=&quot;/ABCDEFGHIJKLMNOPQRST/&quot;&gt;&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;connect-src 'none'&quot;&gt;&lt;script&gt;`,
       );
+      expect(served).toContain(`&lt;/script&gt;${prefix}&lt;!doctype html&gt;`);
     }
   });
 

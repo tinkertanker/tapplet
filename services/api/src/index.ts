@@ -140,7 +140,11 @@ export function injectPublicHtml(source: string, slug: string): string {
     .map((node) => node.value).join("") || "Tapplet";
   const language = root?.attrs.find((attribute) => attribute.name === "lang")?.value || "en";
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  const activity = `${source.slice(0, headEnd)}<base href="/${slug}/"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'">${source.slice(headEnd)}`;
+  // srcdoc resolves a fragment link such as href="#end" or "#/route" against
+  // the base, not about:srcdoc, so following it would replace the activity
+  // with a blocked page. Keep such links inside the document, as in Studio.
+  const fragmentLinks = `<script>addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[href],area[href]"),h=a&&a.getAttribute("href");if(!h||h[0]!=="#"||e.defaultPrevented)return;e.preventDefault();const f=h.slice(1);if(location.hash.slice(1)!==f)location.hash=f;else if(f)document.getElementById(f)?.scrollIntoView();else scrollTo(0,0)})</script>`;
+  const activity = `${source.slice(0, headEnd)}<base href="/${slug}/"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'">${fragmentLinks}${source.slice(headEnd)}`;
   // An opaque top-level sandbox can still navigate itself. Keep untrusted HTML
   // in srcdoc: the parent's frame-src 'none' blocks its document navigations,
   // while sandbox prevents it from navigating or accessing the trusted parent.

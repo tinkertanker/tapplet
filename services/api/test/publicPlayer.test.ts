@@ -98,7 +98,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
   }
 
   function activity(page: Page) {
-    const frame = page.frames().find((candidate) => candidate.url() === "about:srcdoc");
+    const frame = page.frames().find((candidate) => candidate.url().split("#")[0] === "about:srcdoc");
     if (!frame) throw new Error("Sandboxed activity frame not found");
     return frame;
   }
@@ -119,6 +119,22 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(await activity(state.page).locator("head base").getAttribute("href")).toBe(`/${slug}/`);
       expect(state.assets).toEqual([`/${slug}/assets/image-1`]);
       expect(await activity(state.page).evaluate("document.querySelector('img').naturalWidth")).toBe(20);
+    } finally { await state.context.close(); }
+  });
+
+  it("keeps fragment links and hash routes inside the activity", async () => {
+    const state = await open(source.replace(
+      "<button",
+      '<a href="#/route?step=2">Next step</a><a href="#end">Jump to end</a><div style="height:3000px"></div><p id="end">End</p><button',
+    ));
+    try {
+      await activity(state.page).evaluate('addEventListener("hashchange", () => { document.body.dataset.route = location.hash; })');
+      await activity(state.page).getByRole("link", { name: "Next step" }).click();
+      await expect.poll(() => activity(state.page).evaluate("document.body.dataset.route")).toBe("#/route?step=2");
+      await activity(state.page).getByRole("link", { name: "Jump to end" }).click();
+      await expect.poll(() => activity(state.page).evaluate("scrollY")).toBeGreaterThan(0);
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
     } finally { await state.context.close(); }
   });
 
