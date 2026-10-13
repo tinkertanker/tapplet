@@ -121,6 +121,8 @@ export function validateHtmlArtifact(html, options = {}) {
     || scripts.ranges.some(([start, end]) => /\bcaches\b/i.test(html.slice(start, end)))
   ) add('storage', 'Storage APIs are not allowed; tapplets must keep all state in memory.');
   for (const match of html.matchAll(/\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^\s"')]+))\s*\)/gis)) {
+    // Lesson text such as "Copy the URL(s)" loads nothing.
+    if (within(prose, match.index ?? 0) && !match[0].includes('<')) continue;
     const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
     // An SVG reference such as fill="url(#gradient)" names an element in the document itself.
     if (!MANAGED_ASSET.test(value) && !/^data:image\//i.test(value) && !value.startsWith('#')) add('external-resource', `External CSS resource is not allowed: ${value}.`);
@@ -165,14 +167,15 @@ function attributeValue(match) {
   return match[2] ?? match[3] ?? match[4] ?? '';
 }
 
-// Source ranges of text in elements other than scripts that holds no markup,
-// such as a textarea's, which a script could insert as HTML; it runs no code.
+// Source ranges of text in elements other than scripts and styles that holds
+// no markup, such as a textarea's, which a script could insert as HTML; it runs
+// no code and loads nothing.
 // The source must hold no tag either: text a table moves out of itself joins
 // the text before the table, whose range then spans the table's markup.
 function proseRanges(root, html) {
   const ranges = [];
   function visit(node) {
-    if ('tagName' in node && node.tagName !== 'script') {
+    if ('tagName' in node && node.tagName !== 'script' && node.tagName !== 'style') {
       for (const child of node.childNodes) {
         if (
           child.nodeName === '#text'

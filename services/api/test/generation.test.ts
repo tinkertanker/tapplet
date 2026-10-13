@@ -137,6 +137,21 @@ describe("HTML generation contract", () => {
     ).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts lesson text such as URL(s) while rejecting external CSS URLs", () => {
+    const prose = html.replace("Hello", "<p>Copy the URL(s) of your sources.</p><textarea>url(link)</textarea>");
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const capability of [
+      "<p>Copy the URL(s).</p><style>body{background:url(https://outside.invalid/x.png)}</style>",
+      `<p>url("</p><style>body{background:url(https://outside.invalid/x.png)}</style><p>")</p>`,
+      "<p>Copy the URL(s).</p><svg><style>rect{fill:url(https://outside.invalid/x.svg#g)}</style></svg>",
+      `<p>Copy the URL(s).</p><div style="background:url(https://outside.invalid/x.png)"></div>`,
+      "<p>Copy the URL(s).</p><script>document.body.style.background = 'url(https://outside.invalid/x.png)'</script>",
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts custom data attributes named like URL attributes", () => {
     const candidate = html.replace(
       "Hello",

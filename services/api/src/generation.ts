@@ -166,8 +166,9 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
   return "content" in node && hasMultiSourceAttribute(node.content);
 }
 
-// Source ranges of text in elements other than scripts that holds no markup,
-// such as a textarea's, which a script could insert as HTML; it runs no code.
+// Source ranges of text in elements other than scripts and styles that holds
+// no markup, such as a textarea's, which a script could insert as HTML; it runs
+// no code and loads nothing.
 // The source must hold no tag either: text a table moves out of itself joins
 // the text before the table, whose range then spans the table's markup.
 function proseRanges(
@@ -176,7 +177,7 @@ function proseRanges(
 ): Array<readonly [number, number]> {
   const ranges: Array<readonly [number, number]> = [];
   function visit(current: DefaultTreeAdapterTypes.Node) {
-    if ("tagName" in current && current.tagName !== "script")
+    if ("tagName" in current && current.tagName !== "script" && current.tagName !== "style")
       for (const child of current.childNodes.filter(
         (child): child is DefaultTreeAdapterTypes.TextNode => child.nodeName === "#text",
       ))
@@ -791,6 +792,8 @@ function inspect(
             issues,
           );
     for (const match of html.matchAll(CSS_URL)) {
+      // Lesson text such as "Copy the URL(s)" loads nothing.
+      if (within(prose, match.index ?? 0) && !match[0].includes("<")) continue;
       const value = normalizeAssetUrl(match[1] ?? match[2] ?? match[3] ?? "");
       // An SVG reference such as fill="url(#gradient)" or
       // marker-end="url(#arrow)" names an element in the document itself.
