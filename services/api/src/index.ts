@@ -147,7 +147,10 @@ export function injectPublicHtml(source: string, slug: string): string {
   // The click path, unlike closest(), reaches a link inside an open shadow root.
   // Setting the hash the address already names does nothing, so scroll to
   // the target as a browser would: the element, else the top for "#top".
-  const fragmentLinks = `<script>addEventListener("click",e=>{const a=e.composedPath().find(n=>n instanceof Element&&n.matches("a[*|href],area[href]")),h=a?(a.getAttribute("href")??a.getAttributeNS("http://www.w3.org/1999/xlink","href")??"").trim():"";if(h[0]!=="#"||e.defaultPrevented)return;e.preventDefault();const f=h.slice(1),o=location.hash;location.hash=f;if(location.hash!==o)return;let t=document.getElementById(f);try{t??=document.getElementById(decodeURIComponent(f))}catch{}t?t.scrollIntoView():/^(top)?$/i.test(f)&&scrollTo(0,0)})</script>`;
+  // A handler such as a dialog's can stop the click before it reaches the
+  // window, so a listener added last on each node of the path decides once
+  // the click stops or reaches the window, after the tapplet could cancel it.
+  const fragmentLinks = `<script>addEventListener("click",e=>{const p=e.composedPath(),a=p.find(n=>n instanceof Element&&n.matches("a[*|href],area[href]")),h=a?(a.getAttribute("href")??a.getAttributeNS("http://www.w3.org/1999/xlink","href")??"").trim():"";if(h[0]!=="#")return;const r=()=>p.forEach(n=>n.removeEventListener("click",k)),k=v=>{if(v!==e||!e.cancelBubble&&v.currentTarget!==window)return;r();if(e.defaultPrevented)return;e.preventDefault();const f=h.slice(1),o=location.hash;location.hash=f;if(location.hash!==o)return;let t=document.getElementById(f);try{t??=document.getElementById(decodeURIComponent(f))}catch{}t?t.scrollIntoView():/^(top)?$/i.test(f)&&scrollTo(0,0)};p.forEach(n=>n.addEventListener("click",k));setTimeout(r)},true)</script>`;
   const activity = `${source.slice(0, headEnd)}<base href="/${slug}/"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'">${fragmentLinks}${source.slice(headEnd)}`;
   // An opaque top-level sandbox can still navigate itself. Keep untrusted HTML
   // in srcdoc: the parent's frame-src 'none' blocks its document navigations,
