@@ -441,7 +441,9 @@ export function createStudioApp(d: Deps) {
       }),
     );
   }
-  async function assets(html: string, o: string, sourceOwner?: string) {
+  // The images html uses that this device may use, and whether a script string
+  // names a stored image it may not use, which is left unrecorded.
+  async function assetUse(html: string, o: string, sourceOwner?: string) {
     const { markup, strings } = assetReferences(html);
     await validateAssetReferences(markup, o, sourceOwner);
     // A script string such as "assets/images" need not name an image: record
@@ -450,17 +452,27 @@ export function createStudioApp(d: Deps) {
     const usable = await Promise.all(
       strings.map(async (x) => {
         const record = d.assets ? await assetRecord(x) : null;
-        return record && (await mayUseAsset(record, x, o, sourceOwner))
-          ? [x]
-          : [];
+        return record
+          ? { id: x, usable: await mayUseAsset(record, x, o, sourceOwner) }
+          : null;
       }),
     );
-    return [...markup, ...usable.flat()];
+    return {
+      ids: [
+        ...markup,
+        ...usable.flatMap((x) => (x?.usable ? [x.id] : [])),
+      ],
+      foreign: usable.some((x) => x && !x.usable),
+    };
   }
+  async function assets(html: string, o: string, sourceOwner?: string) {
+    return (await assetUse(html, o, sourceOwner)).ids;
+  }
+  // A model may copy an exemplar's images, including those its script keeps in
+  // strings, which this device could neither save nor show.
   async function usableAssets(html: string, o: string): Promise<boolean> {
     try {
-      await assets(html, o);
-      return true;
+      return !(await assetUse(html, o)).foreign;
     } catch (error) {
       if (error instanceof HttpError) return false;
       throw error;

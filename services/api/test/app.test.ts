@@ -842,10 +842,14 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.revisions.size).toBe(1);
   });
 
-  it("does not offer exemplars whose images this device cannot use", async () => {
+  it.each([
+    '<img src="assets/foreign-image" alt="A fraction wall">',
+    // A script that keeps the image in a string, which the source recorded.
+    '<img id="wall" alt="A fraction wall"><script>const walls = ["assets/foreign-image"]; document.getElementById("wall").setAttribute("src", walls[0]);</script>',
+  ])("does not offer exemplars whose images this device cannot use: %s", async (body) => {
     const html = (body: string) =>
       `<!doctype html><html lang="en"><head><title>Fractions</title></head><body>${body}</body></html>`;
-    const foreign = html('<img src="assets/foreign-image" alt="A fraction wall">');
+    const foreign = html(body);
     const sourceHash = "foreign-source";
     await sources.putSource(sourceHash, foreign);
     const timestamp = "2026-08-01T00:00:00Z";
