@@ -186,15 +186,22 @@ private struct ImageManagementView: View {
         if let error { Text(error).foregroundStyle(TappletTheme.danger) }
         Text("Images are prepared and checked on this iPad. AI review warnings do not block uploads; check flagged images before sharing.")
             .font(.footnote).foregroundStyle(.secondary)
-        .onChange(of: photo) { _, item in Task { pendingData = try? await item?.loadTransferable(type: Data.self) } }
+        .onChange(of: photo) { _, item in
+            guard let item else { return }
+            Task {
+                let data = try? await item.loadTransferable(type: Data.self)
+                // A slow photo load must not replace an image chosen after it.
+                if photo == item { pendingData = data }
+            }
+        }
         .fileImporter(isPresented: $importsFile, allowedContentTypes: [.image]) { result in
-            do { let url = try result.get(); guard url.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }; defer { url.stopAccessingSecurityScopedResource() }; pendingData = try Data(contentsOf: url) }
+            do { let url = try result.get(); guard url.startAccessingSecurityScopedResource() else { throw CocoaError(.fileReadNoPermission) }; defer { url.stopAccessingSecurityScopedResource() }; pendingData = try Data(contentsOf: url); photo = nil }
             catch { self.error = error.localizedDescription }
         }
         .sheet(isPresented: $showsCamera) {
             CameraImagePicker { data in
                 showsCamera = false
-                if let data { pendingData = data }
+                if let data { pendingData = data; photo = nil }
             }
         }
     }
