@@ -810,6 +810,32 @@ test('choosing a conductor object keeps keyboard focus on that object', async ()
   dom.window.close();
 });
 
+test('answering a times-tables question keeps keyboard focus on the next choices', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/times-tables-lightning.html', 'utf8'));
+    const answer = () => page.$eval('#q', (q) => {
+      const [a, b] = q.textContent.match(/\d+/g).map(Number);
+      return String(a * b);
+    });
+    const right = await answer();
+    await page.locator('#choices button', { hasText: new RegExp(`^${right}$`) }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.querySelector('#choices button:disabled'));
+    assert.equal(await page.evaluate(() => document.activeElement?.closest('#choices') !== null && !document.activeElement.disabled), true);
+
+    await page.evaluate(() => document.activeElement.blur());
+    await page.$eval('#choices button', (button) => button.click());
+    await page.waitForFunction(() => !document.querySelector('#choices button:disabled'));
+    assert.equal(await page.evaluate(() => document.activeElement === document.body), true, 'a tap without focus does not move focus');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('every curated control has an accessible name', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
