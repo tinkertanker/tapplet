@@ -276,3 +276,19 @@ test("browser evaluator does not treat script-only focus targets as controls", a
   assert.equal(result.viewports[0]?.renderedQuality.passed, true);
   assert.equal(result.passed, true);
 });
+
+test("browser evaluator treats controls in an inert section as locked, like disabled ones", async () => {
+  const result = await evaluateHtmlInBrowser(
+    goodFixture.replace(
+      '<p id="feedback"',
+      '<section inert><h2>Next step</h2><button type="button">Locked one</button><button type="button">Locked two</button></section><p id="feedback"',
+    ),
+    { viewports: [{ name: "phone", width: 390, height: 844 }] },
+  );
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.controlCount, 1);
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(viewport.accessibilityBasic.focusFailureCount, 0);
+  assert.equal(result.passed, true);
+});
