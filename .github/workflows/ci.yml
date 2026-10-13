@@ -49,8 +49,9 @@ jobs:
                   const p = JSON.parse(fs.readFileSync(f, "utf8"));
                   const hooks = ["preinstall", "install", "postinstall", "prepublish", "preprepare", "prepare", "postprepare"];
                   const deps = [p.dependencies, p.devDependencies, p.optionalDependencies, p.peerDependencies].flatMap(d => Object.values(d || {}));
-                  // Conservatively bypass path-like specs, including bare tarballs.
-                  return hooks.some(h => p.scripts?.[h]) || deps.some(d => /^(file:|link:|workspace:)|[\/\\]|\.(tgz|tar|tar\.gz)$/i.test(d));
+                  // Cover npm-package-arg local forms (including slashless paths),
+                  // local Git and bare tarballs; extra path-like bypasses are safe.
+                  return hooks.some(h => p.scripts?.[h]) || deps.some(d => /^(\.|[a-z]:|file:|link:|workspace:|git\+file:)|[\/\\]|\.(tgz|tar|tar\.gz)$/i.test(d));
                 });
                 fs.appendFileSync(process.env.GITHUB_OUTPUT, `cacheable=${!requiresInstall}\n`);
                 const inputs = files.filter(f =>
