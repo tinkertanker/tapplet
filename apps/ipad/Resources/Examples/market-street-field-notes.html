@@ -44,7 +44,7 @@ document.getElementById('checkE').onclick=()=>{
 const txt=['Write down what you saw or measured','Say what it might mean. Use words like “may” or “suggests”','Say what this evidence cannot prove','Name the extra evidence you still need'];
 let order=[2,0,3,1];
 function render(){steps.innerHTML=order.map((n,i)=>`<div class="step"><span class="t" data-order-step>${i+1}. ${txt[n]}</span><button data-i="${i}" aria-label="Move up"${i?'':' disabled'}>↑</button></div>`).join('')}
-steps.onclick=e=>{const i=+e.target.dataset.i;if(Number.isNaN(i)||i===0)return;steps.querySelectorAll('[data-order-step]').forEach(clearMark);[order[i],order[i-1]]=[order[i-1],order[i]];sm.textContent='';render()};
+steps.onclick=e=>{const i=+e.target.dataset.i;if(Number.isNaN(i)||i===0)return;steps.querySelectorAll('[data-order-step]').forEach(clearMark);[order[i],order[i-1]]=[order[i-1],order[i]];sm.textContent='';render();steps.querySelector(`[data-i="${Math.max(1,i-1)}"]`).focus()};
 document.getElementById('checkS').onclick=()=>{
   const right=order.filter((x,i)=>x===i).length;
   steps.querySelectorAll('[data-order-step]').forEach((step,i)=>setMark(step,order[i]===i));
