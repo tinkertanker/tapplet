@@ -898,6 +898,42 @@ test('answering a times-tables question keeps keyboard focus on the next choices
   }
 });
 
+test('times-tables round changes keep keyboard focus on the next control', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/times-tables-lightning.html', 'utf8'));
+    const answer = () => page.$eval('#q', (q) => {
+      const [a, b] = q.textContent.match(/\d+/g).map(Number);
+      return String(a * b);
+    });
+    const focused = () => page.evaluate(() => (document.activeElement?.closest('#choices') ? 'choice' : document.activeElement?.id));
+    const right = await answer();
+    await page.locator('#choices button', { hasText: new RegExp(`^(?!${right}$)\\d+$`) }).first().focus();
+    await page.keyboard.press('Enter');
+    await page.evaluate('time = 0');
+    await page.waitForSelector('#end', { state: 'visible' });
+    assert.equal(await focused(), 'review', 'time running out mid-answer moves focus to Practise missed facts');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'choice', 'Practise missed facts moves focus to the choices');
+    await page.locator('#choices button', { hasText: new RegExp(`^${await answer()}$`) }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#again-play', { state: 'visible' });
+    assert.equal(await focused(), 'again-play', 'finishing the review moves focus to Play again');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'choice', 'Play again moves focus to the choices');
+    await page.evaluate('time = 1');
+    await page.waitForSelector('#end', { state: 'visible' });
+    assert.equal(await focused(), 'again', 'time running out between answers moves focus to Play again');
+    await page.keyboard.press('Enter');
+    assert.equal(await focused(), 'choice', 'Play again after time up moves focus to the choices');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('guessing a spelling letter keeps keyboard focus on the letter keys', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
