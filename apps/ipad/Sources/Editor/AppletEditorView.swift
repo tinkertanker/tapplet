@@ -164,6 +164,7 @@ private struct ImageManagementView: View {
                 Spacer()
                 Button("Remove", role: .destructive) {
                     guard store.refiningProjectIDs.insert(projectID).inserted else { return }
+                    store.refinementErrors[projectID] = nil
                     Task {
                         defer { store.refiningProjectIDs.remove(projectID) }
                         do { try await store.removeImage(assetID: assetID, projectID: projectID) }
@@ -201,6 +202,7 @@ private struct ImageManagementView: View {
     private func upload() {
         guard let pendingData, store.refiningProjectIDs.insert(projectID).inserted else { return }
         error = nil
+        store.refinementErrors[projectID] = nil
         Task {
             defer { store.refiningProjectIDs.remove(projectID) }
             do {
@@ -210,9 +212,10 @@ private struct ImageManagementView: View {
         }
     }
 
+    // Kept in the store, like a failed change, so it is still shown if the editor was reopened meanwhile.
     private func show(_ error: Error) {
         let presentation = store.present(error, during: .image)
-        self.error = presentation.requestsWorkshopAccess ? nil : presentation.message
+        if !presentation.requestsWorkshopAccess { store.refinementErrors[projectID] = presentation.message }
     }
 }
 
