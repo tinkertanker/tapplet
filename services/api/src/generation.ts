@@ -795,10 +795,14 @@ function inspect(
           message: "Unsupported CSS URL.",
         });
     }
+    // "import" is also an ordinary word in lesson text, as in "import rice
+    // from Thailand" before a <label for="from">; scripts are still checked.
     if (
       scripts.imports ||
       /@import\b/i.test(html) ||
-      /\b(?:import\b\s*(?:\(|[^;]*?from\s*)|require\s*\()["']/i.test(html)
+      [...html.matchAll(/\b(?:import\b(?=\s*(?:\(|[^;]*?from\s*)["'])|require(?=\s*\(["']))/gi)].some(
+        (match) => !within(prose, match.index ?? 0),
+      )
     )
       issues.push({
         kind: "policy",

@@ -52,7 +52,6 @@ export function validateHtmlArtifact(html, options = {}) {
 
   const forbidden = [
     [/<link\b[^>]*(?<![\w-])rel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
-    [/@import\b|\bimport\b\s*(?:\(|[^;]*?from\s*)["']|\brequire\s*\(["']/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
   ];
   forbidden.forEach(([pattern, code, message]) => {
     if (pattern.test(html)) add(code, message);
@@ -64,7 +63,13 @@ export function validateHtmlArtifact(html, options = {}) {
   if (/<(?:base|iframe|object|embed)\b/i.test(html)) add('external-resource', 'Embedded documents and base URLs are not allowed.');
   const scripts = scriptSources(document, html);
   const prose = proseRanges(document, html);
-  if (scripts.imports) add('package-import', 'Package and stylesheet imports are not allowed.');
+  // "import" is also an ordinary word in lesson text, as in "import rice
+  // from Thailand" before a <label for="from">; scripts are still checked.
+  if (
+    scripts.imports
+    || /@import\b/i.test(html)
+    || [...html.matchAll(/\b(?:import\b(?=\s*(?:\(|[^;]*?from\s*)["'])|require(?=\s*\(["']))/gi)].some((match) => !within(prose, match.index ?? 0))
+  ) add('package-import', 'Package and stylesheet imports are not allowed.');
   // "fetch (" and "import (" are also ordinary words in lesson text, as in
   // "Countries import (and export) rice", which calls nothing; scripts,
   // handlers and other markup are still checked.

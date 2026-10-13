@@ -111,6 +111,19 @@ describe("HTML generation contract", () => {
         validateHtmlOutput({ html: module.replace('document.body.dataset.ok="1"', script) }),
       ).toThrow(InvalidModelOutputError);
     }
+    const trade = html.replace(
+      "Hello",
+      '<p>A shop wants to import rice from Thailand.</p><label for="from">From</label><select id="from"></select>',
+    );
+    expect(validateHtmlOutput({ html: trade })).toEqual({ html: trade });
+    for (const markup of [
+      '<p>We import</p><script type="text/template">import x from "https://outside.invalid/x.js"</script>',
+      `<p>We import</p><button onclick="import('https://outside.invalid/x.js')">Go</button>`,
+      '<p>We import</p><script>const x = require("https://outside.invalid/x.js")</script>',
+    ])
+      expect(() => validateHtmlOutput({ html: html.replace("Hello", markup) })).toThrow(
+        InvalidModelOutputError,
+      );
   });
 
   it("accepts SVG references to elements in the document", () => {

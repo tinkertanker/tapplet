@@ -62,6 +62,9 @@ const snippets = [
   '<script type="module">export const a = 1; export { a as b };</script>',
   '<p>Countries import "rice" and {beans}; we require (care).</p>',
   "<p>Countries import (and export) rice.</p>",
+  '<p>A shop wants to import rice from Thailand.</p><label for="from">From</label><select id="from"></select>',
+  '<p>We import</p><script type="text/template">import x from "https://outside.invalid/x.js"</script>',
+  '<p>We import</p><script>const x = require("https://outside.invalid/x.js")</script>',
   // Lesson text calls nothing, but scripts, handlers and stored markup do.
   "<p>Fetch (get the instruction), decode, execute.</p><title>Import (n.)</title>",
   "<p>navigator.serviceWorker and new WebSocket(url)</p>",
