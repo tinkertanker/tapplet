@@ -62,6 +62,14 @@ const snippets = [
   '<script type="module">export const a = 1; export { a as b };</script>',
   '<p>Countries import "rice" and {beans}; we require (care).</p>',
   "<p>Countries import (and export) rice.</p>",
+  // Lesson text calls nothing, but scripts, handlers and stored markup do.
+  "<p>Fetch (get the instruction), decode, execute.</p><title>Import (n.)</title>",
+  "<p>navigator.serviceWorker and new WebSocket(url)</p>",
+  "<p>&lt;b onclick=\"fetch('x')\"&gt;</p>",
+  "<textarea><b onclick=\"fetch('x')\">Go</b></textarea>",
+  '<script type="text/template">fetch("https://outside.invalid/")</script>',
+  "<script>const step = \"Fetch (get the instruction)\";</script>",
+  "<button onclick=\"fetch('x')\">Go</button>",
   // Script variables are exempt only where parsing finds a declaration or a
   // script assignment, not anywhere a name starts a line or follows punctuation.
   '<script>\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src</script>',
@@ -95,6 +103,8 @@ const snippets = [
   // srcset and poster anywhere outside script variables, such as stored markup.
   `<div data-markup='<img srcset="https://outside.invalid/x.png 2x">'></div>`,
   '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',
+  "<p>1 poster = $3</p><textarea>Poster=2</textarea>",
+  '<textarea>&lt;video poster="https://outside.invalid/x.png"&gt;</textarea>',
   '<script type="text/template"><img srcset="assets/image-1 1x"></script>',
   `<video onclick="0;poster='https://outside.invalid/x.png'"></video>`,
   // formaction is checked like action.

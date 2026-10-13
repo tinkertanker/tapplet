@@ -166,6 +166,24 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
   return "content" in node && hasMultiSourceAttribute(node.content);
 }
 
+// Source ranges of text in elements other than scripts that holds no markup,
+// such as a textarea's, which a script could insert as HTML; it runs no code.
+function proseRanges(node: DefaultTreeAdapterTypes.Node): Array<readonly [number, number]> {
+  const ranges: Array<readonly [number, number]> = [];
+  function visit(current: DefaultTreeAdapterTypes.Node) {
+    if ("tagName" in current && current.tagName !== "script")
+      for (const child of current.childNodes.filter(
+        (child): child is DefaultTreeAdapterTypes.TextNode => child.nodeName === "#text",
+      ))
+        if (!child.value.includes("<") && child.sourceCodeLocation)
+          ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
+    if ("childNodes" in current) current.childNodes.forEach(visit);
+    if ("content" in current) visit(current.content);
+  }
+  visit(node);
+  return ranges;
+}
+
 // Source offsets of the src, href, action and formaction names in real attributes,
 // including prefixed names such as xlink:href.
 function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
@@ -711,15 +729,18 @@ function inspect(
         kind: "policy",
         message: "Embedded documents and base URLs are not allowed.",
       });
-    const scripts = scriptSources(document, html);
+    const scripts = scriptSources(document, html),
+      prose = proseRanges(document);
     // Check real attributes, markup in script strings, stored markup such as
     // data attributes and property writes; a script variable named poster (for
-    // a poster-design activity) loads nothing.
+    // a poster-design activity) and lesson text such as "1 poster = $3" load
+    // nothing.
     if (
       hasMultiSourceAttribute(document) ||
       scripts.strings.some(({ value }) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value)) ||
       [...html.matchAll(/(?<![\w-])(?:srcset|poster)\s*=(?![=>])/gi)].some(
-        (match) => !scripts.declarations.has(match.index ?? 0),
+        (match) =>
+          !scripts.declarations.has(match.index ?? 0) && !within(prose, match.index ?? 0),
       ) ||
       /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
     )
@@ -772,9 +793,13 @@ function inspect(
         kind: "policy",
         message: "External packages and imports are not allowed.",
       });
+    // "fetch (" and "import (" are also ordinary words in lesson text, as in
+    // "Countries import (and export) rice", which calls nothing; scripts,
+    // handlers and other markup are still checked.
     if (
-      /\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|import\s*\(|serviceWorker\b)/i.test(
-        html,
+      /\b(?:XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i.test(html) ||
+      [...html.matchAll(/\b(?:fetch|import)\s*\(/gi)].some(
+        (match) => !within(prose, match.index ?? 0),
       )
     )
       issues.push({
