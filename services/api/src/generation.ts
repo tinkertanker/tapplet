@@ -166,6 +166,24 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
   return "content" in node && hasMultiSourceAttribute(node.content);
 }
 
+// Source ranges of text in elements other than scripts that holds no markup,
+// such as a textarea's, which a script could insert as HTML; it runs no code.
+function proseRanges(node: DefaultTreeAdapterTypes.Node): Array<readonly [number, number]> {
+  const ranges: Array<readonly [number, number]> = [];
+  function visit(current: DefaultTreeAdapterTypes.Node) {
+    if ("tagName" in current && current.tagName !== "script")
+      for (const child of current.childNodes.filter(
+        (child): child is DefaultTreeAdapterTypes.TextNode => child.nodeName === "#text",
+      ))
+        if (!child.value.includes("<") && child.sourceCodeLocation)
+          ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
+    if ("childNodes" in current) current.childNodes.forEach(visit);
+    if ("content" in current) visit(current.content);
+  }
+  visit(node);
+  return ranges;
+}
+
 // Source offsets of the src, href, action and formaction names in real attributes,
 // including prefixed names such as xlink:href.
 function urlAttributeOffsets(node: DefaultTreeAdapterTypes.Node): Set<number> {
@@ -772,9 +790,14 @@ function inspect(
         kind: "policy",
         message: "External packages and imports are not allowed.",
       });
+    // "fetch (" and "import (" are also ordinary words in lesson text, as in
+    // "Countries import (and export) rice", which calls nothing; scripts,
+    // handlers and other markup are still checked.
+    const prose = proseRanges(document);
     if (
-      /\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|import\s*\(|serviceWorker\b)/i.test(
-        html,
+      /\b(?:XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i.test(html) ||
+      [...html.matchAll(/\b(?:fetch|import)\s*\(/gi)].some(
+        (match) => !within(prose, match.index ?? 0),
       )
     )
       issues.push({

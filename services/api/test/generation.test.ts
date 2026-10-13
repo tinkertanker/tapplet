@@ -36,6 +36,24 @@ describe("HTML generation contract", () => {
     expect(() => validateHtmlOutput({ html: candidate })).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts lesson text naming fetch or import while rejecting network calls", () => {
+    const prose = html.replace(
+      "Hello",
+      "<p>The CPU repeats fetch (get the instruction), decode and execute.</p><li>Countries import (and export) rice.</li><textarea>Fetch (F)</textarea>",
+    );
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const markup of [
+      "<script>fetch ('https://outside.invalid/')</script>",
+      `<button onclick="fetch('https://outside.invalid/')">Go</button>`,
+      '<script type="text/template">fetch("https://outside.invalid/")</script>',
+      `<textarea><b onclick="fetch('https://outside.invalid/')">Go</b></textarea>`,
+      `<p>&lt;b onclick="fetch('https://outside.invalid/')"&gt;</p>`,
+    ])
+      expect(() => validateHtmlOutput({ html: html.replace("Hello", markup) })).toThrow(
+        "Invalid generated HTML",
+      );
+  });
+
   it("accepts the word caches in content while rejecting storage APIs", () => {
     const prose = html.replace("Hello", "<p>Squirrels bury acorns in caches. Caches help CPUs.</p>");
     expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });

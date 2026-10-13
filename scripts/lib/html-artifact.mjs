@@ -53,7 +53,6 @@ export function validateHtmlArtifact(html, options = {}) {
   const forbidden = [
     [/<link\b[^>]*(?<![\w-])rel=["']?(?:stylesheet|modulepreload|preload)/i, 'external-resource', 'External styles and preload links are not allowed.'],
     [/@import\b|\bimport\b\s*(?:\(|[^;]*?from\s*)["']|\brequire\s*\(["']/i, 'package-import', 'Package and stylesheet imports are not allowed.'],
-    [/\b(?:fetch\s*\(|XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|import\s*\(|serviceWorker\b)/i, 'network', 'Network APIs are not allowed.'],
   ];
   forbidden.forEach(([pattern, code, message]) => {
     if (pattern.test(html)) add(code, message);
@@ -65,6 +64,14 @@ export function validateHtmlArtifact(html, options = {}) {
   if (/<(?:base|iframe|object|embed)\b/i.test(html)) add('external-resource', 'Embedded documents and base URLs are not allowed.');
   const scripts = scriptSources(document, html);
   if (scripts.imports) add('package-import', 'Package and stylesheet imports are not allowed.');
+  // "fetch (" and "import (" are also ordinary words in lesson text, as in
+  // "Countries import (and export) rice", which calls nothing; scripts,
+  // handlers and other markup are still checked.
+  const prose = proseRanges(document);
+  if (
+    /\b(?:XMLHttpRequest\b|WebSocket\s*\(|EventSource\s*\(|sendBeacon\s*\(|serviceWorker\b)/i.test(html)
+    || [...html.matchAll(/\b(?:fetch|import)\s*\(/gi)].some((match) => !within(prose, match.index ?? 0))
+  ) add('network', 'Network APIs are not allowed.');
   // Check real attributes, markup in script strings, stored markup such as
   // data attributes and property writes; a script variable named poster (for
   // a poster-design activity) loads nothing.
@@ -147,6 +154,25 @@ export function validateHtmlArtifact(html, options = {}) {
 
 function attributeValue(match) {
   return match[2] ?? match[3] ?? match[4] ?? '';
+}
+
+// Source ranges of text in elements other than scripts that holds no markup,
+// such as a textarea's, which a script could insert as HTML; it runs no code.
+function proseRanges(root) {
+  const ranges = [];
+  function visit(node) {
+    if ('tagName' in node && node.tagName !== 'script') {
+      for (const child of node.childNodes) {
+        if (child.nodeName === '#text' && !child.value.includes('<') && child.sourceCodeLocation) {
+          ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
+        }
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(root);
+  return ranges;
 }
 
 // Source offsets of the src, href and action names in real attributes,

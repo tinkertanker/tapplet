@@ -62,6 +62,14 @@ const snippets = [
   '<script type="module">export const a = 1; export { a as b };</script>',
   '<p>Countries import "rice" and {beans}; we require (care).</p>',
   "<p>Countries import (and export) rice.</p>",
+  // Lesson text calls nothing, but scripts, handlers and stored markup do.
+  "<p>Fetch (get the instruction), decode, execute.</p><title>Import (n.)</title>",
+  "<p>navigator.serviceWorker and new WebSocket(url)</p>",
+  "<p>&lt;b onclick=\"fetch('x')\"&gt;</p>",
+  "<textarea><b onclick=\"fetch('x')\">Go</b></textarea>",
+  '<script type="text/template">fetch("https://outside.invalid/")</script>',
+  "<script>const step = \"Fetch (get the instruction)\";</script>",
+  "<button onclick=\"fetch('x')\">Go</button>",
   // Script variables are exempt only where parsing finds a declaration or a
   // script assignment, not anywhere a name starts a line or follows punctuation.
   '<script>\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src</script>',
