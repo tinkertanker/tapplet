@@ -683,7 +683,8 @@ async function exerciseGenericInteractions(
       return state / 4294967296;
     };
   })()`);
-  const controlSelector = ":is(button,input,select,textarea,[role='button']):not(:disabled,[disabled],[aria-disabled='true'],[inert],[inert] *)";
+  // Read-only fields show a result; they cannot be typed into.
+  const controlSelector = ":is(button,input,select,textarea,[role='button']):not(:disabled,[disabled],[aria-disabled='true'],[inert],[inert] *,:is(input:not([type=checkbox],[type=radio],[type=button],[type=submit],[type=reset]),textarea)[readonly])";
   const countPage = await createEvaluationPage(context, runtime);
   let exercisedControlCount: number;
   try {

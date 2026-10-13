@@ -322,3 +322,14 @@ test("generic interactions skip native buttons marked aria-disabled", async () =
   assert.equal(viewport.behavior.interactionErrorCount, 0);
   assert.equal(result.passed, true);
 });
+
+test("generic interactions do not type into read-only result fields", async () => {
+  const fixture = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Read-only fixture</title><style>body{font:16px system-ui}input,textarea{width:200px;min-height:48px}</style></head><body><main><h1>Read-only fixture</h1><label for="width">Width</label><input id="width" type="number" value="3"><label for="area">Area</label><input id="area" readonly value="9"><label for="note">Working</label><textarea id="note" readonly>3 × 3</textarea></main><script>width.oninput=()=>{area.value=String(width.value*3)}</script></body></html>`;
+  const result = await evaluateHtmlInBrowser(fixture, {
+    viewports: [{ name: "phone", width: 390, height: 844 }],
+  });
+  const viewport = result.viewports[0]!;
+  assert.equal(viewport.behavior.exercisedControlCount, 1);
+  assert.equal(viewport.behavior.interactionErrorCount, 0);
+  assert.equal(viewport.behavior.passed, true);
+});
