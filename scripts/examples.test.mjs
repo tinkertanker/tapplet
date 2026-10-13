@@ -526,6 +526,29 @@ test('plant-cell matches are listed as structure beside job', async () => {
   }
 });
 
+test('plant-cell wall and membrane markers sit on their own layers at every width', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const width of [390, 820, 1024]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(await readFile('apps/ipad/Resources/Examples/plant-cell-hotspots.html', 'utf8'));
+      const [wall, membrane] = await page.evaluate(() => {
+        const cell = document.querySelector('.cell').getBoundingClientRect();
+        return [0, 1].map((index) => {
+          const spot = document.querySelector(`.hot[data-i="${index}"]`).getBoundingClientRect();
+          return spot.left + spot.width / 2 - cell.left;
+        });
+      });
+      assert.ok(wall >= 0 && wall <= 18, `cell wall marker centre ${wall}px is on the 18px wall at ${width}px`);
+      assert.ok(membrane > wall && membrane <= 25, `membrane marker centre ${membrane}px is just inside the wall at ${width}px`);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () => {
   const browser = await chromium.launch({ headless: true });
   try {
