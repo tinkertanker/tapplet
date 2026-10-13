@@ -365,7 +365,8 @@ function scriptSources(
           property =
             left.type === "MemberExpression" &&
             !left.computed &&
-            left.property.type === "Identifier"
+            left.property.type === "Identifier" &&
+            !datasetMember(left)
               ? left.property.name
               : handler && left.type === "Identifier"
                 ? left.name
@@ -414,6 +415,13 @@ function scriptSources(
     }
     visitJavaScript(program, (current) => {
       if (current.type === "WithStatement") usesWith = true;
+      // el.dataset.action = "check" sets a data-action attribute.
+      if (
+        current.type === "AssignmentExpression" &&
+        current.left.type === "MemberExpression" &&
+        datasetMember(current.left)
+      )
+        found.push(base + current.left.property.start);
       if (current.type === "VariableDeclarator") bind(current.id);
       else if (current.type === "AssignmentExpression" && !handler) bind(current.left);
       else if (
@@ -499,6 +507,19 @@ function absoluteStart(node: AnyNode): string | undefined {
   return /^[\s\0-\x1f]*(?:(?!data:)[a-z][a-z\d+.-]*:|[\\/]{2})/i.test(start.replace(/[\t\n\r]/g, ""))
     ? start
     : undefined;
+}
+
+// A property such as el.dataset.src names a data-* attribute, which loads
+// nothing.
+function datasetMember(node: AnyNode): boolean {
+  return (
+    node.type === "MemberExpression" &&
+    !node.computed &&
+    node.object.type === "MemberExpression" &&
+    !node.object.computed &&
+    node.object.property.type === "Identifier" &&
+    node.object.property.name === "dataset"
+  );
 }
 
 function literalText(node: AnyNode): string | undefined {

@@ -115,6 +115,22 @@ describe("HTML generation contract", () => {
     ).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts data attributes that scripts set through dataset", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'const button = document.createElement("button"); button.dataset.action = "check"; button.dataset.src = `pool-${1}`; button.dataset.href = "https://outside.invalid/"',
+    ).replace("Hello", `<button onclick="this.dataset.action = 'reset'">Reset</button>`);
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<script>document.images[0].src = "https://outside.invalid/x.png"; document.body.dataset.src = "x";</script>',
+      "<script>document.images[0].dataset.src = 1; document.images[0].src = `https://outside.invalid/${1}.png`;</script>",
+      '<script>document.forms[0].dataset["action"] = 1; document.forms[0].action = "https://outside.invalid/";</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts a script variable named action", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
