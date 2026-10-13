@@ -5,13 +5,15 @@ import UniformTypeIdentifiers
 
 struct AppletEditorView: View {
     let store: TappletStore; let projectID: String
-    @State private var prompt = ""; @State private var working = false; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
+    @State private var prompt = ""; @State private var showStudent = false; @State private var showShare = false; @State private var operationError: String?
     @State private var previewLoadState: PreviewLoadState = .loading
     @State private var previewError: String?
     @State private var isMovingHead = false
     @State private var shareAccessError: TappletAPIError?
     @State private var sharePresentationID = UUID()
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } ?? store.examples.first { $0.id == projectID } }
+    private var working: Bool { store.refiningProjectIDs.contains(projectID) }
+    private var refinementError: String? { store.refinementErrors[projectID] }
     var body: some View { if let project {
         let presentationID = sharePresentationID
         VStack(spacing: 0) {
@@ -32,7 +34,7 @@ struct AppletEditorView: View {
                 showShare = false
             }
         }
-        .alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || previewError != nil }, set: { if !$0 { operationError = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
+        .alert("Tapplet Studio could not complete this action", isPresented: Binding(get: { operationError != nil || refinementError != nil || previewError != nil }, set: { if !$0 { operationError = nil; store.refinementErrors[projectID] = nil; previewError = nil } })) { Button("OK") {} } message: { Text(operationError ?? refinementError ?? previewError ?? "") } } else { ContentUnavailableView { Label { Text("This tapplet is unavailable") } icon: { PressedAppletMark(size: 72, rotation: .degrees(21)) } } } }
     private func editor(_ project: ArtifactProject) -> some View {
         Form {
             Section("Ask Tapplet Studio") {
@@ -72,15 +74,17 @@ struct AppletEditorView: View {
                 }
                 Button(working ? "Updating…" : "Make this change") {
                     let submittedPrompt = prompt
-                    working = true
+                    // The editor can close before the change finishes; the store keeps its state.
+                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
+                    store.refinementErrors[projectID] = nil
                     Task {
-                        defer { working = false }
+                        defer { store.refiningProjectIDs.remove(projectID) }
                         do {
-                            let warnings = try await store.refine(submittedPrompt, projectID: project.id)
+                            let warnings = try await store.refine(submittedPrompt, projectID: projectID)
                             if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
                         } catch {
                             let presentation = store.present(error, during: .refinement)
-                            operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
+                            if !presentation.requestsWorkshopAccess { store.refinementErrors[projectID] = presentation.message }
                         }
                     }
                 }

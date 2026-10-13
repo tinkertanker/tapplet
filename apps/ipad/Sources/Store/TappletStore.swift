@@ -32,6 +32,9 @@ private enum RestoreFetch: Sendable {
     // Kept here so a failure is still shown after leaving Make mid-generation.
     var guidedMakeCreationError: TappletErrorPresentation?
     var isCreatingGuidedDraft = false
+    // Kept here so a reopened editor shows a change still being made, and its failure.
+    var refiningProjectIDs: Set<String> = []
+    var refinementErrors: [String: String] = [:]
     private let api: any TappletAPI
     private let projectDirectory: URL
     private let isUITesting: Bool

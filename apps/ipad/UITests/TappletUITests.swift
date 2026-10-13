@@ -344,6 +344,31 @@ final class TappletUITests: XCTestCase {
     }
 
     @MainActor
+    func testReopenedEditorShowsAChangeStillBeingMade() {
+        let app = launchApp(extraArguments: ["--ui-testing-held-refinement"])
+        selectSidebarItem(label: "Make", in: app)
+        XCTAssertTrue(app.buttons["starter-plan-times-tables-lightning"].waitUntilExists(timeout: 5))
+        app.buttons["starter-plan-times-tables-lightning"].tap()
+        app.buttons["Make my tapplet"].tap()
+        XCTAssertTrue(app.buttons["Share"].waitUntilExists(timeout: 8))
+        app.buttons["refine-suggestion-timer"].tap()
+        app.buttons["Make this change"].tap()
+        XCTAssertTrue(app.buttons["complete-test-refinement"].waitUntilExists(timeout: 5))
+
+        app.buttons["Back"].firstMatch.tap()
+        selectSidebarItem(label: "My Tapplets", in: app)
+        let open = app.buttons["Open"]
+        XCTAssertTrue(open.waitUntilExists(timeout: 5))
+        open.tap()
+
+        XCTAssertTrue(app.buttons["Updating…"].waitUntilExists(timeout: 5), "A reopened editor must show the change still running")
+        XCTAssertFalse(app.buttons["Make this change"].exists)
+        app.buttons["complete-test-refinement"].tap()
+        XCTAssertTrue(app.staticTexts["UI test refinement complete"].waitUntilExists(timeout: 8))
+        XCTAssertTrue(app.buttons["Make this change"].waitUntilExists(timeout: 5))
+    }
+
+    @MainActor
     func testImagesListIncludesCurrentReferencesWithoutCachedFiles() {
         let app = launchApp(extraArguments: ["--ui-testing-history-images", "--ui-testing-uncached-current-images"])
         selectSidebarItem(label: "Make", in: app)
