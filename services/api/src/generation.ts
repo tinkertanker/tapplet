@@ -106,10 +106,17 @@ function normalizeAssetUrl(value: string): string {
 export function referencedAssetIds(html: string): string[] {
   const ids: string[] = [];
   const document = parseHtml(html, { sourceCodeLocationInfo: true }),
-    values = [...urlValueRanges(document), ...scriptSources(document, html).urlValues];
+    scripts = scriptSources(document, html),
+    values = [...urlValueRanges(document), ...scripts.urlValues];
   for (const match of html.matchAll(URL_ATTRIBUTE)) {
     if (within(values, match.index ?? 0)) continue;
     const asset = MANAGED_ASSET.exec(normalizeAssetUrl(attributeValue(match)));
+    if (asset?.[1]) ids.push(asset[1]);
+  }
+  // A script can also show an image with setAttribute("src", "assets/<id>"),
+  // which the published tapplet serves only when it is recorded here.
+  for (const { value } of scripts.attributeWrites) {
+    const asset = MANAGED_ASSET.exec(normalizeAssetUrl(value));
     if (asset?.[1]) ids.push(asset[1]);
   }
   for (const match of html.matchAll(CSS_URL)) {

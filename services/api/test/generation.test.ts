@@ -376,6 +376,18 @@ describe("HTML generation contract", () => {
     expect(referencedAssetIds(html)).toEqual(["asset-one"]);
   });
 
+  it("extracts managed assets that scripts set as literal attributes", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'document.images[0].setAttribute("src", "assets/swapped-image")',
+    ).replace(
+      "Hello",
+      `<svg><image id="i"/></svg><button onclick="document.getElementById('i').setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', ' assets/svg-image ')">Go</button>`,
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(referencedAssetIds(candidate).sort()).toEqual(["asset-one", "svg-image", "swapped-image"]);
+  });
+
   it("frames cross-user exemplars as untrusted data", () => {
     const exemplar = {
       revisionId: "r9",
