@@ -240,6 +240,9 @@ test('spelling misses teach the target pattern', async () => {
   const msg = dom.window.document.getElementById('msg').textContent;
   assert.match(msg, /silent/i);
   assert.doesNotMatch(msg, /^No Z in this word\. A ray is added\.$/);
+  // A y guess is for the long i sound that opens "island", not a vowel the silent s replaces.
+  dom.window.document.querySelector('[data-ch="y"]').click();
+  assert.match(dom.window.document.getElementById('msg').textContent, /^No y\. The long i sound at the start is spelled with just i/);
   dom.window.close();
 });
 
@@ -523,6 +526,75 @@ test('plant-cell matches are listed as structure beside job', async () => {
   }
 });
 
+test('shadow lamp beam starts at the lamp wherever the lamp is moved', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(await readFile('apps/ipad/Resources/Examples/where-the-shadow-falls.html', 'utf8'));
+    const offset = () => page.evaluate(() => {
+      const bulb = document.querySelector('#lamp circle').getBoundingClientRect();
+      const beam = document.getElementById('beam').getBoundingClientRect();
+      return Math.abs(beam.left - (bulb.left + bulb.width / 2));
+    });
+    assert.ok(await offset() < 1, 'starting beam apex is at the lamp');
+    await page.focus('#lamp');
+    for (let press = 0; press < 6; press += 1) await page.keyboard.press('ArrowRight');
+    assert.ok(await offset() < 1, 'moved beam apex follows the lamp');
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('shadow rays never pass through the opaque object', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/where-the-shadow-falls.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document, KeyboardEvent } = dom.window;
+  document.querySelector('[data-value="right"]').click();
+  document.querySelector('[data-value="long"]').click();
+  document.getElementById('check').click();
+  const lamp = document.getElementById('lamp');
+  const press = (key) => lamp.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  for (let step = 0; step < 6; step += 1) press('ArrowLeft');
+  for (let step = 0; step < 40; step += 1) {
+    for (const id of ['ray1', 'ray2']) {
+      const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((name) => +document.getElementById(id).getAttribute(name));
+      for (let t = 0; t <= 1; t += 0.01) {
+        const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+        assert.ok(!(x > 336 && x < 394 && y > 146 && y < 249), `${id} enters the object at lamp step ${step}: (${x}, ${y})`);
+      }
+    }
+    press('ArrowRight');
+  }
+  dom.window.close();
+});
+
+test('shadow readout names the side the shadow actually falls on', async () => {
+  const html = await readFile(
+    path.resolve('apps/ipad/Resources/Examples/where-the-shadow-falls.html'),
+    'utf8',
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document, KeyboardEvent } = dom.window;
+  document.querySelector('[data-value="right"]').click();
+  document.querySelector('[data-value="long"]').click();
+  document.getElementById('check').click();
+  const lamp = document.getElementById('lamp');
+  const moveRight = (presses) => {
+    for (let press = 0; press < presses; press += 1) lamp.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    return document.getElementById('direction').textContent;
+  };
+  // The lamp starts at x 180; the object spans x 335 to 395.
+  assert.equal(moveRight(10), 'right', 'lamp at 330, left of the object');
+  assert.equal(moveRight(1), 'under', 'lamp at 345, above the object');
+  assert.equal(moveRight(4), 'left', 'lamp at 405, right of the object');
+  dom.window.close();
+});
+
 test('ordering feedback marks each step, clears on moves, and counts correct positions', async () => {
   const cases = [
     { file: 'cool-box-fair-test-lab.html', list: '#steps', check: '#checkSteps', message: '#sm', move: 1, marks: ['✓', '✗', '✗', '✗', '✗'], count: '1 of 5' },
@@ -647,6 +719,29 @@ test('every curated control has an accessible name', async () => {
     }
   } finally {
     await browser.close();
+  }
+});
+
+test('cutting part of the reason is called out as cutting a key fact', async () => {
+  const html = await readFile(path.resolve('apps/ipad/Resources/Examples/cut-extra-words.html'), 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://artifact.invalid/' });
+  const { document } = dom.window;
+  [...document.querySelectorAll('#editor .token')].find((token) => token.textContent === 'it keeps tables clear').click();
+  document.getElementById('check').click();
+  assert.match(document.getElementById('feedback').textContent, /^A key fact was cut\..*\bwhy the rule helps\.$/);
+  dom.window.close();
+});
+
+test('no curated control sits inside an image, whose children assistive tech hides', async () => {
+  const directory = path.resolve('apps/ipad/Resources/Examples');
+  const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
+  for (const file of files) {
+    const dom = new JSDOM(await readFile(path.join(directory, file), 'utf8'));
+    const hidden = [...dom.window.document.querySelectorAll(
+      '[role="img"] :is(button, input, select, textarea, a[href], [tabindex], [role="button"])',
+    )].map((control) => control.outerHTML.slice(0, 60));
+    assert.deepEqual(hidden, [], file);
+    dom.window.close();
   }
 });
 
