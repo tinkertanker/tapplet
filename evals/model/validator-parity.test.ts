@@ -116,6 +116,8 @@ const snippets = [
   "<p>Copy the URL(s) of your sources.</p><textarea>url(link)</textarea>",
   `<p>url("</p><style>body{background:url(https://outside.invalid/x.png)}</style><p>")</p>`,
   "<style>.a::after{content:'url(s)'}</style>",
+  "<select><style>body{background:url(https://outside.invalid/x.png)}</style><option>URL(s)</option></select>",
+  "<select><option>Action = Reaction</option></select><textarea>\nurl(link)</textarea>",
   `<p>Pen = $1. Poster = $3.</p><video onclick="this. poster = 'https://outside.invalid/x.png'"></video>`,
   '<textarea>&lt;video poster="https://outside.invalid/x.png"&gt;</textarea>',
   '<script type="text/template"><img srcset="assets/image-1 1x"></script>',

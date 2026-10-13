@@ -170,27 +170,38 @@ function hasMultiSourceAttribute(node: DefaultTreeAdapterTypes.Node): boolean {
 // no markup, such as a textarea's, which a script could insert as HTML; it runs
 // no code and loads nothing.
 // The source must hold no tag either: text a table moves out of itself joins
-// the text before the table, whose range then spans the table's markup.
+// the text before the table, whose range then spans the table's markup. In a
+// select, nor may the source since the tag or node before the text: the parser
+// drops tags there, such as <style>, that browsers keep, leaving their CSS as
+// text.
 function proseRanges(
   node: DefaultTreeAdapterTypes.Node,
   html: string,
 ): Array<readonly [number, number]> {
   const ranges: Array<readonly [number, number]> = [];
-  function visit(current: DefaultTreeAdapterTypes.Node) {
+  function visit(current: DefaultTreeAdapterTypes.Node, selected = false) {
+    const inSelect = selected || ("tagName" in current && current.tagName === "select");
     if ("tagName" in current && current.tagName !== "script" && current.tagName !== "style")
-      for (const child of current.childNodes.filter(
-        (child): child is DefaultTreeAdapterTypes.TextNode => child.nodeName === "#text",
-      ))
+      current.childNodes.forEach((child, index) => {
+        const location = child.sourceCodeLocation,
+          start = !inSelect
+            ? location?.startOffset
+            : index === 0
+              ? current.sourceCodeLocation?.startTag?.endOffset
+              : current.childNodes[index - 1]?.sourceCodeLocation?.endOffset;
         if (
+          child.nodeName === "#text" &&
+          "value" in child &&
           !child.value.includes("<") &&
-          child.sourceCodeLocation &&
-          !html
-            .slice(child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset)
-            .includes("<")
+          location &&
+          start !== undefined &&
+          start <= location.startOffset &&
+          !html.slice(start, location.endOffset).includes("<")
         )
-          ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
-    if ("childNodes" in current) current.childNodes.forEach(visit);
-    if ("content" in current) visit(current.content);
+          ranges.push([location.startOffset, location.endOffset]);
+      });
+    if ("childNodes" in current) current.childNodes.forEach((child) => visit(child, inSelect));
+    if ("content" in current) visit(current.content, inSelect);
   }
   visit(node);
   return ranges;

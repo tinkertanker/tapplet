@@ -171,24 +171,36 @@ function attributeValue(match) {
 // no markup, such as a textarea's, which a script could insert as HTML; it runs
 // no code and loads nothing.
 // The source must hold no tag either: text a table moves out of itself joins
-// the text before the table, whose range then spans the table's markup.
+// the text before the table, whose range then spans the table's markup. In a
+// select, nor may the source since the tag or node before the text: the parser
+// drops tags there, such as <style>, that browsers keep, leaving their CSS as
+// text.
 function proseRanges(root, html) {
   const ranges = [];
-  function visit(node) {
+  function visit(node, selected = false) {
+    const inSelect = selected || ('tagName' in node && node.tagName === 'select');
     if ('tagName' in node && node.tagName !== 'script' && node.tagName !== 'style') {
-      for (const child of node.childNodes) {
+      node.childNodes.forEach((child, index) => {
+        const location = child.sourceCodeLocation;
+        const start = !inSelect
+          ? location?.startOffset
+          : index === 0
+            ? node.sourceCodeLocation?.startTag?.endOffset
+            : node.childNodes[index - 1].sourceCodeLocation?.endOffset;
         if (
           child.nodeName === '#text'
           && !child.value.includes('<')
-          && child.sourceCodeLocation
-          && !html.slice(child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset).includes('<')
+          && location
+          && start !== undefined
+          && start <= location.startOffset
+          && !html.slice(start, location.endOffset).includes('<')
         ) {
-          ranges.push([child.sourceCodeLocation.startOffset, child.sourceCodeLocation.endOffset]);
+          ranges.push([location.startOffset, location.endOffset]);
         }
-      }
+      });
     }
-    if ('childNodes' in node) node.childNodes.forEach(visit);
-    if ('content' in node) visit(node.content);
+    if ('childNodes' in node) node.childNodes.forEach((child) => visit(child, inSelect));
+    if ('content' in node) visit(node.content, inSelect);
   }
   visit(root);
   return ranges;

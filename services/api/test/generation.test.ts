@@ -138,12 +138,17 @@ describe("HTML generation contract", () => {
   });
 
   it("accepts lesson text such as URL(s) while rejecting external CSS URLs", () => {
-    const prose = html.replace("Hello", "<p>Copy the URL(s) of your sources.</p><textarea>url(link)</textarea>");
+    const prose = html.replace(
+      "Hello",
+      "<p>Copy the URL(s) of your sources.</p><textarea>\nurl(link)</textarea><select><option>URL(s)</option></select>",
+    );
     expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
     for (const capability of [
       "<p>Copy the URL(s).</p><style>body{background:url(https://outside.invalid/x.png)}</style>",
       `<p>url("</p><style>body{background:url(https://outside.invalid/x.png)}</style><p>")</p>`,
       "<p>Copy the URL(s).</p><svg><style>rect{fill:url(https://outside.invalid/x.svg#g)}</style></svg>",
+      "<select><style>body{background:url(https://outside.invalid/x.png)}</style><option>Copy the URL(s)</option></select>",
+      "<select><option>A</option><style>body{background:url(https://outside.invalid/x.png)}</style></select>",
       `<p>Copy the URL(s).</p><div style="background:url(https://outside.invalid/x.png)"></div>`,
       "<p>Copy the URL(s).</p><script>document.body.style.background = 'url(https://outside.invalid/x.png)'</script>",
     ])
