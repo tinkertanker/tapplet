@@ -102,6 +102,22 @@ const snippets = [
   '<button onclick="this.setAttribute(&quot;formaction&quot;, &quot;https://outside.invalid/&quot;)">Go</button>',
   '<script>document.links[0].setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "https://outside.invalid/")</script>',
   '<script>const image = document.images[0]; image.setAttribute("src", "assets/image-1"); image.setAttribute("href", `#top`); image.setAttribute("src", image.dataset.src); image.setAttribute("alt", "https://outside.invalid/");</script>',
+  // A name inside a fragment link or another URL value loads nothing, but a
+  // substitution or escape that could end the value does not hide a name.
+  '<a href="#action=go">Go</a><a href=#src=x>X</a><div data-href="#/route?src=x&action=y"></div>',
+  '<svg><use xlink:href="#action=go"></use></svg>',
+  '<script type="text/template"><a href="#action=go">Go</a></script>',
+  `<script>document.body.insertAdjacentHTML("beforeend", '<a href="#action=go">Go</a>');</script>`,
+  "<script>const id = 1; document.body.innerHTML = `<a href=\"#/item?id=${id}&action=view\">View</a>`;</script>",
+  `<script>const link = document.createElement("a"); link.href = "#action=go"; const href = '#src=x';</script>`,
+  `<button onclick="location.href = '#action=go'">Go</button>`,
+  '<a href=\'#top"><img src="https://outside.invalid/x.png">\'>Go</a>',
+  `<script>document.body.innerHTML = '<img data-src="#\\x22 src=https://outside.invalid/x.png">';</script>`,
+  "<script>const q = '\"'; document.body.innerHTML = `<img data-src=\"#${q} src=https://outside.invalid/x.png\">`;</script>",
+  "<script>const q = '\"a='; document.body.innerHTML = `<img alt=\"${q}\" data-src=\"#x src=https://outside.invalid/x.png\">`;</script>",
+  "<script>const link = document.createElement('a'); link.href = `#${document.images[0].src = 'https://outside.invalid/x.png'}`;</script>",
+  '<script type="text/template"><a href="#top"><img src="https://outside.invalid/x.png"></a></script>',
+  `<script>const href = "#x' src='https://outside.invalid/x.png"; document.body.innerHTML = "<img alt='" + href + "'>";</script>`,
 ];
 
 test("the eval's HTML check accepts and rejects what production accepts and rejects", () => {

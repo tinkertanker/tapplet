@@ -1,5 +1,5 @@
-import { parse as parseJavaScript, tokenizer, tokTypes } from 'acorn';
-import { parse as parseHtml } from 'parse5';
+import { parse as parseJavaScript } from 'acorn';
+import { parse as parseHtml, parseFragment } from 'parse5';
 
 export const MAX_HTML_BYTES = 200_000;
 
@@ -70,7 +70,7 @@ export function validateHtmlArtifact(html, options = {}) {
   // a poster-design activity) loads nothing.
   if (
     hasMultiSourceAttribute(document)
-    || scripts.strings.some((value) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value))
+    || scripts.strings.some(({ value }) => /(?<![\w-])(?:srcset|poster)\s*=/i.test(value))
     || [...html.matchAll(/(?<![\w-])(?:srcset|poster)\s*=(?![=>])/gi)].some((match) => !scripts.declarations.has(match.index ?? 0))
     || /\.\s*(?:srcset|poster)\s*=(?!=)|setAttribute\s*\(\s*["'](?:srcset|poster)["']/i.test(html)
   ) add('external-resource', 'Redirecting and multi-source URLs are not allowed.');
@@ -81,19 +81,21 @@ export function validateHtmlArtifact(html, options = {}) {
     if (!allowed) add('external-resource', `External resource reference is not allowed: ${attribute}="${value}".`);
   };
   const attributeOffsets = urlAttributeOffsets(document);
+  const urlValues = [...urlValueRanges(document), ...scripts.urlValues];
   for (const match of html.matchAll(URL_ATTRIBUTE)) {
     const index = match.index ?? 0;
-    // data-action, data-src and similar custom attributes load nothing.
-    if (html[index - 1] === '-') continue;
+    // data-action, data-src and similar custom attributes load nothing, nor
+    // does a name inside a URL value such as href="#action=go".
+    if (html[index - 1] === '-' || within(urlValues, index)) continue;
     // A script variable named src, href, action or formaction loads nothing.
     // Markup in script strings, other text and property writes are checked.
     if (!attributeOffsets.has(index) && scripts.declarations.has(index)) continue;
     checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
   }
   for (const { attribute, value } of scripts.attributeWrites) checkUrl(attribute, value.trim());
-  for (const string of scripts.strings) {
+  for (const { value: string, urlValues: values } of scripts.strings) {
     for (const match of string.matchAll(URL_ATTRIBUTE)) {
-      if (string[(match.index ?? 0) - 1] !== '-') checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
+      if (string[(match.index ?? 0) - 1] !== '-' && !within(values, match.index ?? 0)) checkUrl(match[1].toLowerCase(), attributeValue(match).trim());
     }
   }
   if (
@@ -166,6 +168,61 @@ function urlAttributeOffsets(root) {
   return offsets;
 }
 
+// Source ranges of the values of real attributes named like URL attributes,
+// such as href="#action=go" or data-href="#/route?src=x", that hold no markup.
+// A name inside such a value loads nothing; the value itself is checked.
+function urlValueRanges(root, offset = 0) {
+  const ranges = [];
+  function visit(node) {
+    if ('tagName' in node) {
+      for (const attribute of node.attrs) {
+        const qualified = attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name;
+        const location = node.sourceCodeLocation?.attrs?.[qualified];
+        if (location && /(?:^|[:-])(?:src|href|action|formaction)$/.test(qualified) && !attribute.value.includes('<')) {
+          ranges.push([offset + location.startOffset + qualified.length, offset + location.endOffset]);
+        }
+      }
+    }
+    if ('childNodes' in node) node.childNodes.forEach(visit);
+    if ('content' in node) visit(node.content);
+  }
+  visit(root);
+  return ranges;
+}
+
+// The ranges less each position, from index from of text on, that follows
+// white space, a slash, a quote or a NUL standing for a template substitution:
+// once markup is built around the text, a name there could start a real
+// attribute.
+function separatedRanges(ranges, text, offset, from) {
+  return ranges.flatMap(([start, end]) => {
+    const parts = [];
+    let part = start;
+    for (let index = Math.max(start, offset + from); index < end; index++) {
+      if (/[\s/"'\0]/.test(text[index - offset - 1] ?? '')) {
+        if (index > part) parts.push([part, index]);
+        part = index + 1;
+      }
+    }
+    if (end > part) parts.push([part, end]);
+    return parts;
+  });
+}
+
+// The same ranges in markup a script string holds, such as
+// '<a href="#action=go">'. A substitution could end a value, so it hides no
+// name that could start an attribute after it.
+function markupValueRanges(text, offset = 0) {
+  if (!text.includes('<') || !/\b(?:src|href|action|formaction)\s*=/i.test(text)) return [];
+  const ranges = urlValueRanges(parseFragment(text, { sourceCodeLocationInfo: true }), offset);
+  const substitution = text.indexOf('\0');
+  return substitution < 0 ? ranges : separatedRanges(ranges, text, offset, substitution + 1);
+}
+
+function within(ranges, index) {
+  return ranges.some(([start, end]) => index >= start && index < end);
+}
+
 function hasMultiSourceAttribute(node) {
   if ('tagName' in node && node.attrs.some(({ name }) => name === 'srcset' || name === 'poster')) return true;
   if ('childNodes' in node && node.childNodes.some(hasMultiSourceAttribute)) return true;
@@ -190,24 +247,19 @@ function literalText(node) {
 
 // Source ranges of inline scripts and event handlers, their cooked string and
 // template literal text, where markup such as innerHTML can still load URLs,
-// the source offsets of script variables named like URL attributes, the
-// literal URLs scripts pass to setAttribute, and whether any script imports or
-// re-exports another module.
+// with the ranges of URL values inside that text, the same URL value ranges in
+// the html, the source offsets of script variables named like URL attributes,
+// the literal URLs scripts pass to setAttribute, and whether any script
+// imports or re-exports another module.
 function scriptSources(root, html) {
   const ranges = [];
   const strings = [];
+  const urlValues = [];
   const declarations = new Set();
   const attributeWrites = [];
   let imports = false;
   // offset is where source starts in html when html holds it verbatim.
   function collect(source, sourceType, offset, handler = false) {
-    try {
-      for (const token of tokenizer(source, { ecmaVersion: 'latest', sourceType })) {
-        if ((token.type === tokTypes.string || token.type === tokTypes.template) && typeof token.value === 'string') strings.push(token.value);
-      }
-    } catch {
-      // Invalid syntax is reported separately.
-    }
     let program;
     try {
       program = parseJavaScript(source, { ecmaVersion: 'latest', sourceType });
@@ -216,7 +268,7 @@ function scriptSources(root, html) {
       // reported separately.
       return;
     }
-    // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
+    const fragmentLinks = new Set();
     visitJavaScript(program, (current) => {
       // import "https://...", export * from "https://...", import(url).
       if (
@@ -225,6 +277,38 @@ function scriptSources(root, html) {
         || current.type === 'ExportAllDeclaration'
         || (current.type === 'ExportNamedDeclaration' && current.source)
       ) imports = true;
+      // A fragment link such as "#action=go" given to an href loads nothing,
+      // whatever names it holds.
+      const [target, assigned] = current.type === 'AssignmentExpression' && current.operator === '='
+        ? [current.left, current.right]
+        : current.type === 'VariableDeclarator'
+          ? [current.id, current.init]
+          : current.type === 'AssignmentPattern'
+            ? [current.left, current.right]
+            : current.type === 'PropertyDefinition' && !current.computed ? [current.key, current.value] : [];
+      const targetName = target?.type === 'Identifier' || target?.type === 'PrivateIdentifier'
+        ? target.name
+        : target?.type === 'MemberExpression' && !target.computed && target.property.type === 'Identifier' ? target.property.name : undefined;
+      const link = assigned ? literalText(assigned) : undefined;
+      if (assigned && targetName && /^href$/i.test(targetName) && link?.startsWith('#') && !link.includes('<')) fragmentLinks.add(assigned);
+      // String and template text, with each substitution as one NUL; in the
+      // html the source text with substitutions blanked keeps its offsets.
+      if ((current.type === 'Literal' && typeof current.value === 'string') || current.type === 'TemplateLiteral') {
+        const quasis = current.type === 'TemplateLiteral' ? current.quasis : [];
+        const value = current.type === 'Literal' ? current.value : quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join('\0');
+        const start = current.start + 1;
+        const raw = current.type === 'Literal'
+          ? source.slice(start, current.end - 1)
+          : quasis.map((quasi, index) => source.slice(quasi.start, quasi.end) + '\0'.repeat((quasis[index + 1]?.start ?? quasi.end) - quasi.end)).join('');
+        if (fragmentLinks.has(current)) {
+          strings.push({ value, urlValues: separatedRanges([[0, value.length]], value, 0, 0) });
+          if (offset !== undefined) urlValues.push(...separatedRanges([[offset + start, offset + start + raw.length]], raw, offset + start, 0));
+        } else {
+          strings.push({ value, urlValues: markupValueRanges(value) });
+          if (offset !== undefined) urlValues.push(...markupValueRanges(raw, offset + start));
+        }
+      }
+      // setAttribute("src", "https://...") and setAttributeNS(ns, "href", ...).
       if (
         current.type !== 'CallExpression'
         || current.callee.type !== 'MemberExpression'
@@ -293,13 +377,21 @@ function scriptSources(root, html) {
         const source = location ? verbatim(location.startOffset, location.endOffset, text[0].value) : undefined;
         if (source !== undefined) collect(source, sourceType, location.startOffset);
         else collect(text.map((child) => child.value).join(''), sourceType);
+      } else if (node.tagName === 'script') {
+        // A data block such as <script type="text/template"> holds markup.
+        for (const child of node.childNodes) {
+          if (child.nodeName === '#text' && child.sourceCodeLocation) {
+            const { startOffset, endOffset } = child.sourceCodeLocation;
+            urlValues.push(...markupValueRanges(html.slice(startOffset, endOffset), startOffset));
+          }
+        }
       }
     }
     if ('childNodes' in node) node.childNodes.forEach(visit);
     if ('content' in node) visit(node.content);
   }
   visit(root);
-  return { ranges, strings, declarations, attributeWrites, imports };
+  return { ranges, strings, urlValues, declarations, attributeWrites, imports };
 }
 
 export function validateSeedManifest(manifest, options = {}) {

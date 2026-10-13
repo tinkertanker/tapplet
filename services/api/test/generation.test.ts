@@ -212,6 +212,40 @@ describe("HTML generation contract", () => {
       ).toThrow(InvalidModelOutputError);
   });
 
+  it("ignores URL attribute names inside fragment links and other URL values", () => {
+    for (const fragment of [
+      '<a href="#action=go">Go</a>',
+      "<a href='#/route?src=x&action=view'>View</a><a href=#action=go>Go</a>",
+      '<svg><use xlink:href="#src=icon"></use></svg><div data-href="#action=go"></div>',
+      '<template><a href="#action=go">Go</a></template>',
+      '<script type="text/template"><a href="#action=go">Go</a></script>',
+      `<script>document.body.insertAdjacentHTML("beforeend", '<a href="#action=go">Go</a>');</script>`,
+      "<script>const id = 1; document.body.innerHTML = `<a href=\"#/item?id=${id}&action=view\">View</a>`;</script>",
+      '<script>const link = document.createElement("a"); link.href = "#action=go"; const href = \'#src=assets/asset-two\';</script>',
+      `<button onclick="location.href = '#action=go'">Go</button>`,
+    ]) {
+      const candidate = html.replace("Hello", fragment);
+      expect(validateHtmlOutput({ html: candidate }), fragment).toEqual({ html: candidate });
+      expect(referencedAssetIds(candidate), fragment).toEqual(["asset-one"]);
+    }
+    for (const capability of [
+      '<a href="#top"><img src="https://outside.invalid/x.png"></a>',
+      '<a href=\'#top"><img src="https://outside.invalid/x.png">\'>Go</a>',
+      `<script>document.body.innerHTML = '<a href="#top"><img src="https://outside.invalid/x.png"></a>';</script>`,
+      `<script>document.body.innerHTML = '<img data-src="#\\x22 src=https://outside.invalid/x.png">';</script>`,
+      "<script>const q = '\"'; document.body.innerHTML = `<img data-src=\"#${q} src=https://outside.invalid/x.png\">`;</script>",
+      "<script>const q = '\"a='; document.body.innerHTML = `<img alt=\"${q}\" data-src=\"#x src=https://outside.invalid/x.png\">`;</script>",
+      `<script>const link = document.createElement("a"); link.href = '#top'; document.images[0].src = 'https://outside.invalid/x.png';</script>`,
+      "<script>const link = document.createElement('a'); link.href = `#${document.images[0].src = 'https://outside.invalid/x.png'}`;</script>",
+      '<script type="text/template"><a href="#top"><img src="https://outside.invalid/x.png"></a></script>',
+      `<script>const href = "#x' src='https://outside.invalid/x.png"; document.body.innerHTML = "<img alt='" + href + "'>";</script>`,
+    ])
+      expect(
+        () => validateHtmlOutput({ html: html.replace("Hello", capability) }),
+        capability,
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("accepts a script variable named poster", () => {
     const candidate = html.replace(
       'document.body.dataset.ok="1"',
