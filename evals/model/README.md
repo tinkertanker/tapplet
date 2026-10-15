@@ -22,7 +22,7 @@ npm run eval:browser:test
 Run the production policy with the provider configuration used by the API:
 
 ```sh
-OPENCODE_API_KEY=... \
+OPENROUTER_API_KEY=... \
 npm run eval:model
 ```
 

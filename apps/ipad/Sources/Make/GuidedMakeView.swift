@@ -3,7 +3,6 @@ import SwiftUI
 struct GuidedMakeView: View {
     let store: TappletStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var creationError: TappletErrorPresentation?
     @State private var hidesStarterPlans = false
     @FocusState private var responseIsFocused: Bool
 
@@ -221,7 +220,7 @@ struct GuidedMakeView: View {
                 .font(.footnote)
                 .foregroundStyle(TappletTheme.mutedInk)
 
-            if let creationError {
+            if let creationError = store.guidedMakeCreationError {
                 VStack(alignment: .leading, spacing: 4) {
                     Label(creationError.title, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout.weight(.semibold))
@@ -273,39 +272,43 @@ struct GuidedMakeView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(TappletTheme.accent)
             .accessibilityIdentifier("skip-starter-plans")
-            LazyVGrid(
-                columns: dynamicTypeSize.isAccessibilitySize
-                    ? [GridItem(.flexible())]
-                    : [GridItem(.adaptive(minimum: 200), spacing: 10)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                ForEach(StarterPlan.all) { plan in
-                    Button {
-                        store.applyStarterPlan(plan)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(plan.form.title.uppercased())
-                                .font(TappletTheme.Typography.eyebrow)
-                                .foregroundStyle(TappletTheme.accent)
-                            Text(plan.title)
-                                .font(TappletTheme.Typography.cardTitle)
-                                .foregroundStyle(TappletTheme.ink)
-                                .multilineTextAlignment(.leading)
-                            Text(plan.summary)
-                                .font(.subheadline)
-                                .foregroundStyle(TappletTheme.mutedInk)
-                                .multilineTextAlignment(.leading)
-                                .lineLimit(3)
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(StarterPlan.all) { plan in
+                        Button {
+                            store.applyStarterPlan(plan)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(plan.form.title.uppercased())
+                                    .font(TappletTheme.Typography.eyebrow)
+                                    .foregroundStyle(TappletTheme.accent)
+                                Text(plan.title)
+                                    .font(TappletTheme.Typography.cardTitle)
+                                    .foregroundStyle(TappletTheme.ink)
+                                    .multilineTextAlignment(.leading)
+                                Text(plan.summary)
+                                    .font(.subheadline)
+                                    .foregroundStyle(TappletTheme.mutedInk)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(3)
+                            }
+                            .padding(14)
+                            .frame(
+                                width: dynamicTypeSize.isAccessibilitySize ? 320 : 230,
+                                alignment: .topLeading
+                            )
+                            .frame(maxHeight: .infinity, alignment: .topLeading)
+                            .tappletCard()
                         }
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .tappletCard()
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("starter-plan-\(plan.id)")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("starter-plan-\(plan.id)")
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
             }
+            .scrollClipDisabled()
         }
         .frame(maxWidth: 760, alignment: .leading)
     }
@@ -463,7 +466,7 @@ struct GuidedMakeView: View {
 
     private func editAnswer(at questionIndex: Int) {
         guard !store.isCreatingGuidedDraft else { return }
-        creationError = nil
+        store.guidedMakeCreationError = nil
         store.guidedMakeShowsSummary = false
         store.guidedMakeQuestionIndex = questionIndex
         store.guidedMakeResponse = store.guidedMakeDraft.answer(at: questionIndex)
@@ -471,13 +474,15 @@ struct GuidedMakeView: View {
     }
 
     private func createDraft() {
-        creationError = nil
+        store.guidedMakeCreationError = nil
         Task {
             do {
                 _ = try await store.createApprovedBrief(store.guidedMakeDraft)
                 if store.advisoryNotice == nil { store.resetGuidedMake() }
             } catch {
-                creationError = store.present(error, during: .generation)
+                // Lost access opens the class-code sheet; a panel would outlive activation.
+                let presentation = store.present(error, during: .generation)
+                store.guidedMakeCreationError = presentation.requestsWorkshopAccess ? nil : presentation
             }
         }
     }

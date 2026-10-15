@@ -30,6 +30,8 @@ export interface Exemplar {
 export interface GeneratedArtifact {
   html: string;
   designCard?: DesignCard;
+  // Short note to the teacher about what was made or changed.
+  comment?: string;
 }
 export interface ModerationDecision {
   safe: boolean;
@@ -71,6 +73,10 @@ export interface ModelProvider {
     sessionId?: string,
   ): Promise<ModerationDecision>;
 }
+// Each direct model call aborts after this long. A generation makes up to three
+// calls, so repairs are bounded by MODEL_WORK_BUDGET_MS in generation.ts.
+export const MODEL_CALL_TIMEOUT_MS = 60_000;
+
 export class ModelProviderError extends Error {
   constructor(
     message: string,

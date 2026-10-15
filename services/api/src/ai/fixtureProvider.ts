@@ -1,6 +1,7 @@
 import type {
   DesignCard,
   Exemplar,
+  GeneratedArtifact,
   ModelProvider,
   ModerationDecision,
   TeacherBrief,
@@ -25,10 +26,11 @@ function page(title: string, detail: string) {
 }
 export class FixtureModelProvider implements ModelProvider {
   readonly name = "fixture";
-  async generate(b: TeacherBrief, _e: Exemplar[]) {
+  async generate(b: TeacherBrief, _e: Exemplar[]): Promise<GeneratedArtifact> {
     return {
       html: page(b.learningObjective, b.studentAction),
       designCard: { title: b.learningObjective, description: b.subject },
+      comment: "Made a first version from your plan.",
     };
   }
   async revise(
@@ -36,8 +38,12 @@ export class FixtureModelProvider implements ModelProvider {
     c: DesignCard | undefined,
     i: string,
     _b: TeacherBrief,
-  ) {
-    return { html: page(c?.title ?? "Classroom applet", i), designCard: c };
+  ): Promise<GeneratedArtifact> {
+    return {
+      html: page(c?.title ?? "Classroom applet", i),
+      designCard: c,
+      comment: `Applied your change: ${i}`,
+    };
   }
   async repair(candidate: unknown) {
     return candidate;
