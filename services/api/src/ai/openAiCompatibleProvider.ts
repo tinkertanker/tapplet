@@ -96,10 +96,10 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     const r = await this.complete(
       MODERATION_SYSTEM_PROMPT,
       html,
-      // Reasoning shares the output budget with the moderation JSON.
-      this.o.api === "responses" && new URL(this.o.baseUrl).hostname === "api.openai.com"
-        ? 4096
-        : 500,
+      // Every Responses route reasons during moderation (OpenAI, and the GPT
+      // and Muse Spark families on OpenCode Go), and reasoning shares the
+      // output budget with the moderation JSON.
+      this.o.api === "responses" ? 4096 : 500,
       true,
       this.o.moderationReasoningOptions,
       "moderate",

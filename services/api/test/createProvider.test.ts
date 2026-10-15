@@ -242,7 +242,11 @@ describe("model provider selection", () => {
       output: [{ content: [{ type: "output_text", text: JSON.stringify({ safe: true, categories: [] }) }] }],
     }));
     await provider.moderate("<html></html>");
-    expect(requestBody(fetch)).toMatchObject({ reasoning: { effort: moderationEffort } });
+    // Reasoning shares this budget with the verdict, as on api.openai.com.
+    expect(requestBody(fetch)).toMatchObject({
+      max_output_tokens: 4096,
+      reasoning: { effort: moderationEffort },
+    });
   });
 
   it.each(["kimi-k3", "glm-5.3", "muse-spark", "gpt-4o"])(
