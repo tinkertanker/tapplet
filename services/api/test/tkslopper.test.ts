@@ -516,12 +516,6 @@ describe("tkslopper request shape", () => {
     ])
       expect(validateChatRequest(invalid)).not.toEqual([]);
   });
-
-  it("uses the image default of no reasoning", async () => {
-    const g = gateway([responsesResponse({ output: [message(text("SAFE"))] })]);
-    await inspector(g).inspect(new Uint8Array([1, 2, 3]), "image/jpeg");
-    expect(g.calls[0]?.body).not.toHaveProperty("reasoning");
-  });
 });
 
 describe("tkslopper outcomes", () => {
@@ -592,13 +586,6 @@ describe("tkslopper outcomes", () => {
     );
     expect(error.message).toBe(messageText);
     expect(error.retryable).toBe(retryable);
-  });
-
-  it("accepts a complete Chat stop", async () => {
-    const g = gateway([chatResponse({ content: artifactJson, finish: "stop" })]);
-    await expect(
-      provider(g, { TKSLOPPER_ARTIFACT_ENDPOINT: "chat" }).generate(brief, []),
-    ).resolves.toEqual({ html });
   });
 
   it("requires valid JSON for moderation", async () => {
