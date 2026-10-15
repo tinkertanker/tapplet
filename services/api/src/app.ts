@@ -18,10 +18,10 @@ import {
 import type { ClassInference } from "./classInference";
 import type { StudioConfig } from "./env";
 import {
+  assetReferences,
   generateArtifact,
   type GenerationOptions,
   InvalidModelOutputError,
-  referencedAssetIds,
   reviseArtifact,
   validateHtmlOutput,
 } from "./generation";
@@ -168,7 +168,8 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
   const format = optionalForm(guided.format);
   const sourceContent = optionalStr(guided.sourceContent, "Source content", 4000);
   return {
-    creationBrief: str(b.creationBrief, "Creation brief", 6000),
+    // Studio joins every answer (up to 7,500 characters) with its question.
+    creationBrief: str(b.creationBrief, "Creation brief", 8000),
     preferredExampleRevisionId:
       b.preferredExampleRevisionId == null
         ? null
@@ -246,6 +247,7 @@ function revisionResponse(revision: RevisionRecord, origin: string) {
     )[revision.kind],
     instruction: revision.instruction,
     designCard: revision.designCard,
+    comment: revision.comment ?? null,
     // Screenshots are private; the iPad must not receive a URL that AsyncImage
     // cannot authenticate. Upload success remains part of the wire contract.
     screenshotUrl: null,
@@ -423,10 +425,27 @@ export function createStudioApp(d: Deps) {
     if (d.assets?.getRecord) return d.assets.getRecord(id);
     return (await d.assets!.get(id))?.record ?? null;
   }
+  // A device may use an image it owns or one a tapplet of its own already
+  // uses. A remix may also use the images its source's owner could use, as the
+  // source revision recorded only those.
+  async function mayUseAsset(
+    record: AssetRecord,
+    x: string,
+    o: string,
+    sourceOwner?: string,
+  ): Promise<boolean> {
+    for (const owner of sourceOwner && sourceOwner !== o ? [o, sourceOwner] : [o])
+      if (
+        record.ownerHash === owner ||
+        (await d.repository.ownerReferencesAsset(owner, x))
+      )
+        return true;
+    return false;
+  }
   async function validateAssetReferences(
     ids: string[],
     o: string,
-    allowReferenced = false,
+    sourceOwner?: string,
   ) {
     const unique = [...new Set(ids)];
     if (unique.length && !d.assets)
@@ -438,12 +457,7 @@ export function createStudioApp(d: Deps) {
     return Promise.all(
       unique.map(async (x) => {
         const record = await assetRecord(x);
-        if (
-          !record ||
-          (record.ownerHash !== o &&
-            !allowReferenced &&
-            !(await d.repository.ownerReferencesAsset(o, x)))
-        )
+        if (!record || !(await mayUseAsset(record, x, o, sourceOwner)))
           throw new HttpError(
             422,
             "INVALID_ARTIFACT_ASSET",
@@ -453,10 +467,42 @@ export function createStudioApp(d: Deps) {
       }),
     );
   }
-  async function assets(html: string, o: string, allowReferenced = false) {
-    const ids = referencedAssetIds(html);
-    await validateAssetReferences(ids, o, allowReferenced);
-    return ids;
+  // The images html uses that this device may use, and whether a script string
+  // names a stored image it may not use, which is left unrecorded.
+  async function assetUse(html: string, o: string, sourceOwner?: string) {
+    const { markup, strings } = assetReferences(html);
+    await validateAssetReferences(markup, o, sourceOwner);
+    // A script string such as "assets/images" need not name an image: record
+    // one only when it names an image this device may use, as before such
+    // strings were recorded, rather than refusing the tapplet.
+    const usable = await Promise.all(
+      strings.map(async (x) => {
+        const record = d.assets ? await assetRecord(x) : null;
+        return record
+          ? { id: x, usable: await mayUseAsset(record, x, o, sourceOwner) }
+          : null;
+      }),
+    );
+    return {
+      ids: [
+        ...markup,
+        ...usable.flatMap((x) => (x?.usable ? [x.id] : [])),
+      ],
+      foreign: usable.some((x) => x && !x.usable),
+    };
+  }
+  async function assets(html: string, o: string, sourceOwner?: string) {
+    return (await assetUse(html, o, sourceOwner)).ids;
+  }
+  // A model may copy an exemplar's images, including those its script keeps in
+  // strings, which this device could neither save nor show.
+  async function usableAssets(html: string, o: string): Promise<boolean> {
+    try {
+      return !(await assetUse(html, o)).foreign;
+    } catch (error) {
+      if (error instanceof HttpError) return false;
+      throw error;
+    }
   }
   async function projectResponse(
     a: ArtifactRecord,
@@ -576,7 +622,7 @@ export function createStudioApp(d: Deps) {
           interactionPattern,
         };
       validateHtmlOutput({ html, designCard: card });
-      if (referencedAssetIds(html).length)
+      if (assetReferences(html).markup.length)
         throw new HttpError(
           422,
           "INVALID_SEED_ASSET",
@@ -725,7 +771,9 @@ export function createStudioApp(d: Deps) {
       );
     if (r.method === "POST" && u.pathname === "/v1/artifacts/generate") {
       const o = await owner(r),
-        request = brief(obj(await readJson(r, 16000))),
+        // Field limits count characters; Chinese or Tamil text takes three
+        // UTF-8 bytes each, and the creation brief repeats the answers.
+        request = brief(obj(await readJson(r, 64_000))),
         b = request.brief,
         warnings = advisoryWarnings("prompt", [
           ...inspectTeacherBrief(b),
@@ -760,7 +808,9 @@ export function createStudioApp(d: Deps) {
           found.map(async (e) => {
             const rv = await d.repository.getRevision(e.revisionId),
               html = rv && (await d.sources.getSource(rv.sourceHash));
-            return rv && html
+            // A model may copy an exemplar's images, which this device could
+            // not save; offer only exemplars whose images it can use.
+            return rv && html && (await usableAssets(html, o))
               ? {
                   revisionId: rv.id,
                   html,
@@ -808,6 +858,7 @@ export function createStudioApp(d: Deps) {
         ...advisoryWarnings("generated_content", [
           ...inspectHtml(out.html),
           ...inspectUnknownText(out.designCard),
+          ...inspectText(out.comment ?? ""),
         ]),
       );
       const rid = id(),
@@ -823,6 +874,7 @@ export function createStudioApp(d: Deps) {
         kind: "generation",
         instruction: null,
         designCard: out.designCard ? JSON.stringify(out.designCard) : null,
+        comment: out.comment ?? null,
         exemplars: ex.map((x) => x.revisionId),
         modelVersion: provider.name,
         promptVersion: PROMPT_VERSION,
@@ -833,7 +885,8 @@ export function createStudioApp(d: Deps) {
         id: aid,
         ownerHash: o,
         title: out.designCard?.title ?? b.learningObjective,
-        summary: out.designCard?.description ?? b.studentAction,
+        // A blank card description would store a summary Save details rejects.
+        summary: out.designCard?.description?.trim() || b.studentAction,
         subject: b.subject === "other" ? null : b.subject,
         level: b.learnerContext ?? b.level,
         locale: "en-SG",
@@ -985,13 +1038,16 @@ export function createStudioApp(d: Deps) {
         return new Response(null, { status: 204 });
       }
       if (s.length === 3 && r.method === "PATCH") {
-        const b = obj(await readJson(r, 10000));
+        // Room for every field at its character limit in three-byte UTF-8.
+        const b = obj(await readJson(r, 40_000));
         if (typeof b.title === "string" && b.headRevisionId === undefined) {
+          // Accept everything creation stores: a generated title can fall back
+          // to the learning objective and the level is the learner context.
           const metadata = {
-            title: str(b.title, "Title", 200),
+            title: str(b.title, "Title", 600),
             summary: str(b.summary, "Summary", 1000),
             subject: optionalStr(b.subject, "Subject", 100) ?? null,
-            level: optionalStr(b.level, "Level", 100) ?? null,
+            level: optionalStr(b.level, "Level", 300) ?? null,
             locale: optionalStr(b.locale, "Locale", 30) ?? null,
             learningObjective:
               optionalStr(b.learningObjective, "Learning objective", 600) ??
@@ -999,7 +1055,7 @@ export function createStudioApp(d: Deps) {
             tags: Array.isArray(b.tags)
               ? b.tags.map((x) => str(x, "Tag", 60)).slice(0, 20)
               : [],
-            creationBrief: str(b.creationBrief, "Creation brief", 6000),
+            creationBrief: str(b.creationBrief, "Creation brief", 8000),
           };
           const warnings = advisoryWarnings(
             "prompt",
@@ -1132,6 +1188,7 @@ export function createStudioApp(d: Deps) {
             kind: "revision",
             instruction,
             designCard: out.designCard ? JSON.stringify(out.designCard) : null,
+            comment: out.comment ?? null,
             exemplars: [],
             modelVersion: provider.name,
             promptVersion: PROMPT_VERSION,
@@ -1142,6 +1199,7 @@ export function createStudioApp(d: Deps) {
           ...advisoryWarnings("generated_content", [
             ...inspectHtml(out.html),
             ...inspectUnknownText(out.designCard),
+            ...inspectText(out.comment ?? ""),
           ]),
         );
         const assetIds = await assets(out.html, o);
@@ -1164,10 +1222,15 @@ export function createStudioApp(d: Deps) {
             durationMs: Math.round(performance.now() - requestStarted),
           });
         }
+        // Details may have been saved during the model call; return them
+        // rather than the metadata read before it.
+        const latest = await d.repository.getArtifact(a.id, o);
         return json(
           {
             ...(await projectResponse(
-              { ...a, headRevisionId: rid, updatedAt: timestamp },
+              latest
+                ? { ...latest, headRevisionId: rid }
+                : { ...a, headRevisionId: rid, updatedAt: timestamp },
               o,
               u.origin,
               { revision: rv, html: out.html },
@@ -1220,13 +1283,15 @@ export function createStudioApp(d: Deps) {
           console.error(`Publication moderation failed: ${diagnostic}`);
           warnings.push(moderationUnavailableWarning());
         }
+        // Details may have been saved during the review; publish those.
+        const current = (await d.repository.getArtifact(a.id, o)) ?? a;
         const p = await d.repository.publish(
           slug(),
-          a,
+          current,
           rv,
           days(now(), d.config.publicationTtlDays),
           now().toISOString(),
-          retrievalDescriptor(a, rv.designCard),
+          retrievalDescriptor(current, rv.designCard),
         );
         if (!p)
           throw new HttpError(
@@ -1330,6 +1395,8 @@ export function createStudioApp(d: Deps) {
             parentRevisionId: null,
             kind: "remix" as const,
             instruction: "Remix",
+            // Comments address the source revision's teacher; never copy them.
+            comment: null,
             createdAt: timestamp,
             screenshotKey: null,
           },
@@ -1362,7 +1429,7 @@ export function createStudioApp(d: Deps) {
             {
               artifact,
               revision: copy,
-              assetIds: await assets(html, o, !ownedArtifact),
+              assetIds: await assets(html, o, sourceArtifact.ownerHash),
             },
             d.config.maximumDraftsPerOwner,
           ))

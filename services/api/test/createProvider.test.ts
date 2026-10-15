@@ -70,7 +70,7 @@ describe("model provider selection", () => {
     expect(body).toMatchObject({
       model: "claude-haiku-5-5", max_tokens: 32000, stream: false,
       thinking: { type: "adaptive" },
-      output_config: { effort: "medium", format: { type: "json_schema", schema: { required: ["html", "designCard"] } } },
+      output_config: { effort: "medium", format: { type: "json_schema", schema: { required: ["html", "designCard", "comment"] } } },
       messages: [{ role: "user", content: expect.any(String) }],
       system: expect.any(String),
     });
@@ -246,6 +246,39 @@ describe("model provider selection", () => {
     expect(requestBody(fetch)).toMatchObject({
       reasoning: { effort: "xhigh", exclude: true },
     });
+  });
+
+  it("uses AI_REASONING_EFFORT instead of the provider default effort", async () => {
+    const fetch = successfulFetch();
+    vi.stubGlobal("fetch", fetch);
+    const provider = createModelProvider(
+      env({
+        AI_PROVIDER: "openrouter",
+        AI_MODEL: "vendor/model",
+        AI_REASONING_EFFORT: "low",
+        OPENROUTER_API_KEY: "openrouter-secret",
+      }),
+    );
+
+    await provider.generate(brief, []);
+
+    expect(requestBody(fetch)).toMatchObject({
+      reasoning: { effort: "low", exclude: true },
+    });
+  });
+
+  it("fails closed on an unsupported AI_REASONING_EFFORT", async () => {
+    const provider = createModelProvider(
+      env({
+        AI_PROVIDER: "openrouter",
+        AI_REASONING_EFFORT: "turbo",
+        OPENROUTER_API_KEY: "openrouter-secret",
+      }),
+    );
+
+    await expect(provider.generate(brief, [])).rejects.toThrow(
+      "AI_REASONING_EFFORT",
+    );
   });
 
   it("reports the provider-specific missing credential", async () => {

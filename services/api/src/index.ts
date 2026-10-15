@@ -1,4 +1,8 @@
-import { createConfiguredModelProvider, handleAdminRequest } from "./admin";
+import {
+  belongsToAdminHostSite,
+  createConfiguredModelProvider,
+  handleAdminRequest,
+} from "./admin";
 import { createStudioApp } from "./app";
 import { FAVICON_SVG, publicationErrorResponse } from "./brand";
 import { CloudflareAssetStore } from "./assets";
@@ -23,6 +27,8 @@ export default {
     const pathname = url.pathname;
     const adminResponse = await handleAdminRequest(request, env);
     if (adminResponse) return adminResponse;
+    // A subrequest to the routed host reaches its custom domain (the site).
+    if (belongsToAdminHostSite(request, env)) return fetch(request);
     if (!pathname.startsWith("/v1/") && pathname !== "/health") {
       if (
         pathname.length > 1 &&
@@ -113,12 +119,19 @@ export function injectPublicHtml(source: string, slug: string): string {
   const head = root?.childNodes.find(
     (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "head",
   );
-  const body = root?.childNodes.find(
-    (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "body",
-  );
-  const headEnd = head?.sourceCodeLocation?.startTag?.endOffset;
-  if (headEnd === undefined || body?.sourceCodeLocation?.endTag === undefined)
-    throw new Error("Stored tapplet source is not a complete HTML document.");
+  const doctype = document.childNodes.find((node) => node.nodeName === "#documentType");
+  // Content such as <style> before <head>, or <div> inside it, starts the
+  // head or body without the written tag, which then has no location. The
+  // base and policy still belong at the start of the head, which begins after
+  // the html start tag or the doctype. Validation accepts a byte order mark or
+  // other non-HTML white space before the doctype, which then starts the
+  // document implicitly; inserted first, the base and policy still lead the
+  // head.
+  const headEnd =
+    head?.sourceCodeLocation?.startTag?.endOffset ??
+    root?.sourceCodeLocation?.startTag?.endOffset ??
+    doctype?.sourceCodeLocation?.endOffset ??
+    0;
   const title = head?.childNodes.find(
     (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "title",
   );
@@ -127,7 +140,18 @@ export function injectPublicHtml(source: string, slug: string): string {
     .map((node) => node.value).join("") || "Tapplet";
   const language = root?.attrs.find((attribute) => attribute.name === "lang")?.value || "en";
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  const activity = `${source.slice(0, headEnd)}<base href="/${slug}/"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'">${source.slice(headEnd)}`;
+  // srcdoc resolves a fragment link such as href="#end" or "#/route" against
+  // the base, not about:srcdoc, so following it would replace the activity
+  // with a blocked page. Keep such links inside the document, as in Studio.
+  // Like validation, read an SVG xlink:href and ignore surrounding white space.
+  // The click path, unlike closest(), reaches a link inside an open shadow root.
+  // Setting the hash the address already names does nothing, so scroll to
+  // the target as a browser would: the element, else the top for "#top".
+  // A handler such as a dialog's can stop the click before it reaches the
+  // window, so a listener added last on each node of the path decides once
+  // the click stops or reaches the window, after the tapplet could cancel it.
+  const fragmentLinks = `<script>addEventListener("click",e=>{const p=e.composedPath(),a=p.find(n=>n instanceof Element&&n.matches("a[*|href],area[href]")),h=a?(a.getAttribute("href")??a.getAttributeNS("http://www.w3.org/1999/xlink","href")??"").trim():"";if(h[0]!=="#")return;const r=()=>p.forEach(n=>n.removeEventListener("click",k)),k=v=>{if(v!==e||!e.cancelBubble&&v.currentTarget!==window)return;r();if(e.defaultPrevented)return;e.preventDefault();const f=h.slice(1),o=location.hash;location.hash=f;if(location.hash!==o)return;let t=document.getElementById(f);try{t??=document.getElementById(decodeURIComponent(f))}catch{}t?t.scrollIntoView():/^(top)?$/i.test(f)&&scrollTo(0,0)};p.forEach(n=>n.addEventListener("click",k));setTimeout(r)},true)</script>`;
+  const activity = `${source.slice(0, headEnd)}<base href="/${slug}/"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'">${fragmentLinks}${source.slice(headEnd)}`;
   // An opaque top-level sandbox can still navigate itself. Keep untrusted HTML
   // in srcdoc: the parent's frame-src 'none' blocks its document navigations,
   // while sandbox prevents it from navigating or accessing the trusted parent.

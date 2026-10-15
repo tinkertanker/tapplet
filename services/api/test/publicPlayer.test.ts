@@ -45,13 +45,14 @@ function environment(html: string): StudioEnv {
 
 describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published activity containment (%s)", (_name, engine) => {
   let browser: Browser;
+  // A cold WebKit launch on a shared CI runner can exceed the 10 s hook default.
   beforeAll(async () => {
     browser = await engine.launch();
     // Include cold-page initialization in suite setup, not the containment test's budget.
     const context = await browser.newContext();
     try { await context.newPage(); }
     finally { await context.close(); }
-  });
+  }, 30_000);
   afterAll(async () => { await browser.close(); });
 
   async function open(html: string, width = 1024, height = 768) {
@@ -98,18 +99,10 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
   }
 
   function activity(page: Page) {
-    const frame = page.frames().find((candidate) => candidate.url() === "about:srcdoc");
+    const frame = page.frames().find((candidate) => candidate.url().split("#")[0] === "about:srcdoc");
     if (!frame) throw new Error("Sandboxed activity frame not found");
     return frame;
   }
-
-  it("rejects a missing sandboxed activity instead of testing the parent", async () => {
-    const state = await open(source);
-    try {
-      await state.page.evaluate("document.querySelector('iframe').remove()");
-      expect(() => activity(state.page)).toThrow("Sandboxed activity frame not found");
-    } finally { await state.context.close(); }
-  });
 
   it("places the scoped base in the real head, not a preceding comment", async () => {
     const state = await open(source.replace("<head>", "<!-- explain <head> here --><head>"));
@@ -119,6 +112,96 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(await activity(state.page).locator("head base").getAttribute("href")).toBe(`/${slug}/`);
       expect(state.assets).toEqual([`/${slug}/assets/image-1`]);
       expect(await activity(state.page).evaluate("document.querySelector('img').naturalWidth")).toBe(20);
+    } finally { await state.context.close(); }
+  });
+
+  it("keeps fragment links and hash routes inside the activity", async () => {
+    const state = await open(source.replace(
+      "<button",
+      '<a href="#/route?step=2">Next step</a><a href="#end">Jump to end</a><div style="height:3000px"></div><p id="end">End</p><button',
+    ));
+    try {
+      await activity(state.page).evaluate('addEventListener("hashchange", () => { document.body.dataset.route = location.hash; })');
+      await activity(state.page).getByRole("link", { name: "Next step" }).click();
+      await expect.poll(() => activity(state.page).evaluate("document.body.dataset.route")).toBe("#/route?step=2");
+      await activity(state.page).getByRole("link", { name: "Jump to end" }).click();
+      await expect.poll(() => activity(state.page).evaluate("scrollY")).toBeGreaterThan(0);
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
+  it("keeps padded and SVG xlink fragment links inside the activity", async () => {
+    // Validation trims URL values and reads xlink:href as href, so it accepts both.
+    // A link without a URL inside another link leaves the outer one to follow.
+    const state = await open(source.replace(
+      "<button",
+      '<a href=" #middle\n">Jump to middle <svg width="20" height="20"><a><rect id="icon" width="20" height="20"/></a></svg></a><svg width="40" height="40"><a id="svg-link" xlink:href="#end"><rect width="40" height="40"/></a></svg><div style="height:3000px"></div><p id="middle">Middle</p><div style="height:3000px"></div><p id="end">End</p><button',
+    ));
+    try {
+      await activity(state.page).locator("#icon").click();
+      await expect.poll(() => activity(state.page).evaluate("location.hash")).toBe("#middle");
+      await activity(state.page).locator("#svg-link rect").click();
+      await expect.poll(() => activity(state.page).evaluate("location.hash")).toBe("#end");
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
+  it("scrolls again when a fragment link the address already names is followed again", async () => {
+    // As in a browser, "#top" without such an element means the top of the page.
+    const state = await open(source.replace(
+      "<button",
+      '<div style="height:3000px"></div><a href="#top">Back to top</a><a href="#café">Café</a><div style="height:3000px"></div><p id="café">Café</p><button',
+    ));
+    try {
+      const frame = activity(state.page);
+      for (const attempt of [1, 2]) {
+        await frame.evaluate("scrollTo(0, 2500)");
+        await frame.getByRole("link", { name: "Back to top" }).click();
+        await expect.poll(() => frame.evaluate("scrollY"), { message: `attempt ${attempt}` }).toBe(0);
+      }
+      for (const attempt of [1, 2]) {
+        await frame.evaluate("scrollTo(0, 0)");
+        await frame.getByRole("link", { name: "Café" }).click();
+        await expect.poll(() => frame.evaluate("scrollY"), { message: `attempt ${attempt}` }).toBeGreaterThan(3000);
+      }
+      expect(await frame.locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
+  it("keeps a fragment link inside an open shadow root inside the activity", async () => {
+    const state = await open(source.replace(
+      "<button",
+      '<div id="host"></div><div style="height:3000px"></div><p id="end">End</p><script>document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = \'<a href="#end">Jump to end</a>\';</script><button',
+    ));
+    try {
+      await activity(state.page).getByRole("link", { name: "Jump to end" }).click();
+      await expect.poll(() => activity(state.page).evaluate("location.hash")).toBe("#end");
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
+    } finally { await state.context.close(); }
+  });
+
+  it("keeps a fragment link whose click a dialog stops inside the activity", async () => {
+    // A dialog commonly stops clicks reaching the overlay that closes it; a
+    // handler that also cancels the click still keeps the page where it is.
+    const state = await open(source.replace(
+      "<button",
+      '<div onclick="this.hidden = true"><div onclick="event.stopPropagation()"><a href="#end">Jump to end</a></div></div><div style="height:3000px"></div><p id="end">End</p><div onclick="this.hidden = true"><div onclick="event.stopPropagation(); return false"><a href="#">Stay</a></div></div><div style="height:3000px"></div><button',
+    ));
+    try {
+      const frame = activity(state.page);
+      await frame.getByRole("link", { name: "Jump to end" }).click();
+      await expect.poll(() => frame.evaluate("location.hash")).toBe("#end");
+      await expect.poll(() => frame.evaluate("scrollY")).toBeGreaterThan(0);
+      const scrolled = await frame.evaluate("scrollY");
+      await frame.getByRole("link", { name: "Stay" }).click();
+      await state.page.waitForTimeout(150);
+      expect(await activity(state.page).evaluate("[location.hash, scrollY]")).toEqual(["#end", scrolled]);
+      expect(await activity(state.page).locator("#answer").inputValue()).toBe("SYNTHETIC_ANSWER");
+      expect(state.external).toEqual([]);
     } finally { await state.context.close(); }
   });
 

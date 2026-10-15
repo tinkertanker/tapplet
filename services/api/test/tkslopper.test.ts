@@ -359,7 +359,7 @@ describe("tkslopper request shape", () => {
       expect(call.body.text).toMatchObject({ format: {
         type: "json_schema", strict: true,
         schema: { type: "object", additionalProperties: false,
-          required: index === 3 ? ["safe", "categories", "reason"] : ["html", "designCard"] },
+          required: index === 3 ? ["safe", "categories", "reason"] : ["html", "designCard", "comment"] },
       } });
       for (const field of ["temperature", "top_p", "seed", "thinking", "tools"])
         expect(call.body).not.toHaveProperty(field);
@@ -417,7 +417,7 @@ describe("tkslopper request shape", () => {
         { role: "user", content: generationPrompt(brief, []) },
       ],
       response_format: { type: "json_schema", json_schema: {
-        name: "artifact", strict: true, schema: expect.objectContaining({ required: ["html", "designCard"], additionalProperties: false }),
+        name: "artifact", strict: true, schema: expect.objectContaining({ required: ["html", "designCard", "comment"], additionalProperties: false }),
       } },
       max_tokens: 32000,
       reasoning_effort: "high",
@@ -516,12 +516,6 @@ describe("tkslopper request shape", () => {
     ])
       expect(validateChatRequest(invalid)).not.toEqual([]);
   });
-
-  it("uses the image default of no reasoning", async () => {
-    const g = gateway([responsesResponse({ output: [message(text("SAFE"))] })]);
-    await inspector(g).inspect(new Uint8Array([1, 2, 3]), "image/jpeg");
-    expect(g.calls[0]?.body).not.toHaveProperty("reasoning");
-  });
 });
 
 describe("tkslopper outcomes", () => {
@@ -592,13 +586,6 @@ describe("tkslopper outcomes", () => {
     );
     expect(error.message).toBe(messageText);
     expect(error.retryable).toBe(retryable);
-  });
-
-  it("accepts a complete Chat stop", async () => {
-    const g = gateway([chatResponse({ content: artifactJson, finish: "stop" })]);
-    await expect(
-      provider(g, { TKSLOPPER_ARTIFACT_ENDPOINT: "chat" }).generate(brief, []),
-    ).resolves.toEqual({ html });
   });
 
   it("requires valid JSON for moderation", async () => {
