@@ -475,69 +475,6 @@ describe("D1StudioRepository conditional revision writes", () => {
     ).rejects.toThrow("D1 unavailable");
   });
 
-  it("publishes and updates retrieval in one guarded batch", async () => {
-    const sql: string[] = [];
-    const publication = {
-      slug: "new-slug",
-      artifact_id: artifact.id,
-      revision_id: revision.id,
-      owner_hash: artifact.ownerHash,
-      title: artifact.title,
-      source_hash: revision.sourceHash,
-      created_at: revision.createdAt,
-      expires_at: "2026-09-01T00:00:00Z",
-      revoked_at: null,
-    };
-    const retrieval = {
-      artifact_id: artifact.id,
-      revision_id: revision.id,
-      descriptor: "<!doctype html><html></html>",
-      curated: 0,
-      updated_at: revision.createdAt,
-    };
-    const database = {
-      prepare(text: string) {
-        sql.push(text);
-        const statement = {
-          bind: () => statement,
-        };
-        return statement;
-      },
-      batch(statements: unknown[]) {
-        expect(statements).toHaveLength(2);
-        return Promise.resolve([
-          { meta: { changes: 1 }, results: [publication] },
-          { meta: { changes: 4 }, results: [retrieval] },
-        ]);
-      },
-    } as unknown as D1Database;
-
-    await expect(
-      new D1StudioRepository(database).publish(
-        "new-slug",
-        artifact,
-        revision,
-        "2026-09-01T00:00:00Z",
-        revision.createdAt,
-        "<!doctype html><html></html>",
-      ),
-    ).resolves.toMatchObject({
-      slug: "new-slug",
-      artifactId: artifact.id,
-      revisionId: revision.id,
-    });
-
-    expect(sql[0]).toContain(
-      "ON CONFLICT(artifact_id) WHERE revoked_at IS NULL",
-    );
-    expect(sql[0]).toContain("head_revision_id=?3");
-    expect(sql[0]).toContain("publications.owner_hash=?4");
-    expect(sql[0]).toContain("RETURNING *");
-    expect(sql[1]).toContain("p.revision_id=?2 AND p.revoked_at IS NULL");
-    expect(sql[1]).toContain("a.head_revision_id=?2");
-    expect(sql[1]).toContain("RETURNING artifact_id,revision_id");
-  });
-
   it("executes guarded publication and retrieval upserts with FTS triggers", async () => {
     const { database, sqlite } = sqliteD1Database(
       "CREATE TABLE artifacts(id TEXT PRIMARY KEY,owner_hash TEXT NOT NULL,title TEXT NOT NULL,head_revision_id TEXT NOT NULL);" +

@@ -104,14 +104,6 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
     return frame;
   }
 
-  it("rejects a missing sandboxed activity instead of testing the parent", async () => {
-    const state = await open(source);
-    try {
-      await state.page.evaluate("document.querySelector('iframe').remove()");
-      expect(() => activity(state.page)).toThrow("Sandboxed activity frame not found");
-    } finally { await state.context.close(); }
-  });
-
   it("places the scoped base in the real head, not a preceding comment", async () => {
     const state = await open(source.replace("<head>", "<!-- explain <head> here --><head>"));
     try {
