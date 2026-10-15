@@ -28,6 +28,28 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testGenerationCachesAnImageReusedFromAnExemplar() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assetID = "exemplar-\(UUID().uuidString)"
+        let generated = makeProject(revisionID: "r1", html: "<html><img src=\"assets/\(assetID)\"></html>")
+        let api = ArtifactAPIStub(generated: generated, revised: generated)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        var brief = GuidedBriefDraft()
+        brief.learningObjective = "Explain balanced forces"
+        brief.studentAction = "Choose and explain"
+
+        let project = try await store.createApprovedBrief(brief)
+        defer { project.localAssets.forEach { LocalAppletAssetStorage.remove($0) } }
+
+        let reloaded = try XCTUnwrap(TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self)).projects.first)
+        for candidate in [project, reloaded] {
+            let cached = candidate.localAssets.first { $0.id == assetID }
+            XCTAssertNotNil(cached.flatMap { LocalAppletAssetStorage.url(for: $0) }, "The generated image must be available to the offline preview")
+        }
+    }
+
+    @MainActor
     func testSuccessfulGenerationPresentsAdvisoryWithoutDiscardingTheProject() async throws {
         let generated = makeProject(revisionID: "r1", html: "<html><h1>Generated</h1></html>")
         let warning = AdvisoryWarning(
@@ -95,6 +117,50 @@ final class TappletStoreTests: XCTestCase {
         let request = await api.lastGenerationRequest
         XCTAssertNil(request?.preferredExampleRevisionId)
         XCTAssertEqual(request?.brief.learnerContext, "Secondary 2 Geography")
+    }
+
+    @MainActor
+    func testStarterPlanDoesNotReplaceTheBriefBeingMade() throws {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let submitted = try XCTUnwrap(StarterPlan.matching(exampleID: "times-tables-lightning"))
+        let later = try XCTUnwrap(StarterPlan.matching(exampleID: "line-golf"))
+        store.applyStarterPlan(submitted)
+        store.isCreatingGuidedDraft = true
+        store.selectedSection = .explore
+
+        store.applyStarterPlan(later)
+
+        XCTAssertEqual(store.guidedMakeDraft, submitted.draft, "Make must keep showing the answers being made")
+        XCTAssertEqual(store.guidedMakePinnedPlanID, submitted.id)
+        XCTAssertEqual(store.selectedSection, .make)
+    }
+
+    @MainActor
+    func testMakeFailureOutlivesTheMakeScreenUntilANewBriefStarts() throws {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let plan = try XCTUnwrap(StarterPlan.all.first)
+        store.applyStarterPlan(plan)
+        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"), during: .generation)
+
+        store.selectedSection = .explore
+        store.openMake()
+        XCTAssertNotNil(store.guidedMakeCreationError, "A failure reported while the teacher was elsewhere must still show")
+
+        store.applyStarterPlan(plan)
+        XCTAssertNil(store.guidedMakeCreationError)
+        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"), during: .generation)
+        store.resetGuidedMake()
+        XCTAssertNil(store.guidedMakeCreationError)
     }
 
     @MainActor
@@ -370,6 +436,32 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRegistrationErrorsRequestAccessFromEveryOperation() {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        let operations: [TappletOperation] = [
+            .activation, .generation, .refinement, .undo, .directSave, .publish,
+            .unpublish, .extend, .restore, .delete, .image
+        ]
+
+        for operation in operations {
+            store.dismissWorkshopAccess()
+            let presentation = store.present(
+                TappletAPIError.server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again"),
+                during: operation
+            )
+
+            XCTAssertTrue(presentation.requestsWorkshopAccess, "\(operation) should ask for a class code")
+            XCTAssertNotEqual(presentation.title, "Tapplet Studio could not complete this action")
+            XCTAssertTrue(store.showsWorkshopAccess)
+        }
+    }
+
+    @MainActor
     func testSuccessfulCredentialRefreshDoesNotCloseManuallyOpenedAccess() async {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let store = TappletStore(
@@ -453,6 +545,42 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoreKeepsTappletWhoseScriptStringNamesNoImage() async throws {
+        let imageID = "restore-\(UUID().uuidString)"
+        let project = makeProject(revisionID: "r1", html: """
+        <html><img src="assets/\(imageID)"><script>const folders = ["assets/images"];</script></html>
+        """)
+        let api = ArtifactAPIStub(
+            generated: project,
+            revised: project,
+            assetErrors: ["images": .server(404, "ASSET_NOT_FOUND", "Image unavailable.")]
+        )
+        let store = TappletStore(api: api, storageDirectory: temporaryDirectory(), bundle: Bundle(for: Self.self))
+        defer { store.projects.flatMap(\.localAssets).forEach { LocalAppletAssetStorage.remove($0) } }
+
+        let count = try await store.restoreFromTapplet()
+
+        XCTAssertEqual(count, 1)
+        XCTAssertNil(store.recoveryNotice)
+        let restored = try XCTUnwrap(store.projects.first)
+        XCTAssertEqual(restored.localAssets.map(\.id), [imageID])
+        XCTAssertEqual(TappletStore.currentImageAssetIDs(in: restored), [imageID])
+    }
+
+    @MainActor
+    func testCurrentImagesCountScriptStringsOnlyOnceTheirImageDownloaded() throws {
+        let cachedID = "script-\(UUID().uuidString)"
+        var project = makeProject(revisionID: "r1", html: """
+        <html><img src="assets/markup"><script>const paths = ["assets/images", `assets/\(cachedID)`];</script></html>
+        """)
+        project.localAssets = [try LocalAppletAssetStorage.store(syntheticImage(), id: cachedID)]
+        defer { project.localAssets.forEach { LocalAppletAssetStorage.remove($0) } }
+
+        XCTAssertEqual(TappletStore.referencedAssetIDs(in: project.source.html), ["markup", "images", cachedID])
+        XCTAssertEqual(TappletStore.currentImageAssetIDs(in: project), ["markup", cachedID])
+    }
+
+    @MainActor
     func testRestorePropagatesRegistrationFailures() async {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let api = ArtifactAPIStub(
@@ -465,6 +593,33 @@ final class TappletStoreTests: XCTestCase {
             storageDirectory: temporaryDirectory(),
             bundle: Bundle(for: Self.self)
         )
+
+        do {
+            _ = try await store.restoreFromTapplet()
+            XCTFail("Expected registration to be requested")
+        } catch let error as TappletAPIError {
+            XCTAssertTrue(error.requiresRegistration)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(store.workshopAccessState, .registrationRequired)
+        XCTAssertTrue(store.showsWorkshopAccess)
+    }
+
+    @MainActor
+    func testRestoreRequestsAccessWhenListingRequiresRegistration() async {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let api = ArtifactAPIStub(
+            generated: project,
+            revised: project,
+            listError: .server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again")
+        )
+        let store = TappletStore(
+            api: api,
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        store.workshopAccessState = .ready
 
         do {
             _ = try await store.restoreFromTapplet()
@@ -593,12 +748,15 @@ final class TappletStoreTests: XCTestCase {
         <img src="assets/image-one">
         <a href=' assets/image-two '>Image</a>
         <style>.card { background: url(assets/image-three) }</style>
-        <script>const example = "assets/not-a-reference";</script>
+        <p title="assets/not-a-reference">"assets/not-a-reference"</p>
+        <script>document.images[0].setAttribute("src", "assets/image-four");</script>
+        <button onclick="svg.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', ' assets/image-five ')">Go</button>
+        <script type="module">const pictures = ['assets/image-six', `assets/image-seven`]; img.src = `assets/${pictures[0]}`;</script>
         """
 
         XCTAssertEqual(
             TappletStore.referencedAssetIDs(in: html),
-            ["image-one", "image-two", "image-three"]
+            ["image-one", "image-two", "image-three", "image-four", "image-five", "image-six", "image-seven"]
         )
     }
 
@@ -643,6 +801,31 @@ final class TappletStoreTests: XCTestCase {
             XCTAssertNotNil(url, "Restored HTML must have a usable local preview image, including after reload")
             if let url { XCTAssertNotNil(UIImage(data: try Data(contentsOf: url))) }
         }
+    }
+
+    @MainActor
+    func testUndoCachesAnImageThisIPadNeverDownloaded() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assetID = "uncached-\(UUID().uuidString)"
+        let image = try syntheticImage()
+        let original = makeProject(revisionID: "r1", html: "<html><img src=\"assets/\(assetID)\"></html>")
+        var current = makeProject(revisionID: "r2", parentRevisionID: "r1", html: "<html>No image</html>")
+        current.revisions = original.revisions + current.revisions
+        let api = ArtifactAPIStub(generated: original, revised: current)
+        await api.configureRestoredProject(original, image: image)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        store.projects = [current]
+
+        try await store.undo(projectID: current.id)
+
+        for candidate in [store, TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))] {
+            let restored = try XCTUnwrap(candidate.projects.first)
+            XCTAssertEqual(restored.source.html, original.source.html)
+            let cached = restored.localAssets.first { $0.id == assetID }
+            XCTAssertNotNil(cached.flatMap { LocalAppletAssetStorage.url(for: $0) }, "The restored image must be available to the offline preview")
+        }
+        store.projects.first?.localAssets.forEach { LocalAppletAssetStorage.remove($0) }
     }
 
     @MainActor
@@ -804,6 +987,7 @@ private actor ArtifactAPIStub: TappletAPI {
     let revised: ArtifactProject
     let hasCredential: Bool
     let listedArtifacts: [Artifact]
+    let listError: TappletAPIError?
     let artifactErrors: [String: TappletAPIError]
     let projectsByID: [String: ArtifactProject]
     let assetErrors: [String: TappletAPIError]
@@ -850,6 +1034,7 @@ private actor ArtifactAPIStub: TappletAPI {
         revised: ArtifactProject,
         hasCredential: Bool = true,
         listedArtifacts: [Artifact]? = nil,
+        listError: TappletAPIError? = nil,
         artifactErrors: [String: TappletAPIError] = [:],
         projectsByID: [String: ArtifactProject] = [:],
         assetErrors: [String: TappletAPIError] = [:],
@@ -861,6 +1046,7 @@ private actor ArtifactAPIStub: TappletAPI {
         self.revised = revised
         self.hasCredential = hasCredential
         self.listedArtifacts = listedArtifacts ?? [generated.artifact]
+        self.listError = listError
         self.artifactErrors = artifactErrors
         self.projectsByID = projectsByID
         self.assetErrors = assetErrors
@@ -875,7 +1061,10 @@ private actor ArtifactAPIStub: TappletAPI {
         lastGenerationRequest = request
         return AdvisoryResult(value: generated, warnings: warnings)
     }
-    func listArtifacts() async throws -> [Artifact] { listedArtifacts }
+    func listArtifacts() async throws -> [Artifact] {
+        if let listError { throw listError }
+        return listedArtifacts
+    }
     func searchExamples(brief: String) async throws -> [ExampleSearchDescriptor] { [] }
     func getArtifact(id: String) async throws -> ArtifactProject {
         if let error = artifactErrors[id] { throw error }

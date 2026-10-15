@@ -10,14 +10,33 @@ The production resources are in Wrangler's `tinkertanker` profile; keep
 ## Web operations panel
 
 After migration `0011_admin_settings.sql` and the matching Worker release are
-deployed, the operator panel is available at `/admin` on the API origin. It
-shows stored content and 14-day activity, and can replace the active
+deployed, the operator panel is available at <https://tapplet.tk.sg/admin>.
+Two zone routes, `tapplet.tk.sg/admin*` and `tapplet.tk.sg/v1/admin/*`, send
+the panel and its API to the API Worker ahead of the static site's custom
+domain; `/admin` on any other host redirects to `ADMIN_ORIGIN`. Other paths
+the wildcard catches, such as `/administrator`, are passed back to the site.
+The routes are attached through Cloudflare's API rather than `wrangler.jsonc`
+because the CI deploy token cannot edit zone routes; `wrangler deploy` leaves
+existing routes alone when the config has none. To recreate them, with a token
+that has Workers Routes edit on the `tk.sg` zone:
+
+```bash
+for pattern in 'tapplet.tk.sg/admin*' 'tapplet.tk.sg/v1/admin/*'; do
+  curl -X POST "https://api.cloudflare.com/client/v4/zones/ea01004f470a0e8078f1b9fdef547273/workers/routes" \
+    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'content-type: application/json' \
+    -d "{\"pattern\":\"$pattern\",\"script\":\"classroom-widgets-studio-api\"}"
+done
+```
+
+The panel shows stored content and 14-day activity, and can replace the active
 OpenAI-compatible model, endpoint and API key. It can also mint workshop class
 access codes with an activation limit and explicit expiry. A minted code is
 shown once and only its SHA-256 hash is stored in D1, so copy it immediately to
 a protected location. Provider keys are encrypted in D1 with AES-GCM and are
 never returned to the browser. The panel reports persisted requests and
-uploads; the provider contract does not currently expose token counts or spend.
+uploads. Token counts are only logged, not stored, so its cost estimator
+projects spend from OpenRouter's public list price for the configured model
+(editable) and assumed tokens per request.
 
 Configure two independent Worker secrets before using it:
 

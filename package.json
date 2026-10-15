@@ -7,7 +7,7 @@
     "services/api"
   ],
   "engines": {
-    "node": ">=22.12 <23"
+    "node": ">=22.13 <23"
   },
   "scripts": {
     "api:dev": "npm run dev -w @tinkercademy/tapplet-api",
@@ -25,7 +25,7 @@
     "eval:artifacts": "tsx evals/artifacts/run.ts",
     "eval:typecheck": "tsc --project evals/tsconfig.json",
     "eval:model": "tsx evals/model/run.ts",
-    "eval:model:test": "tsx --test evals/model/production-harness.test.ts evals/model/run.test.ts",
+    "eval:model:test": "tsx --test evals/model/production-harness.test.ts evals/model/run.test.ts evals/model/validator-parity.test.ts",
     "eval:model-moderation": "tsx evals/model/moderation.ts",
     "eval:browser": "tsx evals/browser/run.ts",
     "eval:browser:test": "tsx --test evals/browser/evaluate.test.ts",
