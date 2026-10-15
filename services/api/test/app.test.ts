@@ -669,12 +669,40 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(generated.status).toBe(201);
     expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
-    await expect(generated.json()).resolves.toMatchObject({
+    const draft = (await generated.json()) as { headRevision: { id: string } };
+    expect(draft).toMatchObject({
       warnings: [
         expect.objectContaining({
           source: "prompt",
           code: "PREFERRED_EXAMPLE_UNAVAILABLE",
         }),
+      ],
+    });
+
+    // Another teacher's unpublished draft exists but is not available to this caller.
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    receivedExemplars = [];
+    const inaccessible = await app.fetch(
+      new Request("https://api.test/v1/artifacts/generate", {
+        method: "POST",
+        headers: {
+          "x-device-token": otherToken,
+          origin: "https://studio.test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...creationBrief,
+          preferredExampleRevisionId: draft.headRevision.id,
+        }),
+      }),
+    );
+    expect(inaccessible.status).toBe(201);
+    expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    await expect(inaccessible.json()).resolves.toMatchObject({
+      warnings: [
+        expect.objectContaining({ code: "PREFERRED_EXAMPLE_UNAVAILABLE" }),
       ],
     });
   });
