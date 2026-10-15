@@ -390,12 +390,14 @@ export function createStudioApp(d: Deps) {
         date,
         networkLimit,
       ))
-    )
+    ) {
+      await d.repository.refundGeneration(subject, date);
       throw new HttpError(
         429,
         "NETWORK_LIMIT_REACHED",
         "Network safety limit reached.",
       );
+    }
     return async (): Promise<void> => {
       await Promise.allSettled(
         [subject, networkSubject].map((usage) =>
@@ -780,7 +782,12 @@ export function createStudioApp(d: Deps) {
           ...inspectText(request.creationBrief),
         ]);
       const refundArtifact = await reserveArtifactCreation(r, o);
-      const refundGeneration = await quota(r, o, "generation");
+      const refundGeneration = await quota(r, o, "generation").catch(
+        async (error: unknown) => {
+          await refundArtifact();
+          throw error;
+        },
+      );
       const retrievalStarted = performance.now();
       const query = generationRetrievalQuery(b);
       const preferred = request.preferredExampleRevisionId

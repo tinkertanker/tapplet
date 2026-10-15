@@ -1918,6 +1918,43 @@ describe("Tapplet API registration and public HTML", () => {
     ).toBe(201);
   });
 
+  it("returns earlier reservations when a later quota check rejects", async () => {
+    const limits = {
+      ...config,
+      dailyDraftCreationLimit: 1,
+      dailyGenerationLimit: 1,
+    };
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: { ...limits, dailyNetworkGenerationLimit: 0 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const limited = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(limited.status).toBe(429);
+    await expect(limited.json()).resolves.toMatchObject({
+      error: { code: "NETWORK_LIMIT_REACHED" },
+    });
+
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: limits,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    expect(
+      (
+        await app.fetch(
+          authenticated("/v1/artifacts/generate", "POST", creationBrief),
+        )
+      ).status,
+    ).toBe(201);
+  });
+
   it("keeps generation charged when a repair fails after a candidate", async () => {
     const provider: ModelProvider = new FixtureModelProvider();
     provider.generate = async () => ({ html: "not html" });
