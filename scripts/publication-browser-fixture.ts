@@ -6,7 +6,7 @@ const origin = (
   process.env.STUDIO_LIVE_ORIGIN ??
   "https://classroom-widgets-studio-api.tinkertanker.workers.dev"
 ).replace(/\/$/, "");
-const root = resolve(process.env.INIT_CWD ?? process.cwd());
+const root = resolve(import.meta.dirname, "..");
 const statePath = resolve(
   tmpdir(),
   "tapplet-publication-browser-fixture.json",

@@ -88,9 +88,13 @@ struct WorkshopAccessView: View {
                                 .accessibilityIdentifier("workshop-access-code")
                                 .disabled(isRegistering)
 
-                            Label("Enter your six-digit code. For an older code, use its last six letters.", systemImage: "info.circle")
+                            Label(
+                                "Enter your six-digit code. For an older code, use its last six letters.",
+                                systemImage: accessCodeIsTooShort ? "exclamationmark.triangle.fill" : "info.circle"
+                            )
                                 .font(.footnote)
                                 .foregroundStyle(accessCodeIsTooShort ? TappletTheme.danger : TappletTheme.mutedInk)
+                                .accessibilityValue(accessCodeIsTooShort ? "Code too short" : "")
                         }
 
                         if let registrationError {

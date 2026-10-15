@@ -7,6 +7,7 @@ import {
   createConfiguredModelProvider,
   decryptAdminApiKey,
   encryptAdminApiKey,
+  belongsToAdminHostSite,
   handleAdminRequest,
   loadConfiguredModelProvider,
 } from "../src/admin";
@@ -393,5 +394,67 @@ describe("web operations panel", () => {
     await expect(loadConfiguredModelProvider(env)).resolves.toMatchObject({
       name: "opencode-go:muse-spark-1.2-contributor",
     });
+  });
+});
+
+describe("operations panel origin", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("redirects the panel to the canonical admin origin and keeps serving it there", async () => {
+    const { database } = settingsDatabase();
+    const env = { ...environment(database), ADMIN_ORIGIN: "https://tapplet.tk.sg" };
+    const moved = await handleAdminRequest(new Request("https://api.workers.dev/admin/"), env);
+    expect(moved?.status).toBe(308);
+    expect(moved?.headers.get("location")).toBe("https://tapplet.tk.sg/admin");
+    expect(moved?.headers.get("cache-control")).toContain("no-store");
+
+    const panel = await handleAdminRequest(new Request("https://tapplet.tk.sg/admin"), env);
+    expect(panel?.status).toBe(200);
+    expect(await panel?.text()).toContain('id="cost-form"');
+
+    const unset = await handleAdminRequest(new Request("https://api.workers.dev/admin"), environment(database));
+    expect(unset?.status).toBe(200);
+
+    const routedDev = await handleAdminRequest(new Request("http://tapplet.tk.sg/admin"), env);
+    expect(routedDev?.status).toBe(200);
+    const local = await handleAdminRequest(new Request("http://localhost:8787/admin"), env);
+    expect(local?.status).toBe(200);
+    const blank = await handleAdminRequest(new Request("https://api.workers.dev/admin"), { ...env, ADMIN_ORIGIN: "" });
+    expect(blank?.status).toBe(200);
+  });
+
+  it("passes non-panel paths on the admin host back to the static site", () => {
+    const { database } = settingsDatabase();
+    const env = { ...environment(database), ADMIN_ORIGIN: "https://tapplet.tk.sg" };
+    const check = (url: string, target: StudioEnv = env) => belongsToAdminHostSite(new Request(url), target);
+    expect(check("https://tapplet.tk.sg/administrator")).toBe(true);
+    expect(check("https://tapplet.tk.sg/admin?source=bookmark")).toBe(false);
+    expect(check("https://tapplet.tk.sg/v1/admin/overview")).toBe(false);
+    expect(check("https://api.workers.dev/administrator")).toBe(false);
+    expect(check("https://tapplet.tk.sg/administrator", environment(database))).toBe(false);
+  });
+
+  it("prices the requested model from OpenRouter's public list without credentials", async () => {
+    const fetcher = vi.fn(async () => Response.json({ data: [
+      { id: "openai/gpt-6-luna:batch", name: "Batch", pricing: { prompt: "0.00000005", completion: "0.00000025" } },
+      { id: "openai/gpt-6-luna", name: "OpenAI: GPT-6 Luna", pricing: { prompt: "0.0000001", completion: "0.0000005" } },
+    ] }));
+    vi.stubGlobal("fetch", fetcher);
+    const { database } = settingsDatabase();
+    const env = { ...environment(database), OPENROUTER_API_KEY: "provider-secret" };
+    const request = (model: string) => handleAdminRequest(new Request(`https://api.test/v1/admin/model-pricing?model=${encodeURIComponent(model)}`, {
+      headers: { authorization: `Bearer ${adminToken}` },
+    }), env);
+
+    const response = await request("gpt-6-luna");
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ pricing: {
+      source: "openrouter", id: "openai/gpt-6-luna", name: "OpenAI: GPT-6 Luna", inputPerMillion: 0.1, outputPerMillion: 0.5,
+    } });
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith("https://openrouter.ai/api/v1/models", expect.objectContaining({ credentials: "omit" }));
+    expect(JSON.stringify(fetcher.mock.calls)).not.toContain("provider-secret");
+
+    expect(await (await request("unknown-model"))?.json()).toEqual({ pricing: null });
+    expect((await request(" "))?.status).toBe(400);
   });
 });

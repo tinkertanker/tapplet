@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import type { DatabaseSync } from 'node:sqlite';
 import { CloudflareAssetStore } from '../src/assets';
+import { migratedDatabase } from './sqliteD1';
 
 const ASSET_ROW = {
   id: 'asset-0123456789abcdef0123456789abcdef',
@@ -23,10 +25,9 @@ const ONE_PIXEL_CANONICAL_JPEG = Uint8Array.from([
   0x00, 0xff, 0xd9,
 ]);
 
-function fakeDatabase(statements: string[]): D1Database {
+function fakeDatabase(): D1Database {
   return {
-    prepare(sql: string) {
-      statements.push(sql);
+    prepare() {
       const statement = {
         bind() { return statement; },
         first() { return Promise.resolve(ASSET_ROW); },
@@ -38,11 +39,30 @@ function fakeDatabase(statements: string[]): D1Database {
   } as unknown as D1Database;
 }
 
+function insertAsset(sqlite: DatabaseSync, id: string, ownerHash: string, createdAt: string) {
+  sqlite
+    .prepare('INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, ownerHash, `assets/${id}.jpg`, 'image/jpeg', 1, 1, 1, 'a'.repeat(64), null, 1, createdAt);
+}
+
+function insertRevisionReference(sqlite: DatabaseSync, ownerHash: string, assetId: string) {
+  const artifactId = `${ownerHash}-artifact`,
+    revisionId = `${ownerHash}-revision`,
+    createdAt = '2026-01-01T00:00:00.000Z';
+  sqlite
+    .prepare('INSERT INTO artifacts(id,owner_hash,title,creation_brief,head_revision_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')
+    .run(artifactId, ownerHash, 'Remix', '{}', revisionId, createdAt, createdAt);
+  sqlite
+    .prepare('INSERT INTO revisions(id,artifact_id,source_hash,source_bytes,kind,model_version,prompt_version,created_at) VALUES(?,?,?,?,?,?,?,?)')
+    .run(revisionId, artifactId, 'hash', 1, 'remix', 'fixture', 'v1', createdAt);
+  sqlite.prepare('INSERT INTO revision_assets VALUES(?,?)').run(revisionId, assetId);
+}
+
 describe('asset reference ownership', () => {
   it('loads asset metadata without fetching the R2 object body', async () => {
     const bucketGet = vi.fn();
     const store = new CloudflareAssetStore(
-      fakeDatabase([]),
+      fakeDatabase(),
       { get: bucketGet } as unknown as R2Bucket,
     );
 
@@ -54,37 +74,56 @@ describe('asset reference ownership', () => {
     expect(bucketGet).not.toHaveBeenCalled();
   });
 
-  it('scopes deletion guards to the asset owner', async () => {
-    const statements: string[] = [];
-    const bucketDelete = vi.fn().mockResolvedValue(undefined);
-    const store = new CloudflareAssetStore(
-      fakeDatabase(statements),
-      { delete: bucketDelete } as unknown as R2Bucket,
-    );
+  it('deletes an unreferenced owned asset and reports referenced or unknown ones', async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      insertAsset(sqlite, 'asset-free', 'owner-a', ASSET_ROW.created_at);
+      insertAsset(sqlite, 'asset-remixed', 'owner-a', ASSET_ROW.created_at);
+      // Another owner's revision still links the asset, e.g. after a remix.
+      insertRevisionReference(sqlite, 'owner-b', 'asset-remixed');
+      const bucketDelete = vi.fn().mockResolvedValue(undefined);
+      const store = new CloudflareAssetStore(
+        database,
+        { delete: bucketDelete } as unknown as R2Bucket,
+      );
 
-    await expect(store.deleteOwned(ASSET_ROW.id, ASSET_ROW.owner_hash)).resolves.toBe('deleted');
-    expect(statements[1]).toContain('SELECT 1 FROM revision_assets ra');
-    expect(statements[1]).not.toContain('d.owner_hash = ?2');
-    expect(statements[1]).toContain('p.owner_hash = ?2');
-    expect(bucketDelete).toHaveBeenCalledWith(ASSET_ROW.object_key);
+      await expect(store.deleteOwned('asset-remixed', 'owner-a')).resolves.toBe('in-use');
+      await expect(store.deleteOwned('asset-free', 'owner-b')).resolves.toBe('missing');
+      await expect(store.deleteOwned('asset-unknown', 'owner-a')).resolves.toBe('missing');
+      expect(bucketDelete).not.toHaveBeenCalled();
+      await expect(store.deleteOwned('asset-free', 'owner-a')).resolves.toBe('deleted');
+      expect(bucketDelete).toHaveBeenCalledExactlyOnceWith('assets/asset-free.jpg');
+      expect(sqlite.prepare('SELECT id FROM assets').all()).toEqual([{ id: 'asset-remixed' }]);
+    } finally {
+      sqlite.close();
+    }
   });
 
-  it('uses correlated owner guards during orphan selection and final deletion', async () => {
-    const statements: string[] = [];
-    const store = new CloudflareAssetStore(
-      fakeDatabase(statements),
-      { delete: vi.fn().mockResolvedValue(undefined) } as unknown as R2Bucket,
-    );
+  it('cleans up only unreferenced assets created before the cutoff', async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      insertAsset(sqlite, 'asset-old-orphan', 'owner-a', '2026-01-01T00:00:00.000Z');
+      insertAsset(sqlite, 'asset-old-linked', 'owner-a', '2026-01-01T00:00:00.000Z');
+      insertAsset(sqlite, 'asset-new-orphan', 'owner-a', '2026-02-15T00:00:00.000Z');
+      insertRevisionReference(sqlite, 'owner-b', 'asset-old-linked');
+      const bucketDelete = vi.fn().mockResolvedValue(undefined);
+      const store = new CloudflareAssetStore(
+        database,
+        { delete: bucketDelete } as unknown as R2Bucket,
+      );
 
-    await expect(store.cleanupOrphans(
-      '2026-02-01T00:00:00.000Z',
-      '2026-03-01T00:00:00.000Z',
-    )).resolves.toBe(1);
-    expect(statements[0]).toContain('SELECT 1 FROM revision_assets ra');
-    expect(statements[0]).not.toContain('d.owner_hash = a.owner_hash');
-    expect(statements[0]).toContain('p.owner_hash = a.owner_hash');
-    expect(statements[1]).not.toContain('d.owner_hash = ?2');
-    expect(statements[1]).toContain('p.owner_hash = ?2');
+      await expect(store.cleanupOrphans(
+        '2026-02-01T00:00:00.000Z',
+        '2026-03-01T00:00:00.000Z',
+      )).resolves.toBe(1);
+      expect(bucketDelete).toHaveBeenCalledExactlyOnceWith('assets/asset-old-orphan.jpg');
+      expect(sqlite.prepare('SELECT id FROM assets ORDER BY id').all()).toEqual([
+        { id: 'asset-new-orphan' },
+        { id: 'asset-old-linked' },
+      ]);
+    } finally {
+      sqlite.close();
+    }
   });
 
   it('persists only canonical JPEG bytes and metadata after normalizing an upload', async () => {
@@ -187,7 +226,7 @@ describe('asset reference ownership', () => {
     for (const reviewer of reviewers) {
       const bucketPut = vi.fn().mockResolvedValue(undefined);
       const store = new CloudflareAssetStore(
-        fakeDatabase([]),
+        fakeDatabase(),
         { put: bucketPut, delete: vi.fn() } as unknown as R2Bucket,
         { normalize: vi.fn().mockResolvedValue(ONE_PIXEL_CANONICAL_JPEG) },
         reviewer,
@@ -227,7 +266,7 @@ describe('asset reference ownership', () => {
     const bucketPut = vi.fn();
     const imageInspect = vi.fn();
     const store = new CloudflareAssetStore(
-      fakeDatabase([]),
+      fakeDatabase(),
       { put: bucketPut } as unknown as R2Bucket,
       { normalize: vi.fn().mockResolvedValue(new TextEncoder().encode('not a JPEG')) },
       { inspect: imageInspect },

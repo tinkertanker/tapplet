@@ -43,6 +43,8 @@ struct ArtifactRevision: Codable, Equatable, Identifiable, Sendable {
     var kind: Kind
     var instruction: String? = nil
     var designCard: String? = nil
+    /// Tapplet Studio's short note to the teacher about what this revision made or changed.
+    var comment: String? = nil
     var screenshotUrl: URL? = nil
     var model: String
     var promptVersion: String

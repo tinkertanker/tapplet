@@ -53,6 +53,7 @@ stepsBox.onclick=e=>{
   [order[i],order[i-1]]=[order[i-1],order[i]];
   document.getElementById('sm').textContent='';
   render();
+  stepsBox.querySelector(`[data-i="${Math.max(1,i-1)}"]`).focus();
 };
 document.getElementById('checkSteps').onclick=()=>{
   const right=order.filter((n,i)=>n===i).length;

@@ -1,15 +1,21 @@
 # Tapplet preview website
 
-A dependency-free static site: a "coming soon" landing page and the public
-privacy notice. It is deployed as the static assets-only Worker
-`tapplet-preview` and is separate from the API Worker in `services/api`. It
-has no Worker script, bindings, D1/R2 resources or secrets, and its only route
-is the `tapplet.tk.sg` custom domain.
+A dependency-free static site: a landing page with the public TestFlight
+invitation and a contact link, and the public privacy notice. It is deployed
+as the static assets-only Worker `tapplet-preview` and is separate from the
+API Worker in `services/api`. It has no Worker script, bindings, D1/R2
+resources or secrets, and its only route is the `tapplet.tk.sg` custom domain.
 
 Public URLs:
 
 - <https://tapplet.tk.sg/>: landing page
 - <https://tapplet.tk.sg/privacy>: privacy notice
+
+`/admin` and `/v1/admin/*` on the same host are not part of this site: zone
+routes attach them to the API Worker, which serves the operations panel (see
+[`docs/TAPPLET_PILOT_RUNBOOK.md`](../../docs/TAPPLET_PILOT_RUNBOOK.md)).
+Because the panel keeps its admin token in this origin's `sessionStorage`,
+keep this site script-free: no scripts, analytics or third-party embeds.
 
 The Worker's workers.dev URL remains available as a fallback. The custom domain
 is attached separately through Cloudflare's supported API without reuploading

@@ -111,6 +111,9 @@ struct AppletPreviewWebView: UIViewRepresentable {
                   source.revision.id != requested?.revision.id
             else { return }
             if case let .failed(message) = protection {
+                // Remember the blocked source so dismissing the alert, which
+                // updates this view, does not present the same error again.
+                requested = source
                 state.wrappedValue = .failed(message)
                 presentableError.wrappedValue = message
                 return
@@ -176,7 +179,6 @@ struct AppletPreviewWebView: UIViewRepresentable {
             protection = .failed(message)
             state.wrappedValue = .failed(message)
             presentableError.wrappedValue = message
-            requested = nil
         }
 
         private func loadRequestedSource() {

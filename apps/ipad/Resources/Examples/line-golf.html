@@ -8,16 +8,16 @@ const holes=[
   {par:4,m:1,c:0,targets:[[-2,4],[0,2],[2,0]],hint:"The line should fall as x increases."},
   {par:3,m:1,c:0,targets:[[1,1],[2,1],[3,1]],hint:"If every flag is at the same height, the gradient is 0."}
 ];
-let h=0,strokes=0,finished=false;
+let h=0,strokes=0,finished=false,nextHole;
 const xMap=x=>250+x*40,yMap=y=>200-y*18;
 function onLine(m,c,x,y){return Math.abs(m*x+c-y)<0.01}
 function draw(){const m=+mIn.value,c=+cIn.value;mv.value=m;cv.value=c;eq.textContent=`${m}x ${c<0?"−":"+"} ${Math.abs(c)}`;plot.setAttribute("d",`M25 ${200-(m*-5.6+c)*18} L475 ${200-(m*5.6+c)*18}`);const g=document.getElementById("flags");g.innerHTML="";holes[h].targets.forEach(([x,y])=>{const hit=onLine(m,c,x,y);g.insertAdjacentHTML("beforeend",`<circle cx="${xMap(x)}" cy="${yMap(y)}" r="9" fill="${hit?"#2f9d5c":"#d24b3c"}"/><text x="${xMap(x)+10}" y="${yMap(y)-8}" font-size="12">(${x}, ${y})</text>`)})}
 function allHit(){const m=+mIn.value,c=+cIn.value;return holes[h].targets.every(([x,y])=>onLine(m,c,x,y))}
-function load(){finished=false;const hole=holes[h];mIn.value=hole.m;cIn.value=hole.c;strokes=0;document.getElementById("hole").textContent=h+1;document.getElementById("par").textContent=hole.par;document.getElementById("strokes").textContent=0;document.getElementById("again").style.display="none";msg.textContent=hole.hint;draw()}
+function load(){clearTimeout(nextHole);finished=false;const hole=holes[h];mIn.value=hole.m;cIn.value=hole.c;strokes=0;document.getElementById("hole").textContent=h+1;document.getElementById("par").textContent=hole.par;document.getElementById("strokes").textContent=0;document.getElementById("again").style.display="none";msg.textContent=hole.hint;draw()}
 const mIn=document.getElementById("m"),cIn=document.getElementById("c");
 mIn.oninput=cIn.oninput=draw;
-document.getElementById("check").onclick=()=>{if(finished)return;strokes+=1;document.getElementById("strokes").textContent=strokes;if(allHit()){const vs=strokes<=holes[h].par?"on or under par.":"over par, but the line is through every flag.";msg.textContent="All flags hit in "+strokes+" stroke"+(strokes===1?"":"s")+", "+vs;if(h<holes.length-1){h+=1;setTimeout(load,1200)}else{finished=true;msg.textContent+=" Course finished. Play again to restart from hole 1.";document.getElementById("again").style.display="inline-block"}}else{const m=+mIn.value,c=+cIn.value,t=holes[h].targets.find(([x,y])=>!onLine(m,c,x,y));const need=t[1]-(m*t[0]+c);msg.textContent=need>0?"The line is too low for ("+t[0]+", "+t[1]+"). Increase c to slide it up, or change m so it tilts through that flag.":"The line is too high for ("+t[0]+", "+t[1]+"). Decrease c, or change m."}};
+document.getElementById("check").onclick=()=>{if(finished)return;strokes+=1;document.getElementById("strokes").textContent=strokes;if(allHit()){const vs=strokes<=holes[h].par?"on or under par.":"over par, but the line is through every flag.";msg.textContent="All flags hit in "+strokes+" stroke"+(strokes===1?"":"s")+", "+vs;if(h<holes.length-1){finished=true;h+=1;nextHole=setTimeout(load,1200)}else{finished=true;msg.textContent+=" Course finished. Play again to restart from hole 1.";document.getElementById("again").style.display="inline-block"}}else{const m=+mIn.value,c=+cIn.value,t=holes[h].targets.find(([x,y])=>!onLine(m,c,x,y));const need=t[1]-(m*t[0]+c);msg.textContent=need>0?"The line is too low for ("+t[0]+", "+t[1]+"). Increase c to slide it up, or change m so it tilts through that flag.":"The line is too high for ("+t[0]+", "+t[1]+"). Decrease c, or change m."}};
 document.getElementById("reset").onclick=load;
-document.getElementById("again").onclick=()=>{h=0;load()};
+document.getElementById("again").onclick=()=>{const refocus=document.activeElement===document.getElementById("again");h=0;load();if(refocus)mIn.focus()};
 load();
 </script></body></html>

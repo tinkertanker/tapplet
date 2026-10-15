@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { parse as parseHtml, type DefaultTreeAdapterTypes } from "parse5";
 import { createStudioApp } from "../../services/api/src/app";
 import type { AssetRecord, AssetStore, StoredAsset } from "../../services/api/src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../../services/api/src/auth";
@@ -430,7 +431,7 @@ export class ProductionEvaluationHarness {
         ))
       : null;
     const requiredAssetInserted = revision.requiredAsset
-      ? revised.html.includes(`src="assets/${revision.requiredAsset.id}"`)
+      ? referencesManagedImage(revised.html, revision.requiredAsset.id)
       : null;
     const browser = this.options.browser
       ? await evaluateHtmlInBrowser(revised.html, {
@@ -547,6 +548,18 @@ function browserScenarios(
         } satisfies BrowserScenario]
       : []),
   ];
+}
+
+// Match production: an img element whose trimmed src is the managed asset URL,
+// however the attribute is quoted.
+function referencesManagedImage(html: string, assetId: string): boolean {
+  const visit = (node: DefaultTreeAdapterTypes.Node): boolean =>
+    ("tagName" in node
+      && node.tagName === "img"
+      && node.attrs.find((attribute) => attribute.name === "src")?.value.trim()
+        === `assets/${assetId}`)
+    || ("childNodes" in node && node.childNodes.some(visit));
+  return visit(parseHtml(html));
 }
 
 function validationRepairCount(
