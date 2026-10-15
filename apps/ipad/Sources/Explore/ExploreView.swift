@@ -69,9 +69,11 @@ struct ExploreView: View {
         .fullScreenCover(item: $preview) { project in
             StudentPreviewView(
                 project: project,
-                onUsePlan: StarterPlan.matching(exampleID: project.artifact.id).map { plan in
-                    { store.applyStarterPlan(plan) }
-                }
+                onUsePlan: store.isCreatingGuidedDraft
+                    ? nil
+                    : StarterPlan.matching(exampleID: project.artifact.id).map { plan in
+                        { store.applyStarterPlan(plan) }
+                    }
             )
         }
         .alert(
@@ -194,9 +196,14 @@ struct ExploreView: View {
             Text(title)
                 .font(TappletTheme.Typography.eyebrow)
                 .foregroundStyle(TappletTheme.mutedInk)
-            FlowLayout(spacing: 8) {
-                content()
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    content()
+                }
+                .padding(.top, 2)
+                .padding(.bottom, 10)
             }
+            .scrollClipDisabled()
         }
     }
 

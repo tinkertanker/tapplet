@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  assetReferences,
   generateArtifact,
   InvalidModelOutputError,
   referencedAssetIds,
@@ -36,6 +37,364 @@ describe("HTML generation contract", () => {
     expect(() => validateHtmlOutput({ html: candidate })).toThrow(InvalidModelOutputError);
   });
 
+  it("accepts lesson text naming fetch or import while rejecting network calls", () => {
+    const prose = html.replace(
+      "Hello",
+      "<p>The CPU repeats fetch (get the instruction), decode and execute.</p><li>Countries import (and export) rice.</li><textarea>Fetch (F)</textarea>",
+    );
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const markup of [
+      "<script>fetch ('https://outside.invalid/')</script>",
+      `<button onclick="fetch('https://outside.invalid/')">Go</button>`,
+      '<script type="text/template">fetch("https://outside.invalid/")</script>',
+      `<textarea><b onclick="fetch('https://outside.invalid/')">Go</b></textarea>`,
+      `<p>&lt;b onclick="fetch('https://outside.invalid/')"&gt;</p>`,
+      '<div>a<table><script>fetch("https://outside.invalid/")</script>b</table></div>',
+    ])
+      expect(() => validateHtmlOutput({ html: html.replace("Hello", markup) })).toThrow(
+        "Invalid generated HTML",
+      );
+  });
+
+  it("accepts the word caches in content while rejecting storage APIs", () => {
+    const prose = html.replace("Hello", "<p>Squirrels bury acorns in caches. Caches help CPUs.</p>");
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    expect(() =>
+      validateHtmlOutput({
+        html: html.replace("Hello", `<button onclick="caches ['open']('scores')">Save</button>`),
+      }),
+    ).toThrow(InvalidModelOutputError);
+    const crlf = prose.replaceAll("<", "\r\n<").replace("\r\n<!doctype", "<!doctype");
+    expect(validateHtmlOutput({ html: crlf })).toEqual({ html: crlf });
+    for (const script of [
+      'caches.open("v1")',
+      "window.caches.match(event)",
+      'caches .open("scores")',
+      'const storage = caches; storage.open("scores")',
+      'localStorage.setItem("score", "1")',
+      "indexedDB.open('db')",
+    ]) {
+      expect(() =>
+        validateHtmlOutput({ html: html.replace('document.body.dataset.ok="1"', script) }),
+      ).toThrow(InvalidModelOutputError);
+    }
+  });
+
+  it("accepts words starting with import before quoted text while rejecting imports", () => {
+    const prose = html.replace(
+      "Hello",
+      `<p>Pick the most important line from 'Macbeth'. Which is important? Pick one from "Act 1".</p>`,
+    );
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const script of [
+      'import confetti from "https://esm.sh/confetti"',
+      "import { a } from './a.js'",
+      'import("./module.js")',
+    ]) {
+      expect(() =>
+        validateHtmlOutput({ html: html.replace('document.body.dataset.ok="1"', script) }),
+      ).toThrow(InvalidModelOutputError);
+    }
+    const module = html.replace("<script>", '<script type="module">');
+    const local = module.replace(
+      'document.body.dataset.ok="1"',
+      "export const ok = 1; export { ok as ready }",
+    );
+    expect(validateHtmlOutput({ html: local })).toEqual({ html: local });
+    for (const script of [
+      'import "https://outside.invalid/x.js"',
+      'export * from "https://outside.invalid/x.js"',
+      'export * as x from "https://outside.invalid/x.js"',
+      'export { a } from "https://outside.invalid/x.js"',
+      'import/**/("https://outside.invalid/x.js")',
+    ]) {
+      expect(() =>
+        validateHtmlOutput({ html: module.replace('document.body.dataset.ok="1"', script) }),
+      ).toThrow(InvalidModelOutputError);
+    }
+    const trade = html.replace(
+      "Hello",
+      '<p>A shop wants to import rice from Thailand.</p><label for="from">From</label><select id="from"></select>',
+    );
+    expect(validateHtmlOutput({ html: trade })).toEqual({ html: trade });
+    for (const markup of [
+      '<p>We import</p><script type="text/template">import x from "https://outside.invalid/x.js"</script>',
+      `<p>We import</p><button onclick="import('https://outside.invalid/x.js')">Go</button>`,
+      '<p>We import</p><script>const x = require("https://outside.invalid/x.js")</script>',
+    ])
+      expect(() => validateHtmlOutput({ html: html.replace("Hello", markup) })).toThrow(
+        InvalidModelOutputError,
+      );
+  });
+
+  it("accepts SVG references to elements in the document", () => {
+    const candidate = html.replace(
+      "Hello",
+      '<svg><defs><linearGradient id="sky"><stop offset="0" stop-color="#9cf"/></linearGradient><marker id="arrow"><path d="M0 0L4 2L0 4"/></marker></defs><rect fill="url(#sky)" width="4" height="4"/><line marker-end="url( \'#arrow\' )" x2="4"/></svg>',
+    ).replace("</style>", ".bar{fill:url(#sky)}</style>");
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(() =>
+      validateHtmlOutput({ html: html.replace("Hello", '<svg><rect fill="url(https://outside.invalid/x.svg#sky)"/></svg>') }),
+    ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts lesson text such as URL(s) while rejecting external CSS URLs", () => {
+    const prose = html.replace(
+      "Hello",
+      "<p>Copy the URL(s) of your sources.</p><textarea>\nurl(link)</textarea><select><option>URL(s)</option></select>",
+    );
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const capability of [
+      "<p>Copy the URL(s).</p><style>body{background:url(https://outside.invalid/x.png)}</style>",
+      `<p>url("</p><style>body{background:url(https://outside.invalid/x.png)}</style><p>")</p>`,
+      "<p>Copy the URL(s).</p><svg><style>rect{fill:url(https://outside.invalid/x.svg#g)}</style></svg>",
+      "<select><style>body{background:url(https://outside.invalid/x.png)}</style><option>Copy the URL(s)</option></select>",
+      "<select><option>A</option><style>body{background:url(https://outside.invalid/x.png)}</style></select>",
+      `<p>Copy the URL(s).</p><div style="background:url(https://outside.invalid/x.png)"></div>`,
+      "<p>Copy the URL(s).</p><script>document.body.style.background = 'url(https://outside.invalid/x.png)'</script>",
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts custom data attributes named like URL attributes", () => {
+    const candidate = html.replace(
+      "Hello",
+      '<button data-action="check">Check</button><div data-src="pool-1"></div>',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(() =>
+      validateHtmlOutput({ html: html.replace("Hello", '<form action="https://outside.invalid/"></form>') }),
+    ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts data attributes that scripts set through dataset", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'const button = document.createElement("button"); button.dataset.action = "check"; button.dataset.src = `pool-${1}`; button.dataset.href = "https://outside.invalid/"',
+    ).replace("Hello", `<button onclick="this.dataset.action = 'reset'">Reset</button>`);
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<script>document.images[0].src = "https://outside.invalid/x.png"; document.body.dataset.src = "x";</script>',
+      "<script>document.images[0].dataset.src = 1; document.images[0].src = `https://outside.invalid/${1}.png`;</script>",
+      '<script>document.forms[0].dataset["action"] = 1; document.forms[0].action = "https://outside.invalid/";</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts a script variable named action", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'document.body.onclick = (event) => { const action = event.target.dataset.action; const formaction = action; let next = formaction; next = "reset"; }',
+    ).replace("Hello", '<button data-formaction="check">Check</button>');
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<FORM ACTION="https://outside.invalid/"></FORM>',
+      '<template><form action="/submit"></form></template>',
+      '<script>document.forms[0].action = "https://outside.invalid/"</script>',
+      '<form><button formaction="https://outside.invalid/">Send</button></form>',
+      `<script>document.body.innerHTML = '<button formaction="https://outside.invalid/">'</script>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts lesson text such as Action = Reaction", () => {
+    const prose = html.replace(
+      "Hello",
+      "<p>Newton's third law: Action = Reaction.</p><li>Every action = an equal and opposite reaction</li><textarea>src = source</textarea>",
+    );
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const capability of [
+      "<p>Action = Reaction.</p><form action=https://outside.invalid/></form>",
+      '<p>Action = Reaction.</p><p>href="https://outside.invalid/"</p>',
+      `<p>Action = Reaction.</p><button onclick="this.innerHTML = '<img src=https://outside.invalid/x.png>'">Go</button>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts script variables named src and href", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'const src = document.body.dataset.src; let href = location.hash; void [src, href]',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<svg><image xlink:href="https://outside.invalid/x.png"/></svg>',
+      '<template><img src="https://outside.invalid/x.png"></template>',
+      '<script>document.images[0].src = "https://outside.invalid/x.png"</script>',
+      "<script>document.images[0].src = window.name</script>",
+      `<script>document.body.innerHTML = '<img src="https://outside.invalid/x.png">'</script>`,
+      `<script>document.body.innerHTML = '<form action="https://outside.invalid/">'</script>`,
+      '<script>document.body.innerHTML = `<img\n  src="https://outside.invalid/x.png" alt="">`</script>',
+      "<script>document.body.innerHTML = '<img alt=a; src=https://outside.invalid/x.png>'</script>",
+      `<button onclick="this.innerHTML = '<img alt=a; src=https://outside.invalid/x.png>'">Go</button>`,
+      '<script type="text/template">\n<img\n  src="https://outside.invalid/x.png">\n</script>',
+      `<div data-markup='<img\nsrc="https://outside.invalid/x.png">'></div>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("checks URLs that scripts pass to setAttribute as literals", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'const image = document.images[0]; image.setAttribute("src", "assets/asset-one"); image.setAttribute("href", `#top`); image.setAttribute("src", image.dataset.src); image.setAttribute("alt", "https://outside.invalid/")',
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    for (const capability of [
+      '<script>document.images[0].setAttribute("src", "https://outside.invalid/x.png")</script>',
+      "<script>document.images[0].setAttribute('SRC', `https://outside.invalid/x.png`)</script>",
+      `<button onclick="document.forms[0]?.setAttribute('action', 'https://outside.invalid/')">Go</button>`,
+      '<button onclick="this.setAttribute(&quot;formaction&quot;, &quot;https://outside.invalid/&quot;)">Go</button>',
+      '<script>document.links[0].setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "https://outside.invalid/")</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("checks src written from expressions, element scopes and literals", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      '\r\nlet src;\r\nsrc = document.body.dataset.src;\r\nvoid src',
+    ).replace("Hello", `<button onclick="const href = this.dataset.href; void href">Go</button>`);
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    const url = 'const u = "https://outside.invalid/x.png";';
+    for (const capability of [
+      `<script>${url} document.body.innerHTML = \`<img\n  src="\${u}" alt="">\`</script>`,
+      `<script>${url} document.body.innerHTML = "<img \\\nsrc=" + u + ">"</script>`,
+      '<script>document.body.innerHTML = /<img let src="https:\\/\\/outside.invalid\\/x.png">/.source</script>',
+      `<a onclick="var action = href = 'https://outside.invalid/'">Go</a>`,
+      '<p>href="#</p><a href=https://outside.invalid/>Go</a><p>"</p>',
+      `<img src="assets/a" onerror="0;src='https://outside.invalid/x.png'">`,
+      '<script>with (document.images[0]) { var src = "https://outside.invalid/x.png" }</script>',
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts URL-named parameters, destructuring and class fields", () => {
+    for (const script of [
+      "function handleAction(action = 'check') { return action; }",
+      "const pick = (action = 'check') => action; pick();",
+      "const {src = 'placeholder'} = {}; void src;",
+      "const { card: { href = 'none' }, list: [poster = 'blank', ...action] } = { card: {}, list: [] };",
+      "let formaction; [formaction = 'next'] = []; ({ src = 'later' } = {});",
+      "try { void 0 } catch ({ href = 'none' }) {}",
+      "class Game { action = 'idle'; static src = 'none'; }",
+    ]) {
+      const candidate = html.replace('document.body.dataset.ok="1"', script);
+      expect(validateHtmlOutput({ html: candidate }), script).toEqual({ html: candidate });
+    }
+    const handler = `<button onclick="const go = (action = 'check') => action; const {href = 'none'} = {}; go()">Go</button>`;
+    expect(validateHtmlOutput({ html: html.replace("Hello", handler) })).toEqual({
+      html: html.replace("Hello", handler),
+    });
+    for (const capability of [
+      `<img src="assets/a" onerror="({src = 'https://outside.invalid/x.png'} = {})">`,
+      `<img src="assets/a" onerror="const f = (a = src = 'https://outside.invalid/x.png') => a; f()">`,
+      `<script>const { a = document.images[0].src = 'https://outside.invalid/x.png' } = {};</script>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("rejects external URLs that scripts write as template literals", () => {
+    for (const capability of [
+      "<script>const image = new Image(); image.src = `https://outside.invalid/${1}.png`;</script>",
+      "<script>document.images[0].src = `https://outside.invalid/x.png`;</script>",
+      "<script>document.links[0].href = `//outside.invalid/`;</script>",
+      '<script>document.images[0].setAttribute("src", `https://outside.invalid/${1}.png`);</script>',
+      '<img alt="" src="assets/a" onerror="src = `https://outside.invalid/${1}.png`">',
+      '<img alt="" src="assets/a" onerror="src = `https://outside.invalid/${&quot;x&quot;}.png`">',
+      "<script>document.images[0].src = `\\\\\\\\outside.invalid/${1}.png`;</script>",
+      "<script>document.images[0].src = `/\\\\outside.invalid/${1}.png`;</script>",
+      "<script>document.images[0].src = `ht\\ttps://outside.invalid/${1}.png`;</script>",
+    ])
+      expect(
+        () => validateHtmlOutput({ html: html.replace("Hello", capability) }),
+        capability,
+      ).toThrow(InvalidModelOutputError);
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      "const id = 'asset-one'; document.images[0].src = `assets/${id}`; document.images[0].src = `data:image/png;base64,${'AAAA'}`; const link = document.createElement('a'); link.href = `#${id}`;",
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+  });
+
+  it("ignores URL attribute names inside fragment links and other URL values", () => {
+    for (const fragment of [
+      '<a href="#action=go">Go</a>',
+      "<a href='#/route?src=x&action=view'>View</a><a href=#action=go>Go</a>",
+      '<svg><use xlink:href="#src=icon"></use></svg><div data-href="#action=go"></div>',
+      '<template><a href="#action=go">Go</a></template>',
+      '<script type="text/template"><a href="#action=go">Go</a></script>',
+      `<script>document.body.insertAdjacentHTML("beforeend", '<a href="#action=go">Go</a>');</script>`,
+      "<script>const id = 1; document.body.innerHTML = `<a href=\"#/item?id=${id}&action=view\">View</a>`;</script>",
+      '<script>const link = document.createElement("a"); link.href = "#action=go"; const href = \'#src=assets/asset-two\';</script>',
+      `<button onclick="location.href = '#action=go'">Go</button>`,
+    ]) {
+      const candidate = html.replace("Hello", fragment);
+      expect(validateHtmlOutput({ html: candidate }), fragment).toEqual({ html: candidate });
+      expect(referencedAssetIds(candidate), fragment).toEqual(["asset-one"]);
+    }
+    for (const capability of [
+      '<a href="#top"><img src="https://outside.invalid/x.png"></a>',
+      '<a href=\'#top"><img src="https://outside.invalid/x.png">\'>Go</a>',
+      `<script>document.body.innerHTML = '<a href="#top"><img src="https://outside.invalid/x.png"></a>';</script>`,
+      `<script>document.body.innerHTML = '<img data-src="#\\x22 src=https://outside.invalid/x.png">';</script>`,
+      "<script>const q = '\"'; document.body.innerHTML = `<img data-src=\"#${q} src=https://outside.invalid/x.png\">`;</script>",
+      "<script>const q = '\"a='; document.body.innerHTML = `<img alt=\"${q}\" data-src=\"#x src=https://outside.invalid/x.png\">`;</script>",
+      `<script>const link = document.createElement("a"); link.href = '#top'; document.images[0].src = 'https://outside.invalid/x.png';</script>`,
+      "<script>const link = document.createElement('a'); link.href = `#${document.images[0].src = 'https://outside.invalid/x.png'}`;</script>",
+      '<script type="text/template"><a href="#top"><img src="https://outside.invalid/x.png"></a></script>',
+      `<script>const href = "#x' src='https://outside.invalid/x.png"; document.body.innerHTML = "<img alt='" + href + "'>";</script>`,
+      `<script>document.body.innerHTML = '<img alt="' + '<a href="#x src=https://outside.invalid/x.png">';</script>`,
+      '<div data-href="#x&#32;src=https://outside.invalid/x.png"></div><script>document.body.innerHTML = "<img " + document.querySelector("div").dataset.href + ">";</script>',
+    ])
+      expect(
+        () => validateHtmlOutput({ html: html.replace("Hello", capability) }),
+        capability,
+      ).toThrow(InvalidModelOutputError);
+  });
+
+  it("accepts a script variable named poster", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'let poster = document.getElementById("poster"); poster.dataset.ready = "1"; poster = [poster].find((poster) => poster === poster)',
+    ).replace("Hello", `<button onclick="const poster = this.dataset.poster; void poster">Go</button>`);
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    // Lesson text names a poster too.
+    const prose = html.replace("Hello", "<p>1 poster = $3, so 4 posters cost $12.</p><td>Poster=2</td><p>Pen = $1. Poster = $3.</p>");
+    expect(validateHtmlOutput({ html: prose })).toEqual({ html: prose });
+    for (const capability of [
+      `<script>document.body.innerHTML = '<img src="assets/a" srcset="https://outside.invalid/x.png 2x">'</script>`,
+      "<script>document.body.innerHTML = `<video\n  poster=\"https://outside.invalid/x.png\"></video>`</script>",
+      `<script>document.body.innerHTML = '<img srcset="https://outside.invalid/x.png 2x">';</script>`,
+      '<script>document.body.innerHTML = `<img srcset="https://outside.invalid/x.png 2x">`;</script>',
+      '<script>document.body.innerHTML = `<img\nsrc="https://outside.invalid/x.png">`;</script>',
+      `<script>document.body.innerHTML = '<img src="https://outside.invalid/x.png">';</script>`,
+      `<div data-markup='<img srcset="https://outside.invalid/x.png 2x">'></div>`,
+      '<textarea><video poster="https://outside.invalid/x.png"></video></textarea>',
+      `<video onclick="0;poster='https://outside.invalid/x.png'"></video>`,
+      `<video onclick="this. poster = 'https://outside.invalid/x.png'"></video>`,
+      `<p>Pen = $1. Poster = $3.</p><script>document.querySelector("video").poster = "assets/a"</script>`,
+    ])
+      expect(() =>
+        validateHtmlOutput({ html: html.replace("Hello", capability) }),
+      ).toThrow(InvalidModelOutputError);
+  });
+
   it("normalizes surrounding ASCII whitespace in managed URL references", () => {
     const candidate = html.replace("assets/asset-one", " \t\nassets/asset-one\r\f ")
       .replace("</style>", '.image{background:url(" \tassets/css-image\n ")}</style>');
@@ -66,6 +425,22 @@ describe("HTML generation contract", () => {
     },
   );
 
+  it("keeps a trimmed teacher comment alongside the HTML", () => {
+    expect(validateHtmlOutput({ html, comment: "  Added a timer at the top.  " }))
+      .toEqual({ html, comment: "Added a timer at the top." });
+  });
+
+  it.each([null, 1, "", "   ", "x".repeat(601)])(
+    "drops an invalid optional comment without spending repairs: %j", async (comment) => {
+      const provider = {
+        name: "fixed", generate: vi.fn().mockResolvedValue({ html, comment }),
+        moderate: vi.fn(), revise: vi.fn(), repair: vi.fn().mockRejectedValue(new Error("must not repair")),
+      } as unknown as ModelProvider;
+      await expect(generateArtifact(provider, brief)).resolves.toEqual({ html });
+      expect(provider.repair).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves valid cards including unknown optional metadata fields", () => {
     const designCard = { title: "Fractions", tags: ["math"], layout: "cards", future: { color: "blue" } };
     expect(validateHtmlOutput({ html, designCard })).toEqual({ html, designCard });
@@ -88,6 +463,37 @@ describe("HTML generation contract", () => {
     expect(referencedAssetIds(html)).toEqual(["asset-one"]);
   });
 
+  it("extracts managed assets that scripts set as literal attributes", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      'document.images[0].setAttribute("src", "assets/swapped-image")',
+    ).replace(
+      "Hello",
+      `<svg><image id="i"/></svg><button onclick="document.getElementById('i').setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', ' assets/svg-image ')">Go</button>`,
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(referencedAssetIds(candidate).sort()).toEqual(["asset-one", "svg-image", "swapped-image"]);
+  });
+
+  it("extracts managed assets that scripts keep in strings", () => {
+    const candidate = html.replace(
+      'document.body.dataset.ok="1"',
+      "const pictures = ['assets/first-image', \"assets/second-image\"]; document.images[0].setAttribute('src', pictures[1]); const extra = new Image(); extra.src = `assets/template-image`; Object.assign(extra, { src: `${pictures[0]}` })",
+    );
+    expect(validateHtmlOutput({ html: candidate })).toEqual({ html: candidate });
+    expect(referencedAssetIds(candidate).sort()).toEqual([
+      "asset-one",
+      "first-image",
+      "second-image",
+      "template-image",
+    ]);
+    // Such a string need not name an image, unlike markup and attribute writes.
+    expect(assetReferences(candidate)).toEqual({
+      markup: ["asset-one"],
+      strings: ["first-image", "second-image", "template-image"],
+    });
+  });
+
   it("frames cross-user exemplars as untrusted data", () => {
     const exemplar = {
       revisionId: "r9",
@@ -103,7 +509,7 @@ describe("HTML generation contract", () => {
       },
       [exemplar],
     );
-    expect(PROMPT_VERSION).toBe("html-v7");
+    expect(PROMPT_VERSION).toBe("html-v9");
     expect(SYSTEM_PROMPT).toContain("Honour the activity form");
     expect(prompt).toContain("-----BEGIN UNTRUSTED EXEMPLAR DATA-----");
     expect(prompt).toContain("-----END UNTRUSTED EXEMPLAR DATA-----");
@@ -186,6 +592,34 @@ describe("HTML generation contract", () => {
     expect(occurrences(candidatePrompt, markers[4]!)).toBe(1);
     expect(occurrences(candidatePrompt, markers[5]!)).toBe(1);
     expect(markers.slice(0, 4).every((marker) => !candidatePrompt.includes(marker))).toBe(true);
+  });
+
+  it("repairs only while a full model call fits in the iPad's wait", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
+    try {
+      const provider = {
+        name: "slow",
+        generate: vi.fn(async () => {
+          now.mockReturnValue(40_000);
+          return { html: "bad" };
+        }),
+        repair: vi.fn(async () => {
+          now.mockReturnValue(100_000);
+          return { html: "still bad" };
+        }),
+        revise: vi.fn(),
+        moderate: vi.fn(),
+      } as unknown as ModelProvider;
+
+      // 40 s + a 60 s repair fits the 135 s budget; 100 s + another does not.
+      await expect(generateArtifact(provider, brief)).rejects.toMatchObject({
+        message: "No time left to repair the model output.",
+        retryable: true,
+      });
+      expect(provider.repair).toHaveBeenCalledTimes(1);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("supports controlled repair caps and emits metadata-only validation traces", async () => {
@@ -605,6 +1039,10 @@ describe("HTML generation contract", () => {
     "<img src=https://example.test/x.png>",
     "<style>body{background:url(https://example.test/x.png)}</style>",
     '<img srcset="https://example.test/x.png 2x">',
+    '<video POSTER="https://example.test/x.png"></video>',
+    '<template><img srcset="https://example.test/x.png 2x"></template>',
+    '<script>document.querySelector("video").poster = "https://example.test/x.png"</script>',
+    '<script>document.images[0].setAttribute("srcset", "https://example.test/x.png 2x")</script>',
     '<meta http-equiv="refresh" content="0;url=https://example.test">',
     '<style>@import "https://example.test/theme.css";</style>',
   ])("rejects unsafe HTML capability: %s", (capability) => {

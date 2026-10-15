@@ -1,13 +1,14 @@
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync, readdirSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { CloudflareAssetStore } from "../src/assets";
 import { D1StudioRepository } from "../src/storage/d1Repository";
 import {
   CURATED_SEED_OWNER,
   type ArtifactRecord,
+  retrievalDescriptor,
   type RevisionRecord,
 } from "../src/storage/repository";
+import { migratedDatabase, sqliteD1Database } from "./sqliteD1";
 
 const revision: RevisionRecord = {
   id: "r2",
@@ -42,95 +43,48 @@ const artifact: ArtifactRecord = {
   updatedAt: revision.createdAt,
 };
 
-function sqliteD1Database(
-  schema = "CREATE TABLE class_codes(code_hash TEXT PRIMARY KEY,label TEXT NOT NULL,maximum_uses INTEGER NOT NULL,use_count INTEGER NOT NULL DEFAULT 0,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT,short_code_hash TEXT UNIQUE);" +
-    "CREATE TABLE generation_usage(owner_hash TEXT NOT NULL,usage_date TEXT NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_hash,usage_date));",
-) {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(schema);
-  const database = {
-    prepare(query: string) {
-      const parameterIndexes = [...query.matchAll(/\?(\d+)/g)].map(
-        (match) => Number(match[1]) - 1,
-      );
-      const sqliteQuery = query.replace(/\?\d+/g, "?");
-      let values: Array<string | number | bigint | null> = [];
-      const statement = {
-        bind(...bound: unknown[]) {
-          if (
-            !bound.every(
-              (value) =>
-                value === null ||
-                typeof value === "string" ||
-                typeof value === "number" ||
-                typeof value === "bigint",
-            )
-          )
-            throw new Error("Unsupported SQLite test binding");
-          values = bound as Array<string | number | bigint | null>;
-          return statement;
-        },
-        async run() {
-          const positionalValues = parameterIndexes.length
-            ? parameterIndexes.map((index) => {
-                const value = values[index];
-                if (value === undefined)
-                  throw new Error("Missing SQLite test binding");
-                return value;
-              })
-            : values;
-          const prepared = sqlite.prepare(sqliteQuery),
-            before = (
-              sqlite.prepare("SELECT total_changes() changes").get() as {
-                changes: number;
-              }
-            ).changes;
-          const results = prepared.columns().length
-            ? prepared.all(...positionalValues)
-            : (prepared.run(...positionalValues), []);
-          const after = (
-            sqlite.prepare("SELECT total_changes() changes").get() as {
-              changes: number;
-            }
-          ).changes;
-          return { results, meta: { changes: after - before } };
-        },
-        async all() {
-          return statement.run();
-        },
-        async first() {
-          return (await statement.run()).results[0] ?? null;
-        },
-      };
-      return statement;
-    },
-    async batch(statements: D1PreparedStatement[]) {
-      sqlite.exec("BEGIN IMMEDIATE");
-      try {
-        const results = [];
-        for (const statement of statements) results.push(await statement.run());
-        sqlite.exec("COMMIT");
-        return results;
-      } catch (error) {
-        sqlite.exec("ROLLBACK");
-        throw error;
-      }
-    },
-  } as unknown as D1Database;
-  return { database, sqlite };
-}
-
-function migratedDatabase() {
-  const directory = new URL("../migrations/", import.meta.url);
-  return sqliteD1Database(
-    readdirSync(directory)
-      .sort()
-      .map((file) => readFileSync(new URL(file, directory), "utf8"))
-      .join("\n"),
-  );
-}
-
 describe("atomic storage admission with migrated SQLite", () => {
+  it("keeps revision inserts working after an additive column migration", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      // Production applies migrations before deploying the matching Worker.
+      sqlite.exec("ALTER TABLE revisions ADD COLUMN future_column TEXT");
+      const repository = new D1StudioRepository(database);
+      await expect(
+        repository.createArtifact({
+          artifact,
+          revision: { ...revision, parentRevisionId: null },
+          assetIds: [],
+        }),
+      ).resolves.toBe(true);
+      expect(await repository.getRevision(revision.id)).toMatchObject({ id: revision.id });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("round-trips teacher comments on created and conditional revisions", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      await repository.createArtifact({
+        artifact: { ...artifact, headRevisionId: "r1" },
+        revision: { ...revision, id: "r1", parentRevisionId: null, kind: "generation", comment: "Made a first version." },
+        assetIds: [],
+      });
+      await expect(
+        repository.createRevision({ ...revision, comment: "Added a timer." }, "owner-a", "r1", []),
+      ).resolves.toBe(true);
+      const revisions = await repository.listRevisions("a1", "owner-a");
+      expect(revisions.map((entry) => [entry.id, entry.comment])).toEqual([
+        ["r1", "Made a first version."],
+        ["r2", "Added a timer."],
+      ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("returns expired screenshot references despite FK cascade changes", async () => {
     const { database, sqlite } = migratedDatabase();
     try {
@@ -296,105 +250,141 @@ describe("atomic storage admission with migrated SQLite", () => {
   );
 });
 
+const firstRevision: RevisionRecord = {
+  ...revision,
+  id: "r1",
+  parentRevisionId: null,
+  kind: "generation",
+};
+
+function createdArtifact(id: string, ownerHash = artifact.ownerHash) {
+  return {
+    artifact: { ...artifact, id, ownerHash, headRevisionId: `${id}-r` },
+    revision: {
+      ...firstRevision,
+      id: `${id}-r`,
+      artifactId: id,
+    },
+    assetIds: [],
+  };
+}
+
+function insertAsset(sqlite: DatabaseSync, id: string) {
+  sqlite
+    .prepare("INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+    .run(id, "owner-a", `${id}.jpg`, "image/jpeg", 1, 1, 1, "hash", null, 1, revision.createdAt);
+}
+
 describe("D1StudioRepository publication listing", () => {
-  it("loads every active publication for an owner in one query", async () => {
-    const sql: string[] = [];
-    const database = {
-      prepare(text: string) {
-        sql.push(text);
-        const statement = {
-          bind() {
-            return statement;
-          },
-          all() {
-            return Promise.resolve({
-              results: [
-                {
-                  slug: "live-slug",
-                  artifact_id: "a1",
-                  revision_id: "r1",
-                  owner_hash: "owner-a",
-                  title: "Fractions",
-                  source_hash: "hash",
-                  created_at: revision.createdAt,
-                  expires_at: "2026-09-01T00:00:00Z",
-                  revoked_at: null,
-                },
-              ],
-            });
-          },
-        };
-        return statement;
-      },
-    } as unknown as D1Database;
-    await expect(
-      new D1StudioRepository(database).listActivePublicationsForOwner("owner-a"),
-    ).resolves.toEqual([
-      {
-        slug: "live-slug",
-        artifactId: "a1",
-        revisionId: "r1",
-        ownerHash: "owner-a",
-        title: "Fractions",
-        sourceHash: "hash",
-        createdAt: revision.createdAt,
-        expiresAt: "2026-09-01T00:00:00Z",
-        revokedAt: null,
-      },
-    ]);
-    expect(sql[0]).toContain("owner_hash=?1 AND revoked_at IS NULL");
+  it("lists only the owner's unrevoked publications", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      for (const [id, ownerHash] of [
+        ["live", "owner-a"],
+        ["revoked", "owner-a"],
+        ["other", "owner-b"],
+      ] as const)
+        await repository.createArtifact(createdArtifact(id, ownerHash));
+      const insert = sqlite.prepare(
+        "INSERT INTO publications(slug,artifact_id,revision_id,owner_hash,title,source_hash,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      );
+      for (const [slug, id, ownerHash, revokedAt] of [
+        ["live-slug", "live", "owner-a", null],
+        ["revoked-slug", "revoked", "owner-a", "2026-08-03T00:00:00Z"],
+        ["other-slug", "other", "owner-b", null],
+      ] as const)
+        insert.run(slug, id, `${id}-r`, ownerHash, "Fractions", "hash", revision.createdAt, "2026-09-01T00:00:00Z", revokedAt);
+
+      await expect(
+        repository.listActivePublicationsForOwner("owner-a"),
+      ).resolves.toEqual([
+        {
+          slug: "live-slug",
+          artifactId: "live",
+          revisionId: "live-r",
+          ownerHash: "owner-a",
+          title: "Fractions",
+          sourceHash: "hash",
+          createdAt: revision.createdAt,
+          expiresAt: "2026-09-01T00:00:00Z",
+          revokedAt: null,
+        },
+      ]);
+    } finally {
+      sqlite.close();
+    }
   });
 });
 
 describe("D1StudioRepository conditional revision writes", () => {
-  it("uses one batch whose insert checks owner, expected head, and same-artifact parent", async () => {
-    const sql: string[] = [];
-    const database = {
-      prepare(text: string) {
-        sql.push(text);
-        const statement = { bind: () => statement };
-        return statement;
-      },
-      batch(statements: unknown[]) {
-        expect(statements).toHaveLength(3);
-        return Promise.resolve(
-          statements.map(() => ({ meta: { changes: 1 } })),
-        );
-      },
-    } as unknown as D1Database;
-    const repository = new D1StudioRepository(database);
-    await expect(
-      repository.createRevision(revision, "owner-a", "r1", ["asset-1"]),
-    ).resolves.toBe(true);
-    expect(sql[0]).toContain("parent.artifact_id=a.id");
-    expect(sql[0]).toContain("a.owner_hash=?14");
-    expect(sql[0]).toContain("a.head_revision_id=?3");
-    expect(sql[1]).toContain("WHERE EXISTS");
-    expect(sql[2]).toContain("head_revision_id=?5");
+  it("commits a revision only for the owner's current head with a same-artifact parent", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      insertAsset(sqlite, "asset-1");
+      await repository.createArtifact({
+        artifact: { ...artifact, headRevisionId: "r1" },
+        revision: firstRevision,
+        assetIds: [],
+      });
+      await repository.createArtifact(createdArtifact("a2"));
+
+      await expect(
+        repository.createRevision(revision, "owner-b", "r1", ["asset-1"]),
+      ).resolves.toBe(false);
+      // A head pointing at another artifact's revision is not a valid parent.
+      sqlite.prepare("UPDATE artifacts SET head_revision_id='a2-r' WHERE id='a1'").run();
+      await expect(
+        repository.createRevision({ ...revision, parentRevisionId: "a2-r" }, "owner-a", "a2-r", ["asset-1"]),
+      ).resolves.toBe(false);
+      sqlite.prepare("UPDATE artifacts SET head_revision_id='r1' WHERE id='a1'").run();
+      expect(sqlite.prepare("SELECT count(*) n FROM revisions WHERE id='r2'").get()).toEqual({ n: 0 });
+      expect(sqlite.prepare("SELECT count(*) n FROM revision_assets").get()).toEqual({ n: 0 });
+
+      await expect(
+        repository.createRevision(revision, "owner-a", "r1", ["asset-1"]),
+      ).resolves.toBe(true);
+      expect(
+        sqlite.prepare("SELECT artifact_id,parent_revision_id FROM revisions WHERE id='r2'").get(),
+      ).toEqual({ artifact_id: "a1", parent_revision_id: "r1" });
+      expect(sqlite.prepare("SELECT * FROM revision_assets").all()).toEqual([
+        { revision_id: "r2", asset_id: "asset-1" },
+      ]);
+      expect(
+        sqlite.prepare("SELECT head_revision_id,updated_at FROM artifacts WHERE id='a1'").get(),
+      ).toEqual({ head_revision_id: "r2", updated_at: revision.createdAt });
+    } finally {
+      sqlite.close();
+    }
   });
 
-  it("returns false for a stale conditional insert without orphan revision assets", async () => {
-    const database = {
-      prepare() {
-        const statement = { bind: () => statement };
-        return statement;
-      },
-      batch() {
-        return Promise.resolve([
-          { meta: { changes: 0 } },
-          { meta: { changes: 0 } },
-          { meta: { changes: 0 } },
-        ]);
-      },
-    } as unknown as D1Database;
-    await expect(
-      new D1StudioRepository(database).createRevision(
-        revision,
-        "owner-a",
-        "r1",
-        ["asset-1"],
-      ),
-    ).resolves.toBe(false);
+  it("returns false for a stale expected head without writing the revision or its asset links", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      insertAsset(sqlite, "asset-1");
+      await repository.createArtifact({
+        artifact: { ...artifact, headRevisionId: "r1" },
+        revision: firstRevision,
+        assetIds: [],
+      });
+      await expect(
+        repository.createRevision(revision, "owner-a", "r1", []),
+      ).resolves.toBe(true);
+
+      // A second editor still believes r1 is the head.
+      await expect(
+        repository.createRevision({ ...revision, id: "r3" }, "owner-a", "r1", ["asset-1"]),
+      ).resolves.toBe(false);
+      expect(sqlite.prepare("SELECT count(*) n FROM revisions WHERE id='r3'").get()).toEqual({ n: 0 });
+      expect(sqlite.prepare("SELECT count(*) n FROM revision_assets").get()).toEqual({ n: 0 });
+      expect(
+        sqlite.prepare("SELECT head_revision_id FROM artifacts WHERE id='a1'").get(),
+      ).toEqual({ head_revision_id: "r2" });
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("rejects a mismatched parent before issuing SQL and does not swallow database failures", async () => {
@@ -432,69 +422,6 @@ describe("D1StudioRepository conditional revision writes", () => {
         [],
       ),
     ).rejects.toThrow("D1 unavailable");
-  });
-
-  it("publishes and updates retrieval in one guarded batch", async () => {
-    const sql: string[] = [];
-    const publication = {
-      slug: "new-slug",
-      artifact_id: artifact.id,
-      revision_id: revision.id,
-      owner_hash: artifact.ownerHash,
-      title: artifact.title,
-      source_hash: revision.sourceHash,
-      created_at: revision.createdAt,
-      expires_at: "2026-09-01T00:00:00Z",
-      revoked_at: null,
-    };
-    const retrieval = {
-      artifact_id: artifact.id,
-      revision_id: revision.id,
-      descriptor: "<!doctype html><html></html>",
-      curated: 0,
-      updated_at: revision.createdAt,
-    };
-    const database = {
-      prepare(text: string) {
-        sql.push(text);
-        const statement = {
-          bind: () => statement,
-        };
-        return statement;
-      },
-      batch(statements: unknown[]) {
-        expect(statements).toHaveLength(2);
-        return Promise.resolve([
-          { meta: { changes: 1 }, results: [publication] },
-          { meta: { changes: 4 }, results: [retrieval] },
-        ]);
-      },
-    } as unknown as D1Database;
-
-    await expect(
-      new D1StudioRepository(database).publish(
-        "new-slug",
-        artifact,
-        revision,
-        "2026-09-01T00:00:00Z",
-        revision.createdAt,
-        "<!doctype html><html></html>",
-      ),
-    ).resolves.toMatchObject({
-      slug: "new-slug",
-      artifactId: artifact.id,
-      revisionId: revision.id,
-    });
-
-    expect(sql[0]).toContain(
-      "ON CONFLICT(artifact_id) WHERE revoked_at IS NULL",
-    );
-    expect(sql[0]).toContain("head_revision_id=?3");
-    expect(sql[0]).toContain("publications.owner_hash=?4");
-    expect(sql[0]).toContain("RETURNING *");
-    expect(sql[1]).toContain("p.revision_id=?2 AND p.revoked_at IS NULL");
-    expect(sql[1]).toContain("a.head_revision_id=?2");
-    expect(sql[1]).toContain("RETURNING artifact_id,revision_id");
   });
 
   it("executes guarded publication and retrieval upserts with FTS triggers", async () => {
@@ -560,6 +487,39 @@ describe("D1StudioRepository conditional revision writes", () => {
     ).toEqual({ revision_id: revision.id, descriptor });
   });
 
+  it("leaves another owner's active publication unchanged on the publish conflict branch", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      const head: ArtifactRecord = { ...artifact, headRevisionId: "r1" };
+      await repository.createArtifact({ artifact: head, revision: firstRevision, assetIds: [] });
+      const foreign = {
+        slug: "foreign-slug",
+        artifact_id: "a1",
+        revision_id: "r1",
+        owner_hash: "owner-b",
+        title: "Foreign",
+        source_hash: "foreign-hash",
+        created_at: "2026-08-01T00:00:00Z",
+        expires_at: "2026-08-20T00:00:00Z",
+        revoked_at: null,
+      };
+      sqlite
+        .prepare(
+          "INSERT INTO publications(slug,artifact_id,revision_id,owner_hash,title,source_hash,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        )
+        .run(foreign.slug, foreign.artifact_id, foreign.revision_id, foreign.owner_hash, foreign.title, foreign.source_hash, foreign.created_at, foreign.expires_at, foreign.revoked_at);
+
+      await expect(
+        repository.publish("new-slug", head, firstRevision, "2026-09-01T00:00:00Z", revision.createdAt, "descriptor"),
+      ).resolves.toBeNull();
+      expect(sqlite.prepare("SELECT * FROM publications").all()).toEqual([foreign]);
+      expect(sqlite.prepare("SELECT count(*) n FROM retrieval_entries").get()).toEqual({ n: 0 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("rejects publish batches that did not return both guarded writes", async () => {
     const database = {
       prepare() {
@@ -586,84 +546,103 @@ describe("D1StudioRepository conditional revision writes", () => {
     ).resolves.toBeNull();
   });
 
-  it("upserts curated seed metadata, revision, and retrieval atomically", async () => {
-    const sql: string[] = [];
-    const database = {
-      prepare(text: string) {
-        sql.push(text);
-        const statement = { bind: () => statement };
-        return statement;
-      },
-      batch(statements: unknown[]) {
-        expect(statements).toHaveLength(3);
-        return Promise.resolve(
-          statements.map(() => ({ meta: { changes: 1 } })),
-        );
-      },
-    } as unknown as D1Database;
-    const seedArtifact = {
-      ...artifact,
-      id: "fraction-seed",
-      ownerHash: CURATED_SEED_OWNER,
-      headRevisionId: "fraction-seed-seed",
-    };
-    const seedRevision = {
-      ...revision,
-      id: "fraction-seed-seed",
-      artifactId: seedArtifact.id,
-      parentRevisionId: null,
-      kind: "import" as const,
-    };
+  it("inserts and refreshes curated seeds and rejects a teacher-owned id without partial rows", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      const seedArtifact: ArtifactRecord = {
+        ...artifact,
+        id: "fraction-seed",
+        ownerHash: CURATED_SEED_OWNER,
+        headRevisionId: "fraction-seed-seed",
+      };
+      const seedRevision: RevisionRecord = {
+        ...revision,
+        id: "fraction-seed-seed",
+        artifactId: seedArtifact.id,
+        parentRevisionId: null,
+        kind: "import",
+      };
+      await repository.upsertCuratedSeed({
+        artifact: seedArtifact,
+        revision: seedRevision,
+        assetIds: [],
+        descriptor: "fractions diagnostic",
+      });
+      await repository.upsertCuratedSeed({
+        artifact: { ...seedArtifact, title: "Fraction Walrus", updatedAt: "2026-08-05T00:00:00Z" },
+        revision: { ...seedRevision, sourceHash: "hash-2" },
+        assetIds: [],
+        descriptor: "walrus diagnostic",
+      });
 
-    await new D1StudioRepository(database).upsertCuratedSeed({
-      artifact: seedArtifact,
-      revision: seedRevision,
-      assetIds: [],
-      descriptor: "fractions diagnostic",
-    });
+      expect(
+        sqlite.prepare("SELECT title,updated_at FROM artifacts WHERE id='fraction-seed'").get(),
+      ).toEqual({ title: "Fraction Walrus", updated_at: "2026-08-05T00:00:00Z" });
+      expect(sqlite.prepare("SELECT id,source_hash FROM revisions").all()).toEqual([
+        { id: "fraction-seed-seed", source_hash: "hash-2" },
+      ]);
+      expect(
+        sqlite.prepare("SELECT revision_id,descriptor,curated FROM retrieval_entries").all(),
+      ).toEqual([{ revision_id: "fraction-seed-seed", descriptor: "walrus diagnostic", curated: 1 }]);
+      await expect(
+        repository.searchRetrieval('"Walrus"', 10, "2030-01-01T00:00:00Z"),
+      ).resolves.toMatchObject([{ artifactId: "fraction-seed", title: "Fraction Walrus", curated: true }]);
 
-    expect(sql[0]).toContain("ON CONFLICT(id) DO UPDATE");
-    expect(sql[0]).toContain("WHERE artifacts.owner_hash=?2");
-    expect(sql[1]).toContain("revisions.kind='import'");
-    expect(sql[2]).toContain("curated=1");
+      await repository.createArtifact(createdArtifact("taken"));
+      await expect(
+        repository.upsertCuratedSeed({
+          artifact: { ...seedArtifact, id: "taken", headRevisionId: "taken-seed" },
+          revision: { ...seedRevision, id: "taken-seed", artifactId: "taken" },
+          assetIds: [],
+          descriptor: "hijack",
+        }),
+      ).rejects.toThrow("Curated seed conflicts with an existing artifact");
+      expect(
+        sqlite.prepare("SELECT owner_hash,title,head_revision_id FROM artifacts WHERE id='taken'").get(),
+      ).toEqual({ owner_hash: "owner-a", title: "Fractions", head_revision_id: "taken-r" });
+      expect(sqlite.prepare("SELECT count(*) n FROM revisions WHERE id='taken-seed'").get()).toEqual({ n: 0 });
+      expect(
+        sqlite.prepare("SELECT count(*) n FROM retrieval_entries WHERE artifact_id='taken'").get(),
+      ).toEqual({ n: 0 });
+    } finally {
+      sqlite.close();
+    }
   });
 
-  it("refreshes retrieval titles and excludes expired teacher publications", async () => {
-    const sql: string[] = [];
-    const database = {
-      prepare(text: string) {
-        sql.push(text);
-        const statement = {
-          bind: () => statement,
-          first: () => Promise.resolve(null),
-          all: () => Promise.resolve({ results: [] }),
-        };
-        return statement;
-      },
-      batch(statements: unknown[]) {
-        expect(statements).toHaveLength(2);
-        return Promise.resolve(
-          statements.map(() => ({ meta: { changes: 1 } })),
-        );
-      },
-    } as unknown as D1Database;
-    const repository = new D1StudioRepository(database);
+  it("refreshes retrieval titles and descriptors and excludes expired teacher publications", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      const head: ArtifactRecord = { ...artifact, headRevisionId: "r1" };
+      const designed: RevisionRecord = { ...firstRevision, designCard: "Card: number line" };
+      await repository.createArtifact({ artifact: head, revision: designed, assetIds: [] });
+      await expect(
+        repository.publish("live-slug", head, designed, "2026-09-01T00:00:00Z", revision.createdAt, "fractions"),
+      ).resolves.not.toBeNull();
+      const metadata = { ...head, title: "Decimal Quokka", summary: "Order decimals" };
+      await repository.updateArtifactMetadata(head.id, head.ownerHash, metadata, "2026-08-03T00:00:00Z");
 
-    await repository.updateArtifactMetadata(
-      artifact.id,
-      artifact.ownerHash,
-      { ...artifact, title: "Decimal Quokka" },
-      revision.createdAt,
-    );
-    await repository.isRevisionRetrievable(revision.id, revision.createdAt);
-    await repository.searchRetrieval('"Quokka"', 10, revision.createdAt);
-
-    expect(sql[1]).toContain("UPDATE retrieval_entries SET descriptor=");
-    expect(sql[1]).toContain("design_card_json");
-    expect(sql[3]).toContain("p.expires_at>?2");
-    expect(sql[4]).toContain("p.expires_at>?3");
-    expect(sql[3]).toContain("r.curated=1");
-    expect(sql[4]).toContain("r.curated=1");
+      const beforeExpiry = "2026-08-04T00:00:00Z",
+        afterExpiry = "2026-09-02T00:00:00Z";
+      await expect(
+        repository.searchRetrieval('"Quokka"', 10, beforeExpiry),
+      ).resolves.toEqual([
+        {
+          artifactId: "a1",
+          revisionId: "r1",
+          title: "Decimal Quokka",
+          descriptor: `${retrievalDescriptor(metadata, null)}\nCard: number line`,
+          html: "",
+          curated: false,
+        },
+      ]);
+      await expect(repository.isRevisionRetrievable("r1", beforeExpiry)).resolves.toBe(true);
+      await expect(repository.searchRetrieval('"Quokka"', 10, afterExpiry)).resolves.toEqual([]);
+      await expect(repository.isRevisionRetrievable("r1", afterExpiry)).resolves.toBe(false);
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("returns screenshot cleanup only for artifacts deleted after the expiry recheck", async () => {
@@ -716,26 +695,18 @@ describe("D1StudioRepository conditional revision writes", () => {
 });
 
 describe("D1StudioRepository owner token versions", () => {
-  it("defaults to zero and returns the bumped version", async () => {
-    const results: Array<Record<string, number> | undefined> = [
-      undefined,
-      { token_version: 3 },
-    ];
-    const sql: string[] = [];
-    const database = {
-      prepare(text: string) {
-        sql.push(text);
-        const statement = {
-          bind: () => statement,
-          first: () => Promise.resolve(results.shift()),
-        };
-        return statement;
-      },
-    } as unknown as D1Database;
-    const repository = new D1StudioRepository(database);
-    await expect(repository.getOwnerTokenVersion("owner-a")).resolves.toBe(0);
-    await expect(repository.bumpOwnerTokenVersion("owner-a")).resolves.toBe(3);
-    expect(sql[1]).toContain("ON CONFLICT(owner_hash) DO UPDATE");
+  it("defaults to zero and bumps each owner's version independently", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      await expect(repository.getOwnerTokenVersion("owner-a")).resolves.toBe(0);
+      await expect(repository.bumpOwnerTokenVersion("owner-a")).resolves.toBe(1);
+      await expect(repository.bumpOwnerTokenVersion("owner-a")).resolves.toBe(2);
+      await expect(repository.getOwnerTokenVersion("owner-a")).resolves.toBe(2);
+      await expect(repository.getOwnerTokenVersion("owner-b")).resolves.toBe(0);
+    } finally {
+      sqlite.close();
+    }
   });
 });
 

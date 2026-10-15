@@ -75,6 +75,15 @@ class HiddenExpectedRevisionFixtureProvider extends InertRevisionFixtureProvider
   }
 }
 
+class SingleQuotedImageRevisionFixtureProvider extends InertRevisionFixtureProvider {
+  override async revise() {
+    return {
+      html: "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>Fractions</title><style>body{font:16px system-ui}</style></head><body><main><h1>Fractions</h1><img src='assets/eval-fraction-image' alt='A fraction diagram'><p>Visual fraction choice retained.</p><button type='button'>Choose fraction</button></main></body></html>",
+      designCard: undefined,
+    };
+  }
+}
+
 class RejectedPrivateSourceFixtureProvider extends FixtureModelProvider {
   override async generate() {
     return {
@@ -126,6 +135,41 @@ test("production harness exercises API retrieval, revision, image, conflict, and
   ));
   assert.doesNotMatch(JSON.stringify(result.traces), /Compare equivalent fractions/);
   assert.match(await canonicalRetrievalSnapshotHash(repoRoot), /^[a-f0-9]{64}$/);
+});
+
+test("a required image production accepts counts as inserted whatever its attribute quoting", async () => {
+  const harness = await ProductionEvaluationHarness.create({
+    repoRoot,
+    provider: new SingleQuotedImageRevisionFixtureProvider(),
+    retrievalMode: "none",
+    maxModelRepairs: 0,
+  });
+  const result = await harness.run({
+    id: "single-quoted-image",
+    brief: {
+      level: "Primary 5",
+      subject: "Mathematics",
+      learnerContext: "Primary 5 Mathematics",
+      learningObjective: "Compare equivalent fractions",
+      studentAction: "Choose a fraction and check feedback",
+    },
+    locale: "en",
+    expectedInteractions: ["choice"],
+    contentTerms: ["fraction"],
+    revision: {
+      instruction: "Insert the image and keep the fractions activity.",
+      expectedTerms: ["visual"],
+      retentionTerms: ["fraction"],
+      requiredAsset: {
+        id: "eval-fraction-image",
+        alternativeText: "A fraction diagram",
+      },
+    },
+  });
+
+  assert.equal(result.revision?.repairAttempts, 0);
+  assert.equal(result.revision?.requiredAssetInserted, true);
+  assert.equal(result.revision?.finalValid, true);
 });
 
 test("retrieval modes isolate synthetic published context without changing runtime policy", async () => {

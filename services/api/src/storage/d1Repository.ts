@@ -39,6 +39,7 @@ const rev = (r: Row): RevisionRecord => ({
   kind: r.kind as RevisionRecord["kind"],
   instruction: r.instruction as string | null,
   designCard: r.design_card_json as string | null,
+  comment: (r.comment as string | null | undefined) ?? null,
   exemplars: JSON.parse((r.exemplars_json as string) || "[]") as string[],
   modelVersion: r.model_version as string,
   promptVersion: r.prompt_version as string,
@@ -262,7 +263,9 @@ ON CONFLICT(artifact_id) DO UPDATE SET revision_id=?2,descriptor=?3,curated=1,up
   }
   private revInsert(r: RevisionRecord) {
     return this.p(
-      "INSERT INTO revisions SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13 WHERE EXISTS(SELECT 1 FROM artifacts WHERE id=?2)",
+      // Name every column so an additive migration applied before the matching
+      // Worker deploy cannot break inserts from the still-serving Worker.
+      "INSERT INTO revisions(id,artifact_id,parent_revision_id,source_hash,source_bytes,kind,instruction,design_card_json,exemplars_json,model_version,prompt_version,screenshot_key,created_at,comment) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14 WHERE EXISTS(SELECT 1 FROM artifacts WHERE id=?2)",
       r.id,
       r.artifactId,
       r.parentRevisionId,
@@ -276,6 +279,7 @@ ON CONFLICT(artifact_id) DO UPDATE SET revision_id=?2,descriptor=?3,curated=1,up
       r.promptVersion,
       r.screenshotKey,
       r.createdAt,
+      r.comment ?? null,
     );
   }
   async getArtifact(id: string, o: string) {
@@ -431,8 +435,8 @@ FROM candidates c JOIN revisions r ON r.artifact_id=c.id`,
   ) {
     if (r.parentRevisionId !== e) return false;
     const insert = this.p(
-      `INSERT INTO revisions(id,artifact_id,parent_revision_id,source_hash,source_bytes,kind,instruction,design_card_json,exemplars_json,model_version,prompt_version,screenshot_key,created_at)
-SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13
+      `INSERT INTO revisions(id,artifact_id,parent_revision_id,source_hash,source_bytes,kind,instruction,design_card_json,exemplars_json,model_version,prompt_version,screenshot_key,created_at,comment)
+SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15
 FROM artifacts a JOIN revisions parent ON parent.id=?3 AND parent.artifact_id=a.id
 WHERE a.id=?2 AND a.owner_hash=?14 AND a.head_revision_id=?3`,
       r.id,
@@ -449,6 +453,7 @@ WHERE a.id=?2 AND a.owner_hash=?14 AND a.head_revision_id=?3`,
       r.screenshotKey,
       r.createdAt,
       o,
+      r.comment ?? null,
     );
     const statements = [
       insert,

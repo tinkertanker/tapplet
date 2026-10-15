@@ -10,6 +10,13 @@ final class ArtifactModelsTests: XCTestCase {
         XCTAssertEqual(artifact.createdAt, "2026-08-02T00:00:00Z", "ISO timestamps remain wire-format strings")
     }
 
+    func testRevisionDecodesOptionalTeacherComment() throws {
+        let withComment = Data(#"{"id":"r2","artifactId":"a1","sourceHash":"abc","byteLength":20,"kind":"revise","instruction":"Add a timer","comment":"Added a 60-second timer above the question.","model":"model","promptVersion":"1","createdAt":"2026-08-02T00:00:00Z"}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(ArtifactRevision.self, from: withComment).comment, "Added a 60-second timer above the question.")
+        let withoutComment = Data(#"{"id":"r1","artifactId":"a1","sourceHash":"abc","byteLength":20,"kind":"generate","comment":null,"model":"model","promptVersion":"1","createdAt":"2026-08-02T00:00:00Z"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(ArtifactRevision.self, from: withoutComment).comment)
+    }
+
     func testServerTimestampsPreserveFractionalSecondsAndTimeZoneOffsets() throws {
         let midnight = Date(timeIntervalSince1970: 1_785_628_800)
         let timestamps: [(String, TimeInterval)] = [
