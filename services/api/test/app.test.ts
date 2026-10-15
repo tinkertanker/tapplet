@@ -628,6 +628,49 @@ describe("Tapplet API registration and public HTML", () => {
     expect(invalid.status).toBe(422);
   });
 
+  it("keeps the source locale in a cross-owner remix's brief", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, locale: "fr-FR" },
+      }),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string };
+      headRevision: { id: string };
+    };
+    expect(
+      (
+        await app.fetch(
+          authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+            expectedHeadRevisionId: first.headRevision.id,
+          }),
+        )
+      ).status,
+    ).toBe(201);
+
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    const remix = await app.fetch(
+      new Request(`https://api.test/v1/revisions/${first.headRevision.id}/remix`, {
+        method: "POST",
+        headers: {
+          "x-device-token": otherToken,
+          origin: "https://studio.test",
+          "content-type": "application/json",
+        },
+        body: "{}",
+      }),
+    );
+    expect(remix.status).toBe(201);
+    const remixed = (await remix.json()) as { artifact: { id: string; locale: string } };
+    expect(remixed.artifact.locale).toBe("fr-FR");
+    expect(
+      JSON.parse(repository.artifacts.get(remixed.artifact.id)!.generationBrief),
+    ).toMatchObject({ locale: "fr-FR" });
+  });
+
   it("infers abbreviated and mother-tongue learner contexts", async () => {
     const cases: Array<[string, string]> = [
       ["P5 Sci", "science"],

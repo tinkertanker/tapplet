@@ -214,6 +214,7 @@ function remixBrief(source: ArtifactRecord): TeacherBrief {
     studentAction: source.summary.slice(0, 600),
     feedback: "Ask the teacher for feedback on this remixed tapplet.",
     classroomFit: source.level ?? "Classroom use",
+    ...(source.locale ? { locale: source.locale } : {}),
   };
 }
 async function digest(html: string) {
