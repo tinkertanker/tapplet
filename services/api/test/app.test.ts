@@ -480,6 +480,7 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(generated.status).toBe(201);
     expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    expect(((await generated.json()) as { warnings?: unknown }).warnings).toBeUndefined();
     expect(trace.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "retrieval",
@@ -611,7 +612,7 @@ describe("Tapplet API registration and public HTML", () => {
     }
   });
 
-  it("does not substitute retrieval when a preferred example cannot be resolved", async () => {
+  it("falls back to retrieval and warns when a preferred example cannot be resolved", async () => {
     const seed = {
       seedId: "fraction-equivalence-diagnostic",
       title: "Fraction Equivalence Detective",
@@ -667,7 +668,43 @@ describe("Tapplet API registration and public HTML", () => {
       }),
     );
     expect(generated.status).toBe(201);
-    expect(receivedExemplars).toEqual([]);
+    expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    const draft = (await generated.json()) as { headRevision: { id: string } };
+    expect(draft).toMatchObject({
+      warnings: [
+        expect.objectContaining({
+          source: "prompt",
+          code: "PREFERRED_EXAMPLE_UNAVAILABLE",
+        }),
+      ],
+    });
+
+    // Another teacher's unpublished draft exists but is not available to this caller.
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    receivedExemplars = [];
+    const inaccessible = await app.fetch(
+      new Request("https://api.test/v1/artifacts/generate", {
+        method: "POST",
+        headers: {
+          "x-device-token": otherToken,
+          origin: "https://studio.test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...creationBrief,
+          preferredExampleRevisionId: draft.headRevision.id,
+        }),
+      }),
+    );
+    expect(inaccessible.status).toBe(201);
+    expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    await expect(inaccessible.json()).resolves.toMatchObject({
+      warnings: [
+        expect.objectContaining({ code: "PREFERRED_EXAMPLE_UNAVAILABLE" }),
+      ],
+    });
   });
 
   it("rejects an unknown activity form", async () => {
