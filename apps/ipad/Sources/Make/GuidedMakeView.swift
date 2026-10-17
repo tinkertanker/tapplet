@@ -221,16 +221,7 @@ struct GuidedMakeView: View {
                 .foregroundStyle(TappletTheme.mutedInk)
 
             if let creationError = store.guidedMakeCreationError {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label(creationError.title, systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout.weight(.semibold))
-                    Text(creationError.message)
-                        .font(.callout)
-                }
-                    .foregroundStyle(TappletTheme.danger)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(TappletTheme.dangerSoft, in: RoundedRectangle(cornerRadius: 12))
+                ErrorBanner(presentation: creationError)
             }
 
             HStack {

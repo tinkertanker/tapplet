@@ -98,17 +98,8 @@ struct WorkshopAccessView: View {
                         }
 
                         if let registrationError {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Label(registrationError.title, systemImage: "exclamationmark.triangle.fill")
-                                    .font(.callout.weight(.semibold))
-                                Text(registrationError.message)
-                                    .font(.callout)
-                            }
-                            .foregroundStyle(TappletTheme.danger)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(TappletTheme.dangerSoft, in: RoundedRectangle(cornerRadius: 12))
-                            .accessibilityIdentifier("workshop-access-error")
+                            ErrorBanner(presentation: registrationError)
+                                .accessibilityIdentifier("workshop-access-error")
                         }
 
                         Button {
