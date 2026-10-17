@@ -92,75 +92,68 @@ export function createModelProvider(
     // Keep older models and third-party compatible endpoints on their existing dialect.
     const openAi = new URL(baseUrl).hostname === "api.openai.com"
       && (!model || /^gpt-[56](?:[.-]|$)/.test(model));
-    return openAiCompatibleProvider(
-      model || (openAi ? "gpt-6-luna" : model),
+    return openAiCompatibleProvider({
+      model: model || (openAi ? "gpt-6-luna" : model),
       baseUrl,
-      override ? override.apiKey : env.AI_API_KEY,
-      "openai-compatible",
-      "AI_API_KEY",
-      undefined,
-      openAi
+      apiKey: override ? override.apiKey : env.AI_API_KEY,
+      providerName: "openai-compatible",
+      apiKeyName: "AI_API_KEY",
+      reasoningOptions: openAi
         ? { reasoning: { effort: reasoningEffort ?? "medium" } }
         : openAiCompatibleReasoningOptions(baseUrl, reasoningEffort),
-      openAi ? "responses" : undefined,
-      openAi ? { reasoning: { effort: "low" } } : undefined,
-      override?.promptBoundaryMode,
-    );
+      api: openAi ? "responses" : undefined,
+      moderationReasoningOptions: openAi ? { reasoning: { effort: "low" } } : undefined,
+      promptBoundaryMode: override?.promptBoundaryMode,
+    });
   }
 
   if (provider === "opencode") {
-    return openAiCompatibleProvider(
+    return openAiCompatibleProvider({
       model,
-      override?.baseUrl ?? "https://opencode.ai/zen/v1",
-      override ? override.apiKey : env.OPENCODE_API_KEY,
-      "opencode",
-      "OPENCODE_API_KEY",
-      undefined,
-      openCodeChatReasoningOptions(model, reasoningEffort),
-      undefined,
-      undefined,
-      override?.promptBoundaryMode,
-    );
+      baseUrl: override?.baseUrl ?? "https://opencode.ai/zen/v1",
+      apiKey: override ? override.apiKey : env.OPENCODE_API_KEY,
+      providerName: "opencode",
+      apiKeyName: "OPENCODE_API_KEY",
+      reasoningOptions: openCodeChatReasoningOptions(model, reasoningEffort),
+      promptBoundaryMode: override?.promptBoundaryMode,
+    });
   }
 
   if (provider === "opencode-go") {
     const responses = openCodeGoResponsesFamily(model);
-    return openAiCompatibleProvider(
+    return openAiCompatibleProvider({
       model,
-      override?.baseUrl ?? "https://opencode.ai/zen/go/v1",
-      override ? override.apiKey : env.OPENCODE_API_KEY,
-      "opencode-go",
-      "OPENCODE_API_KEY",
-      undefined,
-      responses
+      baseUrl: override?.baseUrl ?? "https://opencode.ai/zen/go/v1",
+      apiKey: override ? override.apiKey : env.OPENCODE_API_KEY,
+      providerName: "opencode-go",
+      apiKeyName: "OPENCODE_API_KEY",
+      reasoningOptions: responses
         ? { reasoning: { effort: reasoningEffort ?? responses.effort } }
         : openCodeChatReasoningOptions(model, reasoningEffort),
-      responses ? "responses" : "chat-completions",
-      responses
+      api: responses ? "responses" : "chat-completions",
+      moderationReasoningOptions: responses
         ? { reasoning: { effort: responses.moderationEffort } }
         : undefined,
-      override?.promptBoundaryMode,
-    );
+      promptBoundaryMode: override?.promptBoundaryMode,
+    });
   }
 
   if (provider === "openrouter") {
-    return openAiCompatibleProvider(
+    return openAiCompatibleProvider({
       model,
-      override?.baseUrl ?? "https://openrouter.ai/api/v1",
-      override ? override.apiKey : env.OPENROUTER_API_KEY,
-      "openrouter",
-      "OPENROUTER_API_KEY",
-      {
+      baseUrl: override?.baseUrl ?? "https://openrouter.ai/api/v1",
+      apiKey: override ? override.apiKey : env.OPENROUTER_API_KEY,
+      providerName: "openrouter",
+      apiKeyName: "OPENROUTER_API_KEY",
+      headers: {
         "HTTP-Referer": env.PUBLIC_PLAYER_ORIGIN,
         "X-OpenRouter-Title": "Tapplet Studio",
       },
-      {
+      reasoningOptions: {
         reasoning: { effort: reasoningEffort ?? "xhigh", exclude: true },
       },
-      undefined,
-      undefined,
-      override?.promptBoundaryMode,
-    );
+      promptBoundaryMode: override?.promptBoundaryMode,
+    });
   }
 
   return new UnavailableModelProvider(
@@ -212,18 +205,32 @@ function openCodeChatReasoningOptions(
   };
 }
 
-function openAiCompatibleProvider(
-  model: string,
-  baseUrl: string,
-  apiKey: string | undefined,
-  providerName: string,
-  apiKeyName: string,
-  headers?: Readonly<Record<string, string>>,
-  reasoningOptions?: Readonly<Record<string, unknown>>,
-  api?: "chat-completions" | "responses",
-  moderationReasoningOptions?: Readonly<Record<string, unknown>>,
-  promptBoundaryMode?: PromptBoundaryMode,
-): ModelProvider {
+interface OpenAiCompatibleSetup {
+  model: string;
+  baseUrl: string;
+  apiKey: string | undefined;
+  providerName: string;
+  /** Named in the error when the key is missing. */
+  apiKeyName: string;
+  headers?: Readonly<Record<string, string>>;
+  reasoningOptions?: Readonly<Record<string, unknown>>;
+  api?: "chat-completions" | "responses";
+  moderationReasoningOptions?: Readonly<Record<string, unknown>>;
+  promptBoundaryMode?: PromptBoundaryMode;
+}
+
+function openAiCompatibleProvider({
+  model,
+  baseUrl,
+  apiKey,
+  providerName,
+  apiKeyName,
+  headers,
+  reasoningOptions,
+  api,
+  moderationReasoningOptions,
+  promptBoundaryMode,
+}: OpenAiCompatibleSetup): ModelProvider {
   if (!apiKey) {
     return new UnavailableModelProvider(
       `The configured model provider has no ${apiKeyName}.`,
