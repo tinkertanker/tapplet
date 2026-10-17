@@ -139,12 +139,12 @@ function artifact(content: string): string {
 }
 
 function categoryCode(category: string): string {
-  const normalised = category
+  const normalized = category
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
-  return normalised || "unspecified";
+  return normalized || "unspecified";
 }
 
 void main().catch((error: unknown) => {

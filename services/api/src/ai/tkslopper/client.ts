@@ -281,8 +281,8 @@ export class TkslopperClient {
     body: Readonly<Record<string, unknown>>,
     operation: TkslopperOperation,
   ): Promise<TkslopperGatewayResult> {
-    const serialised = JSON.stringify(body);
-    const bytes = new TextEncoder().encode(serialised).byteLength;
+    const serialized = JSON.stringify(body);
+    const bytes = new TextEncoder().encode(serialized).byteLength;
     if (bytes > this.config.maxRequestBytes)
       throw new TkslopperError(
         `Model request is ${bytes} bytes, above the ${this.config.maxRequestBytes} byte tkslopper limit`,
@@ -290,7 +290,7 @@ export class TkslopperClient {
       );
 
     let grant = await this.grant();
-    let response = await this.send(path, serialised, operation, grant);
+    let response = await this.send(path, serialized, operation, grant);
     if (response.status === 401 && !this.classGrant) {
       this.invalidate(grant);
       const rejectedId = response.headers.get("x-tkslopper-request-id");
@@ -299,7 +299,7 @@ export class TkslopperClient {
       );
       await response.body?.cancel();
       grant = await this.grant();
-      response = await this.send(path, serialised, operation, grant);
+      response = await this.send(path, serialized, operation, grant);
     }
     const gatewayRequestId =
       response.headers.get("x-tkslopper-request-id") ?? undefined;
@@ -350,7 +350,7 @@ export class TkslopperClient {
 
   private async send(
     path: string,
-    serialised: string,
+    serialized: string,
     operation: TkslopperOperation,
     grant: Grant,
   ): Promise<Response> {
@@ -361,7 +361,7 @@ export class TkslopperClient {
         "content-type": "application/json",
         "idempotency-key": `tapplet:${operation}:${crypto.randomUUID()}`,
       },
-      body: serialised,
+      body: serialized,
       signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
     };
     try {

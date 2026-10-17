@@ -501,9 +501,9 @@ describe("Tapplet API registration and public HTML", () => {
         exemplarRevisionIds: [`${seed.seedId}-seed`],
       }),
     ]));
-    const serialisedTrace = JSON.stringify(trace.events);
-    expect(serialisedTrace).not.toContain(creationBrief.creationBrief);
-    expect(serialisedTrace).not.toContain(seed.artifact.html);
+    const serializedTrace = JSON.stringify(trace.events);
+    expect(serializedTrace).not.toContain(creationBrief.creationBrief);
+    expect(serializedTrace).not.toContain(seed.artifact.html);
 
     const anonymousSearch = await app.fetch(
       new Request("https://api.test/v1/examples/search?q=fractions"),

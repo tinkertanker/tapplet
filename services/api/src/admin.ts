@@ -331,7 +331,7 @@ async function updateModel(request: Request, env: StudioEnv): Promise<Response> 
   if (parsedUrl.protocol !== "https:")
     return apiError(422, "INVALID_BASE_URL", "Provider URLs must use HTTPS.");
 
-  const normalisedBaseUrl = parsedUrl.toString().replace(/\/$/, "");
+  const normalizedBaseUrl = parsedUrl.toString().replace(/\/$/, "");
   const current = await settings(env);
   let ciphertext: string | null = null;
   let iv: string | null = null;
@@ -341,7 +341,7 @@ async function updateModel(request: Request, env: StudioEnv): Promise<Response> 
     current?.api_key_ciphertext &&
     current.api_key_iv &&
     current.provider === provider &&
-    current.base_url === normalisedBaseUrl
+    current.base_url === normalizedBaseUrl
   );
   if (preserveApiKey && provider !== "fixture" && !canPreserveApiKey)
     return apiError(
@@ -356,7 +356,7 @@ async function updateModel(request: Request, env: StudioEnv): Promise<Response> 
       body.apiKey,
       env.ADMIN_ENCRYPTION_KEY!,
       provider,
-      normalisedBaseUrl,
+      normalizedBaseUrl,
     );
     ciphertext = encrypted.ciphertext;
     iv = encrypted.iv;
@@ -373,7 +373,7 @@ async function updateModel(request: Request, env: StudioEnv): Promise<Response> 
     .bind(
       provider,
       model.trim(),
-      normalisedBaseUrl,
+      normalizedBaseUrl,
       ciphertext,
       iv,
       updatedAt,
@@ -442,7 +442,7 @@ async function verifyClassKey(
   };
 }
 
-function normalisedClassCode(value: unknown): string {
+function normalizedClassCode(value: unknown): string {
   const code = typeof value === "string" ? value.trim().toUpperCase().replaceAll("-", "") : "";
   if (!/^(?:\d{6}|[A-Z]{6}|\d{4}[A-Z]{8})$/.test(code))
     throw new HttpError(422, "INVALID_CLASS_CODE", "Enter the class access code.");
@@ -451,7 +451,7 @@ function normalisedClassCode(value: unknown): string {
 
 async function setClassKey(request: Request, env: StudioEnv): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(request, 2_000);
-  const code = normalisedClassCode(body.code);
+  const code = normalizedClassCode(body.code);
   const row = await env.DB.prepare(
     "SELECT code_hash,label,inference_key_version FROM class_codes WHERE code_hash=?1 OR short_code_hash=?1",
   )

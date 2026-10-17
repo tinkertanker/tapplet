@@ -217,7 +217,7 @@ export class CloudflareAssetStore implements AssetStore {
     // preventing callers from using Cloudflare Images without meeting a quota.
     await this.reserveAllowances(ownerHash, networkHash, now.slice(0, 10), bytes.byteLength, context);
 
-    const canonicalBytes = await this.canonicalise(bytes, contentType, width, height);
+    const canonicalBytes = await this.canonicalize(bytes, contentType, width, height);
     const digestInput = canonicalBytes.buffer.slice(
       canonicalBytes.byteOffset,
       canonicalBytes.byteOffset + canonicalBytes.byteLength,
@@ -336,7 +336,7 @@ export class CloudflareAssetStore implements AssetStore {
   }
 
   // Re-encodes the upload as a JPEG and checks it has the declared dimensions.
-  private async canonicalise(
+  private async canonicalize(
     bytes: Uint8Array,
     contentType: string,
     width: number,

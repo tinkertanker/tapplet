@@ -123,7 +123,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
     func registerDevice(accessCode: String) async throws {
         struct Body: Encodable { let accessCode: String }
         let cleaned = WorkshopAccessCodeValidator.normalizedCode(accessCode)
-        let registration: DeviceRegistration = try await unauthorised("/v1/devices/register", method: "POST", body: Body(accessCode: cleaned))
+        let registration: DeviceRegistration = try await unauthorized("/v1/devices/register", method: "POST", body: Body(accessCode: cleaned))
         try await tokenStore.storeToken(registration.token)
     }
 
@@ -308,7 +308,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
         return try decode(payload)
     }
 
-    private func unauthorised<Response: Decodable, Body: Encodable>(_ route: String, method: String, body: Body) async throws -> Response {
+    private func unauthorized<Response: Decodable, Body: Encodable>(_ route: String, method: String, body: Body) async throws -> Response {
         var request = try request(route, method: method)
         request.httpBody = try JSONEncoder().encode(body)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
