@@ -123,6 +123,13 @@ function optionalForm(value: unknown): ActivityForm | undefined {
     );
   return form as ActivityForm;
 }
+// BCP 47-shaped tags such as en-SG, fr or zh-Hans-SG; sent to the model as part of the brief.
+function optionalLocale(value: unknown): string | undefined {
+  const locale = optionalStr(value, "Locale", 30);
+  if (locale && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale))
+    throw new HttpError(422, "INVALID_INPUT", "Locale must be a language tag such as en-SG.");
+  return locale;
+}
 function inferSubject(learnerContext: string): string {
   const text = learnerContext.toLowerCase();
   if (/\bmaths?\b|\bmathematics\b|\balgebra\b/.test(text)) return "mathematics";
@@ -167,6 +174,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
   const learnerContext = str(guided.learnerContext, "Learner context", 300);
   const format = optionalForm(guided.format);
   const sourceContent = optionalStr(guided.sourceContent, "Source content", 4000);
+  const locale = optionalLocale(guided.locale);
   return {
     // Studio joins every answer (up to 7,500 characters) with its question.
     creationBrief: str(b.creationBrief, "Creation brief", 8000),
@@ -188,6 +196,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
       feedback: str(guided.feedback, "Feedback", 1000),
       classroomFit: str(guided.classroomFit, "Classroom fit", 1000),
       ...(format ? { format } : {}),
+      ...(locale ? { locale } : {}),
     },
   };
 }
@@ -205,6 +214,7 @@ function remixBrief(source: ArtifactRecord): TeacherBrief {
     studentAction: source.summary.slice(0, 600),
     feedback: "Ask the teacher for feedback on this remixed tapplet.",
     classroomFit: source.level ?? "Classroom use",
+    ...(source.locale ? { locale: source.locale } : {}),
   };
 }
 const headRevisionConflict = () =>
@@ -858,7 +868,7 @@ export function createStudioApp(d: Deps) {
         summary: out.designCard?.description?.trim() || b.studentAction,
         subject: b.subject === "other" ? null : b.subject,
         level: b.learnerContext ?? b.level,
-        locale: "en-SG",
+        locale: b.locale ?? "en-SG",
         learningObjective: b.learningObjective,
         tags: out.designCard?.tags ?? [],
         creationBrief: request.creationBrief,
