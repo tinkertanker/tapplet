@@ -391,20 +391,48 @@ export function createStudioApp(d: Deps) {
           : kind === "artifact"
             ? d.config.dailyNetworkDraftCreationLimit
             : d.config.dailyNetworkSafetyReviewLimit;
-    if (!(await d.repository.consumeGeneration(`${kind}:${o}`, date, limit)))
+    const subject = `${kind}:${o}`,
+      networkSubject = `network-${kind}:${await networkHashFrom(r)}`;
+    if (!(await d.repository.consumeGeneration(subject, date, limit)))
       throw new HttpError(429, "LIMIT_REACHED", "Daily limit reached.");
     if (
       !(await d.repository.consumeGeneration(
-        `network-${kind}:${await networkHashFrom(r)}`,
+        networkSubject,
         date,
         networkLimit,
       ))
-    )
+    ) {
+      await d.repository.refundGeneration(subject, date);
       throw new HttpError(
         429,
         "NETWORK_LIMIT_REACHED",
         "Network safety limit reached.",
       );
+    }
+    return async (): Promise<void> => {
+      await Promise.allSettled(
+        [subject, networkSubject].map((usage) =>
+          d.repository.refundGeneration(usage, date),
+        ),
+      );
+    };
+  }
+  // A provider failure before any candidate exists returns the reserved units;
+  // once a candidate arrives, the request and its repairs stay charged.
+  async function chargedUnlessNoCandidate<T>(
+    refunds: Array<() => Promise<void>>,
+    run: (onCandidate: () => void) => Promise<T>,
+  ): Promise<T> {
+    let candidate = false;
+    try {
+      return await run(() => {
+        candidate = true;
+      });
+    } catch (error) {
+      if (!candidate && error instanceof ModelProviderError)
+        await Promise.all(refunds.map((refund) => refund()));
+      throw error;
+    }
   }
   async function assetRecord(id: string): Promise<AssetRecord | null> {
     if (d.assets?.getRecord) return d.assets.getRecord(id);
@@ -534,7 +562,7 @@ export function createStudioApp(d: Deps) {
       d.config.maximumDraftsPerOwner
     )
       throw storageLimitReached();
-    await quota(r, ownerHash, "artifact");
+    return quota(r, ownerHash, "artifact");
   }
   async function handle(r: Request): Promise<Response> {
     const requestStarted = performance.now();
@@ -757,8 +785,13 @@ export function createStudioApp(d: Deps) {
           ...inspectTeacherBrief(b),
           ...inspectText(request.creationBrief),
         ]);
-      await reserveArtifactCreation(r, o);
-      await quota(r, o, "generation");
+      const refundArtifact = await reserveArtifactCreation(r, o);
+      const refundGeneration = await quota(r, o, "generation").catch(
+        async (error: unknown) => {
+          await refundArtifact();
+          throw error;
+        },
+      );
       const retrievalStarted = performance.now();
       const query = generationRetrievalQuery(b);
       const preferred = request.preferredExampleRevisionId
@@ -828,11 +861,16 @@ export function createStudioApp(d: Deps) {
       }
       const aid = id();
       const { provider } = await inference(o);
-      const out = await generateArtifact(provider, b, ex, {
-        ...d.generationPolicy,
-        ...(trace ? { trace } : {}),
-        sessionId: aid,
-      });
+      const out = await chargedUnlessNoCandidate(
+        [refundArtifact, refundGeneration],
+        (onCandidate) =>
+          generateArtifact(provider, b, ex, {
+            ...d.generationPolicy,
+            ...(trace ? { trace } : {}),
+            sessionId: aid,
+            onCandidate,
+          }),
+      );
       warnings.push(
         ...advisoryWarnings("generated_content", [
           ...inspectHtml(out.html),
@@ -1111,7 +1149,7 @@ export function createStudioApp(d: Deps) {
           ? await validateAssetReferences([requiredAssetId], o)
           : [];
         const warnings = advisoryWarnings("prompt", inspectText(instruction));
-        await quota(r, o, "generation");
+        const refundGeneration = await quota(r, o, "generation");
         const current = await d.repository.getRevision(expected),
           html = current && (await d.sources.getSource(current.sourceHash));
         if (!current || current.artifactId !== a.id || !html)
@@ -1121,22 +1159,27 @@ export function createStudioApp(d: Deps) {
             "Revision unavailable.",
           );
         const { provider } = await inference(o);
-        const out = await reviseArtifact(
-            provider,
-            html,
-            design(current),
-            instruction,
-            JSON.parse(a.generationBrief) as TeacherBrief,
-            requiredAssets.map((asset) => ({
-              id: asset.id,
-              alternativeText: asset.alternativeText,
-              decorative: asset.decorative,
-            })),
-            {
-              ...d.generationPolicy,
-              ...(trace ? { trace } : {}),
-              sessionId: a.id,
-            },
+        const out = await chargedUnlessNoCandidate(
+            [refundGeneration],
+            (onCandidate) =>
+              reviseArtifact(
+                provider,
+                html,
+                design(current),
+                instruction,
+                JSON.parse(a.generationBrief) as TeacherBrief,
+                requiredAssets.map((asset) => ({
+                  id: asset.id,
+                  alternativeText: asset.alternativeText,
+                  decorative: asset.decorative,
+                })),
+                {
+                  ...d.generationPolicy,
+                  ...(trace ? { trace } : {}),
+                  sessionId: a.id,
+                  onCandidate,
+                },
+              ),
           ),
           rid = id(),
           hash = await persist(out.html),
