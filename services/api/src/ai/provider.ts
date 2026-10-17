@@ -84,3 +84,18 @@ export class ModelProviderError extends Error {
     super(message);
   }
 }
+
+// Checks the shape of a moderation reply from an OpenAI-style JSON schema call.
+export function parseModerationDecision(r: unknown): ModerationDecision {
+  if (
+    !r ||
+    typeof r !== "object" ||
+    typeof Reflect.get(r, "safe") !== "boolean" ||
+    !Array.isArray(Reflect.get(r, "categories"))
+  )
+    throw new ModelProviderError("Invalid moderation response", true);
+  return {
+    safe: Reflect.get(r, "safe") as boolean,
+    categories: Reflect.get(r, "categories") as string[],
+  };
+}

@@ -1,5 +1,5 @@
 import type { StudioEnv } from "../env";
-import { readBodyBytes } from "../http";
+import { isRecord, readBodyBytes } from "../http";
 import { MODEL_PROVIDERS } from "./modelCatalogue";
 import type { CatalogueModel } from "./modelCatalogue";
 import type { ImageSafetyInspector, ImageSafetyReview } from "../imageSafety";
@@ -31,7 +31,7 @@ import type {
   RepairContext,
   TeacherBrief,
 } from "./provider";
-import { ModelProviderError } from "./provider";
+import { ModelProviderError, parseModerationDecision } from "./provider";
 
 // tkslopper is Tinkertanker's managed inference boundary. Tapplet exchanges a
 // service credential for a short-lived grant on the control plane, then calls
@@ -862,10 +862,6 @@ type Outcome =
   | { kind: "refused" }
   | { kind: "empty" };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function record(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
@@ -1005,17 +1001,7 @@ export class TkslopperModelProvider implements ModelProvider {
       true,
       trace,
     );
-    if (
-      !r ||
-      typeof r !== "object" ||
-      typeof Reflect.get(r, "safe") !== "boolean" ||
-      !Array.isArray(Reflect.get(r, "categories"))
-    )
-      throw new ModelProviderError("Invalid moderation response", true);
-    return {
-      safe: Reflect.get(r, "safe") as boolean,
-      categories: Reflect.get(r, "categories") as string[],
-    };
+    return parseModerationDecision(r);
   }
 
   private artifact(
