@@ -6,7 +6,7 @@ import {
   TkslopperImageSafetyInspector,
   TkslopperModelProvider,
 } from "./ai/tkslopper";
-import { decryptClassKey } from "./admin";
+import { decryptClassKey } from "./adminCrypto";
 import type { StudioEnv } from "./env";
 import type { ImageSafetyInspector, ImageSafetyReview } from "./imageSafety";
 import type { ClassInferenceKey } from "./storage/repository";
