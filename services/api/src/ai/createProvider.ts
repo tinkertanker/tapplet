@@ -124,6 +124,7 @@ export function createModelProvider(
   }
 
   if (provider === "opencode-go") {
+    const responses = openCodeGoResponsesFamily(model);
     return openAiCompatibleProvider(
       model,
       override?.baseUrl ?? "https://opencode.ai/zen/go/v1",
@@ -131,14 +132,12 @@ export function createModelProvider(
       "opencode-go",
       "OPENCODE_API_KEY",
       undefined,
-      model === "muse-spark-1.2-contributor"
-        ? { reasoning: { effort: reasoningEffort ?? "xhigh" } }
+      responses
+        ? { reasoning: { effort: reasoningEffort ?? responses.effort } }
         : openCodeChatReasoningOptions(model, reasoningEffort),
-      model === "muse-spark-1.2-contributor"
-        ? "responses"
-        : "chat-completions",
-      model === "muse-spark-1.2-contributor"
-        ? { reasoning: { effort: "minimal" } }
+      responses ? "responses" : "chat-completions",
+      responses
+        ? { reasoning: { effort: responses.moderationEffort } }
         : undefined,
       override?.promptBoundaryMode,
     );
@@ -167,6 +166,26 @@ export function createModelProvider(
   return new UnavailableModelProvider(
     `Unsupported AI provider: ${provider}`,
   );
+}
+
+interface OpenCodeGoResponsesFamily {
+  pattern: RegExp;
+  effort: ReasoningEffort;
+  moderationEffort: ReasoningEffort;
+}
+
+// OpenCode Go serves these model families only through the Responses API;
+// every other Go model uses chat completions. Match families, not exact IDs,
+// so a new version (for example muse-spark-1.3-contributor) keeps its dialect.
+const OPENCODE_GO_RESPONSES_FAMILIES: readonly OpenCodeGoResponsesFamily[] = [
+  { pattern: /^muse-spark-/, effort: "xhigh", moderationEffort: "minimal" },
+  { pattern: /^gpt-[56](?:[.-]|$)/, effort: "medium", moderationEffort: "low" },
+];
+
+function openCodeGoResponsesFamily(
+  model: string,
+): OpenCodeGoResponsesFamily | undefined {
+  return OPENCODE_GO_RESPONSES_FAMILIES.find(({ pattern }) => pattern.test(model));
 }
 
 function openAiCompatibleReasoningOptions(
