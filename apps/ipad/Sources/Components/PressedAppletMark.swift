@@ -6,7 +6,6 @@ import SwiftUI
 struct PressedAppletMark: View {
     var size: CGFloat
     var rotation: Angle = .degrees(-9)
-    var showsTicks = true
 
     var body: some View {
         Canvas { context, canvasSize in
@@ -25,26 +24,24 @@ struct PressedAppletMark: View {
                 with: .color(TappletTheme.accentBright)
             )
 
-            if showsTicks {
-                let style = StrokeStyle(lineWidth: 24, lineCap: .round)
-                var top = Path()
-                top.move(to: CGPoint(x: 153, y: 120.5))
-                top.addLine(to: CGPoint(x: 137.4, y: 104.9))
-                top.move(to: CGPoint(x: 256, y: 116))
-                top.addLine(to: CGPoint(x: 256, y: 94))
-                top.move(to: CGPoint(x: 359, y: 120.5))
-                top.addLine(to: CGPoint(x: 374.6, y: 104.9))
-                context.stroke(top, with: .color(TappletTheme.accent.opacity(0.45)), style: style)
+            let style = StrokeStyle(lineWidth: 24, lineCap: .round)
+            var top = Path()
+            top.move(to: CGPoint(x: 153, y: 120.5))
+            top.addLine(to: CGPoint(x: 137.4, y: 104.9))
+            top.move(to: CGPoint(x: 256, y: 116))
+            top.addLine(to: CGPoint(x: 256, y: 94))
+            top.move(to: CGPoint(x: 359, y: 120.5))
+            top.addLine(to: CGPoint(x: 374.6, y: 104.9))
+            context.stroke(top, with: .color(TappletTheme.accent.opacity(0.45)), style: style)
 
-                var bottom = Path()
-                bottom.move(to: CGPoint(x: 153, y: 410))
-                bottom.addLine(to: CGPoint(x: 137.4, y: 425.6))
-                bottom.move(to: CGPoint(x: 256, y: 414))
-                bottom.addLine(to: CGPoint(x: 256, y: 436))
-                bottom.move(to: CGPoint(x: 359, y: 410))
-                bottom.addLine(to: CGPoint(x: 374.6, y: 425.6))
-                context.stroke(bottom, with: .color(TappletTheme.accent.opacity(0.3)), style: style)
-            }
+            var bottom = Path()
+            bottom.move(to: CGPoint(x: 153, y: 410))
+            bottom.addLine(to: CGPoint(x: 137.4, y: 425.6))
+            bottom.move(to: CGPoint(x: 256, y: 414))
+            bottom.addLine(to: CGPoint(x: 256, y: 436))
+            bottom.move(to: CGPoint(x: 359, y: 410))
+            bottom.addLine(to: CGPoint(x: 374.6, y: 425.6))
+            context.stroke(bottom, with: .color(TappletTheme.accent.opacity(0.3)), style: style)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)

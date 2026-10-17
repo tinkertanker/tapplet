@@ -52,9 +52,9 @@ struct TappletRootView: View {
                         HStack {
                             Label("Tapplet Studio access", systemImage: "key")
                             Spacer()
-                            Text(workshopAccessLabel)
+                            Text(workshopAccessValue)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(workshopAccessColour)
+                                .foregroundStyle(TappletTheme.mutedInk)
                         }
                         .contentShape(Rectangle())
                     }
@@ -198,18 +198,6 @@ struct TappletRootView: View {
         case .checking: "Checking"
         case .registrationRequired: "Code needed"
         case .ready: "Ready"
-        }
-    }
-
-    private var workshopAccessLabel: String {
-        workshopAccessValue
-    }
-
-    private var workshopAccessColour: Color {
-        switch store.workshopAccessState {
-        case .checking: TappletTheme.mutedInk
-        case .registrationRequired: TappletTheme.mutedInk
-        case .ready: TappletTheme.mutedInk
         }
     }
 }
