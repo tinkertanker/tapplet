@@ -169,14 +169,14 @@ function validateWarnings(body: unknown, operation: string): AdvisoryWarning[] {
       throw new Error(`${operation} returned an invalid advisory warning.`);
     }
   }
-  const serialised = JSON.stringify(warnings).toLowerCase();
+  const serialized = JSON.stringify(warnings).toLowerCase();
   for (const privateValue of [
     advisoryTestMarker,
     token,
     explicitAccessCode,
     registrationAccessCode,
   ]) {
-    if (privateValue && serialised.includes(privateValue.toLowerCase())) {
+    if (privateValue && serialized.includes(privateValue.toLowerCase())) {
       throw new Error(`${operation} echoed private input in an advisory warning.`);
     }
   }

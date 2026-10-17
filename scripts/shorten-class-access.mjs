@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { classCodeHash, normaliseClassCode, parseClassNumber } from './class-access.mjs';
+import { classCodeHash, normalizeClassCode, parseClassNumber } from './class-access.mjs';
 import { executeD1 } from './lib/wrangler-d1.mjs';
 
 const usage = 'Usage: npm run class-access:shorten -- <4-digit class number> <--local|--remote>';
@@ -14,7 +14,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outputPath = resolve(repositoryRoot, '.studio-class-codes', `${classNumber}.txt`);
 const lines = readFileSync(outputPath, 'utf8').split(/\r?\n/)
   .map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
-const code = lines.length === 1 ? normaliseClassCode(lines[0]) : null;
+const code = lines.length === 1 ? normalizeClassCode(lines[0]) : null;
 if (!code || !/^\d{4}[A-Z]{8}$/.test(code) || !code.startsWith(classNumber)) {
   throw new Error(`${outputPath} must contain the original twelve-character code for this class.`);
 }

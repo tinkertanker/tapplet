@@ -17,6 +17,7 @@ import type {
   TeacherBrief,
 } from "./provider";
 import { MODEL_CALL_TIMEOUT_MS, ModelProviderError } from "./provider";
+import { isRecord } from "../http";
 import { emitOperationalTrace } from "../operationalTrace";
 import type {
   ModelOperation,
@@ -101,21 +102,16 @@ export class AnthropicProvider implements ModelProvider {
     trace?: OperationalTraceContext,
   ): Promise<ModerationDecision> {
     const result = await this.complete("moderate", html, trace);
+    const categories = isRecord(result) ? result.categories : undefined;
     if (
-      !result ||
-      typeof result !== "object" ||
-      typeof Reflect.get(result, "safe") !== "boolean" ||
-      !Array.isArray(Reflect.get(result, "categories")) ||
-      !(Reflect.get(result, "categories") as unknown[]).every(
-        (item) => typeof item === "string",
-      )
+      !isRecord(result) ||
+      typeof result.safe !== "boolean" ||
+      !Array.isArray(categories) ||
+      !categories.every((item): item is string => typeof item === "string")
     ) {
       throw new ModelProviderError("Invalid moderation response", true);
     }
-    return {
-      safe: Reflect.get(result, "safe") as boolean,
-      categories: Reflect.get(result, "categories") as string[],
-    };
+    return { safe: result.safe, categories };
   }
 
   private async complete(

@@ -27,7 +27,7 @@ export function classCodeHash(code) {
   return createHash('sha256').update(`class-code:${code}`).digest('hex');
 }
 
-export function normaliseClassCode(value) {
+export function normalizeClassCode(value) {
   if (typeof value !== 'string') return null;
   const compact = value.trim().toUpperCase().replaceAll('-', '');
   return /^(?:\d{6}|[A-Z]{6}|\d{4}[A-Z]{8})$/.test(compact) ? compact : null;

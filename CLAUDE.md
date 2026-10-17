@@ -16,6 +16,9 @@
 - Teacher-facing names: the iPad app is Tapplet Studio; the student-facing HTML
   activities are tapplets. Do not rename bundle IDs, Worker URLs or Swift types
   unless the task includes a coordinated migration.
+- Spell code identifiers the US way, as the platform APIs do (`normalize`,
+  `color`), unless they mirror a wire name such as `model-catalogue`. Prose
+  and user-facing text stay British.
 - Use explicit types and avoid `any`. Do not edit generated files without
   changing their source of truth.
 - Add or update focused tests for behavior changes and run the narrowest useful

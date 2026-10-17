@@ -450,6 +450,26 @@ final class TappletStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testOnlyOneChangeRunsPerProjectAndItsFailureIsKept() async {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let store = TappletStore(
+            api: ArtifactAPIStub(generated: project, revised: project),
+            storageDirectory: temporaryDirectory(),
+            bundle: Bundle(for: Self.self)
+        )
+        store.refinementErrors["p1"] = "Earlier failure"
+
+        let started = store.runChange(to: "p1") { throw TappletAPIError.transport("offline") }
+        XCTAssertTrue(started)
+        XCTAssertNil(store.refinementErrors["p1"])
+        let startedTwice = store.runChange(to: "p1") { XCTFail("A second change must not start") }
+        XCTAssertFalse(startedTwice)
+        while store.refiningProjectIDs.contains("p1") { await Task.yield() }
+
+        XCTAssertEqual(store.refinementErrors["p1"], store.present(TappletAPIError.transport("offline")).message)
+    }
+
+    @MainActor
     func testSuccessfulCredentialRefreshDoesNotCloseManuallyOpenedAccess() async {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let store = TappletStore(
