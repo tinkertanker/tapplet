@@ -328,7 +328,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
 
     @discardableResult
     private func upload(_ route: String, data: Data, contentType: String, headers: [String: String]) async throws -> Data {
-        var request = try await authorisedRequest(route, method: "POST")
+        var request = try await authorizedRequest(route, method: "POST")
         request.httpBody = data
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
@@ -336,13 +336,13 @@ struct TappletAPIClient: TappletAPI, Sendable {
     }
 
     private func perform(_ route: String, method: String, body: Data?, contentType: String?) async throws -> (Data, HTTPURLResponse) {
-        var request = try await authorisedRequest(route, method: method)
+        var request = try await authorizedRequest(route, method: method)
         request.httpBody = body
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         return try await execute(request)
     }
 
-    private func authorisedRequest(_ route: String, method: String) async throws -> URLRequest {
+    private func authorizedRequest(_ route: String, method: String) async throws -> URLRequest {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--ui-testing-reset"), arguments.contains("--ui-testing-access-required-on-action") {
             if arguments.contains("--ui-testing-delayed-access-error") {
