@@ -120,6 +120,60 @@ function randomAssetId(): string {
   return `asset-${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
+// Checks the upload's declared type, size, dimensions and description before
+// any body bytes are read.
+function readUploadMetadata(request: Request): {
+  contentType: string;
+  width: number;
+  height: number;
+  decorative: boolean;
+  alternativeText: string | null;
+  warnings: AdvisoryWarning[];
+} {
+  const contentType = (request.headers.get('content-type') ?? '').toLowerCase().split(';')[0];
+  if (!contentType || !ALLOWED_IMAGE_TYPES.has(contentType)) {
+    throw new HttpError(
+      415,
+      'UNSUPPORTED_IMAGE_TYPE',
+      'Upload a processed JPEG, PNG or WebP image.',
+    );
+  }
+
+  const declaredLength = request.headers.get('content-length');
+  if (
+    declaredLength !== null &&
+    (!/^\d+$/.test(declaredLength) || Number(declaredLength) > MAXIMUM_ASSET_BYTES)
+  ) {
+    throw new HttpError(413, 'IMAGE_TOO_LARGE', 'Processed images must be 2 MB or smaller.');
+  }
+
+  const width = positiveIntegerHeader(request, 'x-image-width', 4_096);
+  const height = positiveIntegerHeader(request, 'x-image-height', 4_096);
+  const decorative = request.headers.get('x-image-decorative') === 'true';
+  const alternativeText = imageAlternativeText(request);
+  const warnings = alternativeText
+    ? advisoryWarnings('image', inspectText(alternativeText))
+    : [];
+  if (!decorative && !alternativeText) {
+    throw new HttpError(
+      422,
+      'ALTERNATIVE_TEXT_REQUIRED',
+      'Describe the image or mark it as decorative.',
+    );
+  }
+  if (alternativeText && alternativeText.length > 500) {
+    throw new HttpError(422, 'ALTERNATIVE_TEXT_TOO_LONG', 'Image descriptions must be 500 characters or fewer.');
+  }
+  return { contentType, width, height, decorative, alternativeText, warnings };
+}
+
+const storageLimitReached = () =>
+  new HttpError(
+    429,
+    'ASSET_STORAGE_LIMIT_REACHED',
+    'This device has reached its image storage limit. Remove unused images before uploading more.',
+  );
+
 export class CloudflareAssetStore implements AssetStore {
   constructor(
     private readonly database: D1Database,
@@ -139,41 +193,9 @@ export class CloudflareAssetStore implements AssetStore {
       imageSafety?: ImageSafetyInspector;
     },
   ): Promise<AssetRecord> {
-    const { ownerHash, networkHash, now, maximumNetworkCount, maximumNetworkBytes } = context;
-    const contentType = (request.headers.get('content-type') ?? '').toLowerCase().split(';')[0];
-    if (!contentType || !ALLOWED_IMAGE_TYPES.has(contentType)) {
-      throw new HttpError(
-        415,
-        'UNSUPPORTED_IMAGE_TYPE',
-        'Upload a processed JPEG, PNG or WebP image.',
-      );
-    }
-
-    const declaredLength = request.headers.get('content-length');
-    if (
-      declaredLength !== null &&
-      (!/^\d+$/.test(declaredLength) || Number(declaredLength) > MAXIMUM_ASSET_BYTES)
-    ) {
-      throw new HttpError(413, 'IMAGE_TOO_LARGE', 'Processed images must be 2 MB or smaller.');
-    }
-
-    const width = positiveIntegerHeader(request, 'x-image-width', 4_096);
-    const height = positiveIntegerHeader(request, 'x-image-height', 4_096);
-    const decorative = request.headers.get('x-image-decorative') === 'true';
-    const alternativeText = imageAlternativeText(request);
-    const warnings = alternativeText
-      ? advisoryWarnings('image', inspectText(alternativeText))
-      : [];
-    if (!decorative && !alternativeText) {
-      throw new HttpError(
-        422,
-        'ALTERNATIVE_TEXT_REQUIRED',
-        'Describe the image or mark it as decorative.',
-      );
-    }
-    if (alternativeText && alternativeText.length > 500) {
-      throw new HttpError(422, 'ALTERNATIVE_TEXT_TOO_LONG', 'Image descriptions must be 500 characters or fewer.');
-    }
+    const { ownerHash, networkHash, now } = context;
+    const { contentType, width, height, decorative, alternativeText, warnings } =
+      readUploadMetadata(request);
     const bytes = await readBodyBytes(
       request,
       MAXIMUM_ASSET_BYTES,
@@ -193,64 +215,9 @@ export class CloudflareAssetStore implements AssetStore {
     // Reserve both allowances before the paid decode/re-encode. Rejected dimensions,
     // malformed canonical output and storage-full owners still consume one attempt,
     // preventing callers from using Cloudflare Images without meeting a quota.
-    const usageDate = now.slice(0, 10);
-    const ownerAllowed = await this.consumeUsage(
-      ownerHash,
-      usageDate,
-      bytes.byteLength,
-      MAXIMUM_DAILY_ASSETS,
-      MAXIMUM_DAILY_ASSET_BYTES,
-    );
-    if (!ownerAllowed) {
-      throw new HttpError(
-        429,
-        'DAILY_ASSET_LIMIT_REACHED',
-        'This device has reached today’s image upload limit.',
-      );
-    }
-    const networkAllowed = await this.consumeUsage(
-      `network:${networkHash}`,
-      usageDate,
-      bytes.byteLength,
-      maximumNetworkCount,
-      maximumNetworkBytes,
-    );
-    if (!networkAllowed) {
-      throw new HttpError(
-        429,
-        'NETWORK_ASSET_LIMIT_REACHED',
-        'This network has reached today’s image upload safety limit.',
-      );
-    }
+    await this.reserveAllowances(ownerHash, networkHash, now.slice(0, 10), bytes.byteLength, context);
 
-    if (!this.normalizer) {
-      throw new HttpError(
-        503,
-        'IMAGE_NORMALISATION_UNAVAILABLE',
-        'Image normalisation is temporarily unavailable. Try again shortly.',
-      );
-    }
-    const canonicalBytes = await this.normalizer.normalize(bytes, contentType);
-    if (canonicalBytes.byteLength < 1 || canonicalBytes.byteLength > MAXIMUM_ASSET_BYTES) {
-      throw new HttpError(
-        422,
-        'IMAGE_CANONICALISATION_FAILED',
-        'This image could not be safely normalised. Choose a different image and try again.',
-      );
-    }
-    const inspected = inspectCanonicalJpeg(
-      canonicalBytes.buffer.slice(
-        canonicalBytes.byteOffset,
-        canonicalBytes.byteOffset + canonicalBytes.byteLength,
-      ) as ArrayBuffer,
-    );
-    if (inspected.width !== width || inspected.height !== height) {
-      throw new HttpError(
-        422,
-        'IMAGE_DIMENSIONS_MISMATCH',
-        'The declared image dimensions do not match the processed image.',
-      );
-    }
+    const canonicalBytes = await this.canonicalise(bytes, contentType, width, height);
     const digestInput = canonicalBytes.buffer.slice(
       canonicalBytes.byteOffset,
       canonicalBytes.byteOffset + canonicalBytes.byteLength,
@@ -270,11 +237,7 @@ export class CloudflareAssetStore implements AssetStore {
       (stored?.asset_count ?? 0) >= MAXIMUM_STORED_ASSETS ||
       (stored?.total_bytes ?? 0) + canonicalBytes.byteLength > MAXIMUM_STORED_ASSET_BYTES
     ) {
-      throw new HttpError(
-        429,
-        'ASSET_STORAGE_LIMIT_REACHED',
-        'This device has reached its image storage limit. Remove unused images before uploading more.',
-      );
+      throw storageLimitReached();
     }
     warnings.push(...review);
 
@@ -313,11 +276,7 @@ export class CloudflareAssetStore implements AssetStore {
         )
         .run();
       if ((admission.meta.changes ?? 0) !== 1)
-        throw new HttpError(
-          429,
-          'ASSET_STORAGE_LIMIT_REACHED',
-          'This device has reached its image storage limit. Remove unused images before uploading more.',
-        );
+        throw storageLimitReached();
     } catch (error) {
       await this.bucket.delete(objectKey);
       throw error;
@@ -337,6 +296,81 @@ export class CloudflareAssetStore implements AssetStore {
       createdAt: now,
       ...(warnings.length ? { warnings } : {}),
     };
+  }
+
+  private async reserveAllowances(
+    ownerHash: string,
+    networkHash: string,
+    usageDate: string,
+    byteLength: number,
+    context: { maximumNetworkCount: number; maximumNetworkBytes: number },
+  ): Promise<void> {
+    const ownerAllowed = await this.consumeUsage(
+      ownerHash,
+      usageDate,
+      byteLength,
+      MAXIMUM_DAILY_ASSETS,
+      MAXIMUM_DAILY_ASSET_BYTES,
+    );
+    if (!ownerAllowed) {
+      throw new HttpError(
+        429,
+        'DAILY_ASSET_LIMIT_REACHED',
+        'This device has reached today’s image upload limit.',
+      );
+    }
+    const networkAllowed = await this.consumeUsage(
+      `network:${networkHash}`,
+      usageDate,
+      byteLength,
+      context.maximumNetworkCount,
+      context.maximumNetworkBytes,
+    );
+    if (!networkAllowed) {
+      throw new HttpError(
+        429,
+        'NETWORK_ASSET_LIMIT_REACHED',
+        'This network has reached today’s image upload safety limit.',
+      );
+    }
+  }
+
+  // Re-encodes the upload as a JPEG and checks it has the declared dimensions.
+  private async canonicalise(
+    bytes: Uint8Array,
+    contentType: string,
+    width: number,
+    height: number,
+  ): Promise<Uint8Array> {
+    if (!this.normalizer) {
+      throw new HttpError(
+        503,
+        'IMAGE_NORMALISATION_UNAVAILABLE',
+        'Image normalisation is temporarily unavailable. Try again shortly.',
+      );
+    }
+    const canonicalBytes = await this.normalizer.normalize(bytes, contentType);
+    if (canonicalBytes.byteLength < 1 || canonicalBytes.byteLength > MAXIMUM_ASSET_BYTES) {
+      throw new HttpError(
+        422,
+        'IMAGE_CANONICALISATION_FAILED',
+        'This image could not be safely normalised. Choose a different image and try again.',
+      );
+    }
+    const inspected = inspectCanonicalJpeg(
+      canonicalBytes.buffer.slice(
+        canonicalBytes.byteOffset,
+        canonicalBytes.byteOffset + canonicalBytes.byteLength,
+      ) as ArrayBuffer,
+    );
+    if (inspected.width !== width || inspected.height !== height) {
+      throw new HttpError(
+        422,
+        'IMAGE_DIMENSIONS_MISMATCH',
+        'The declared image dimensions do not match the processed image.',
+      );
+    }
+    return canonicalBytes;
   }
 
   async getRecord(id: string): Promise<AssetRecord | null> {
