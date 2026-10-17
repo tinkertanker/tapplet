@@ -282,7 +282,7 @@ async function overview(env: StudioEnv): Promise<Response> {
       : [],
   ]);
   const counts = Object.fromEntries(
-    ((results[0]?.results ?? []) as unknown as CountRow[]).map((item) => [
+    ((results[0]?.results ?? []) as CountRow[]).map((item) => [
       item.name,
       item.value,
     ]),
@@ -306,8 +306,8 @@ async function overview(env: StudioEnv): Promise<Response> {
         : null,
     model: modelSummary(env, row),
     counts,
-    usage: (results[1]?.results ?? []) as unknown as UsageRow[],
-    models: (results[2]?.results ?? []) as unknown as ModelUsageRow[],
+    usage: (results[1]?.results ?? []) as UsageRow[],
+    models: (results[2]?.results ?? []) as ModelUsageRow[],
   });
 }
 
