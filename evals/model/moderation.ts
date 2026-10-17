@@ -10,8 +10,8 @@ import {
   createEvaluationProvider,
   parseEvaluationPlan,
   productionEvaluationEnvironment,
+  publicProviderSettings,
   repositoryProvenance,
-  type ProviderSettings,
 } from "./run";
 
 const cases = [
@@ -145,15 +145,6 @@ function categoryCode(category: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
   return normalised || "unspecified";
-}
-
-function publicProviderSettings(settings: ProviderSettings) {
-  return {
-    provider: settings.provider,
-    model: settings.model,
-    baseUrl: settings.baseUrl,
-    credentialSource: settings.provider === "fixture" ? "not-required" : "environment",
-  };
 }
 
 void main().catch((error: unknown) => {
