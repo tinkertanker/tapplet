@@ -4,7 +4,6 @@ struct AppletProjectCard: View {
     let project: ArtifactProject
     var primaryTitle = "Open"
     let onPrimary: () -> Void
-    var primaryIsLoading = false
     var primaryIsDisabled = false
     var primaryAccessibilityHint: String? = nil
     var secondaryTitle: String? = nil
@@ -85,21 +84,13 @@ struct AppletProjectCard: View {
     @ViewBuilder
     private func actionButtons(expanded: Bool) -> some View {
         Button(action: onPrimary) {
-            HStack(spacing: 8) {
-                if primaryIsLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.white)
-                        .accessibilityHidden(true)
-                }
-                Text(primaryTitle)
-            }
-            .frame(maxWidth: expanded ? .infinity : nil)
+            Text(primaryTitle)
+                .frame(maxWidth: expanded ? .infinity : nil)
         }
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.roundedRectangle(radius: TappletTheme.actionCornerRadius))
         .controlSize(.large)
-        .disabled(primaryIsDisabled || primaryIsLoading)
+        .disabled(primaryIsDisabled)
         .accessibilityHint(primaryAccessibilityHint ?? "")
 
         if let secondaryTitle, let onSecondary {

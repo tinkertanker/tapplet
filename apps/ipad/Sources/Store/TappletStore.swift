@@ -6,7 +6,6 @@ enum TappletSection: String, CaseIterable, Identifiable { case explore, make, my
     var symbolName: String { self == .explore ? "square.grid.2x2" : self == .make ? "plus.square" : "square.stack.3d.up" }
 }
 enum WorkshopAccessState: Equatable { case checking, registrationRequired, ready }
-enum TappletOperation { case activation, generation, refinement, undo, directSave, publish, unpublish, extend, restore, delete, image }
 struct TappletErrorPresentation { let title, message: String; let requestsWorkshopAccess: Bool }
 
 private enum RestoreFetch: Sendable {
@@ -20,7 +19,6 @@ private enum RestoreFetch: Sendable {
     var selectedProjectID: String?
     var projects: [ArtifactProject] = []
     var examples: [ArtifactProject] = []
-    var notice: String?
     var advisoryNotice: String?
     var recoveryNotice: String?
     var workshopAccessState: WorkshopAccessState = .checking
@@ -94,7 +92,7 @@ private enum RestoreFetch: Sendable {
     func requestWorkshopAccess() { showsWorkshopAccess = true }
     func dismissWorkshopAccess() { showsWorkshopAccess = false }
     func registerWorkshopAccess(_ code: String) async throws { try await api.registerDevice(accessCode: code); workshopAccessState = .ready; showsWorkshopAccess = false }
-    func present(_ error: Error, during operation: TappletOperation) -> TappletErrorPresentation {
+    func present(_ error: Error) -> TappletErrorPresentation {
         if let apiError = error as? TappletAPIError, apiError.requiresRegistration {
             workshopAccessState = .registrationRequired
             showsWorkshopAccess = true
@@ -105,6 +103,11 @@ private enum RestoreFetch: Sendable {
             )
         }
         return TappletErrorPresentation(title: "Tapplet Studio could not complete this action", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
+    }
+    /// The inline message for a failure, or nil when the class-code sheet is shown instead.
+    func errorMessage(for error: Error) -> String? {
+        let presentation = present(error)
+        return presentation.requestsWorkshopAccess ? nil : presentation.message
     }
     func resetGuidedMake() {
         guidedMakeDraft = .init()
@@ -347,7 +350,7 @@ private enum RestoreFetch: Sendable {
         do {
             artifacts = try await api.listArtifacts()
         } catch let error as TappletAPIError where error.requiresRegistration {
-            _ = present(error, during: .restore)
+            _ = present(error)
             throw error
         }
         let fetched = await fetchRestoreProjects(artifacts)
@@ -360,13 +363,13 @@ private enum RestoreFetch: Sendable {
                     upsert(try await cacheAssets(in: project))
                     count += 1
                 } catch let error as TappletAPIError where error.requiresRegistration {
-                    _ = present(error, during: .restore)
+                    _ = present(error)
                     throw error
                 } catch {
                     failures += 1
                 }
             case .registration(let error):
-                _ = present(error, during: .restore)
+                _ = present(error)
                 throw error
             case .failure:
                 failures += 1

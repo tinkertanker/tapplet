@@ -514,7 +514,7 @@ function providerEnvironment(settings: ProviderSettings): StudioEnv {
   } as StudioEnv;
 }
 
-function publicProviderSettings(settings: ProviderSettings) {
+export function publicProviderSettings(settings: ProviderSettings) {
   return {
     provider: settings.provider,
     model: settings.model,
@@ -547,28 +547,22 @@ export async function repositoryProvenance(repoRoot: string): Promise<{
     { cwd: repoRoot, maxBuffer: 20_000_000 },
   )).stdout;
   const gitCommit = (await git(["rev-parse", "HEAD"])).trim();
-  const excluded = [
-    ":(exclude)evals/model/results/latest.v2.json",
-    ":(exclude)evals/model/results/latest-ablation.v2.json",
-    ":(exclude)evals/model/results/latest.v3.json",
-    ":(exclude)evals/model/results/latest-ablation.v3.json",
-    ":(exclude)evals/model/results/latest-moderation.v2.json",
-    ":(exclude)evals/browser/results/latest.v1.json",
-    ":(exclude)evals/browser/results/latest.v2.json",
+  // Result files are outputs, so they never count as source changes.
+  const resultPaths = [
+    "evals/model/results/latest.v2.json",
+    "evals/model/results/latest-ablation.v2.json",
+    "evals/model/results/latest.v3.json",
+    "evals/model/results/latest-ablation.v3.json",
+    "evals/model/results/latest-moderation.v2.json",
+    "evals/browser/results/latest.v1.json",
+    "evals/browser/results/latest.v2.json",
   ];
+  const excluded = resultPaths.map((path) => `:(exclude)${path}`);
   const diff = await git(["diff", "--binary", "HEAD", "--", ".", ...excluded]);
   const untracked = (await git(["ls-files", "--others", "--exclude-standard", "-z"]))
     .split("\0")
     .filter(Boolean)
-    .filter((path) => ![
-      "evals/model/results/latest.v2.json",
-      "evals/model/results/latest-ablation.v2.json",
-      "evals/model/results/latest.v3.json",
-      "evals/model/results/latest-ablation.v3.json",
-      "evals/model/results/latest-moderation.v2.json",
-      "evals/browser/results/latest.v1.json",
-      "evals/browser/results/latest.v2.json",
-    ].includes(path));
+    .filter((path) => !resultPaths.includes(path));
   const hash = createHash("sha256").update(diff);
   for (const path of untracked.sort()) {
     hash.update(path);

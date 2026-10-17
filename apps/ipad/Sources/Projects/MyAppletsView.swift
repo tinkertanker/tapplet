@@ -21,7 +21,7 @@ struct MyAppletsView: View {
                                 onDelete: {
                                     Task {
                                         do { try await store.deleteProject(projectID: project.id) }
-                                        catch { showError(error, during: .delete) }
+                                        catch { showError(error) }
                                     }
                                 }
                             )
@@ -143,12 +143,11 @@ struct MyAppletsView: View {
     private func restoreApplets() {
         Task {
             do { _ = try await store.restoreFromTapplet() }
-            catch { showError(error, during: .restore) }
+            catch { showError(error) }
         }
     }
 
-    private func showError(_ error: Error, during operation: TappletOperation) {
-        let presentation = store.present(error, during: operation)
-        self.error = presentation.requestsWorkshopAccess ? nil : presentation.message
+    private func showError(_ error: Error) {
+        self.error = store.errorMessage(for: error)
     }
 }

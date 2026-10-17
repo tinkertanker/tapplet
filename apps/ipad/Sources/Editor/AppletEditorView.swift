@@ -20,12 +20,12 @@ struct AppletEditorView: View {
         HStack { Button("Back", systemImage: "chevron.left") { store.closeEditor() }; Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1); Spacer(); Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready); if !project.isExample { Button("Share") { sharePresentationID = UUID(); showShare = true }.buttonStyle(.borderedProminent) } }
             .padding().background(TappletTheme.surface)
         HStack(spacing: 0) { AppletPreviewWebView(source: project.source, localAssets: project.localAssets, state: $previewLoadState, presentableError: $previewError, onSnapshot: { store.uploadSnapshot($0, revisionID: project.source.revision.id) }).background(.white)
-            VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { showOperationError(error, during: .generation) } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
+            VStack { if project.isExample { Button("Make a copy") { Task { do { try await store.remix(project) } catch { showOperationError(error) } } }.buttonStyle(.borderedProminent) } else { editor(project) } }.frame(width: 360).background(TappletTheme.surface) }
     }.fullScreenCover(isPresented: $showStudent) { StudentPreviewView(project: project) }
         .sheet(isPresented: $showShare, onDismiss: {
             if let error = shareAccessError {
                 shareAccessError = nil
-                _ = store.present(error, during: .publish)
+                _ = store.present(error)
             }
         }) {
             ShareArtifactView(store: store, projectID: projectID) { error in
@@ -60,13 +60,7 @@ struct AppletEditorView: View {
                 }
                 FlowLayout(spacing: 8) {
                     ForEach(RefineSuggestion.all) { suggestion in
-                        Button(suggestion.title) {
-                            if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                prompt = suggestion.title
-                            } else if !prompt.contains(suggestion.title) {
-                                prompt += prompt.hasSuffix("\n") ? suggestion.title : "\n\(suggestion.title)"
-                            }
-                        }
+                        Button(suggestion.title) { prompt = prompt.addingSuggestion(suggestion.title) }
                         .buttonStyle(TappletSecondaryButtonStyle(borderShape: .capsule))
                         .font(.subheadline)
                         .accessibilityIdentifier("refine-suggestion-\(suggestion.id)")
@@ -83,8 +77,7 @@ struct AppletEditorView: View {
                             let warnings = try await store.refine(submittedPrompt, projectID: projectID)
                             if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
                         } catch {
-                            let presentation = store.present(error, during: .refinement)
-                            if !presentation.requestsWorkshopAccess { store.refinementErrors[projectID] = presentation.message }
+                            if let message = store.errorMessage(for: error) { store.refinementErrors[projectID] = message }
                         }
                     }
                 }
@@ -94,7 +87,7 @@ struct AppletEditorView: View {
                     Task {
                         defer { isMovingHead = false }
                         do { try await store.undo(projectID: project.id) }
-                        catch { showOperationError(error, during: .undo) }
+                        catch { showOperationError(error) }
                     }
                 }
                 .disabled(isMovingHead || working || project.source.revision.parentRevisionId == nil)
@@ -125,7 +118,7 @@ struct AppletEditorView: View {
                             Task {
                                 defer { isMovingHead = false }
                                 do { try await store.restore(revision: revision, projectID: project.id) }
-                                catch { showOperationError(error, during: .restore) }
+                                catch { showOperationError(error) }
                             }
                         }
                         .disabled(isMovingHead || working || revision.id == project.artifact.headRevisionId)
@@ -136,9 +129,8 @@ struct AppletEditorView: View {
         .formStyle(.grouped)
         .accessibilityIdentifier("tapplet-editor-form")
     }
-    private func showOperationError(_ error: Error, during operation: TappletOperation) {
-        let presentation = store.present(error, during: operation)
-        operationError = presentation.requestsWorkshopAccess ? nil : presentation.message
+    private func showOperationError(_ error: Error) {
+        operationError = store.errorMessage(for: error)
     }
 }
 
@@ -222,14 +214,13 @@ private struct ImageManagementView: View {
 
     // Kept in the store, like a failed change, so it is still shown if the editor was reopened meanwhile.
     private func show(_ error: Error) {
-        let presentation = store.present(error, during: .image)
-        if !presentation.requestsWorkshopAccess { store.refinementErrors[projectID] = presentation.message }
+        if let message = store.errorMessage(for: error) { store.refinementErrors[projectID] = message }
     }
 }
 
 private struct DetailsFields: View { let store: TappletStore; let project: ArtifactProject; @State private var draft: Artifact; @State private var error: String?
     init(store: TappletStore, project: ArtifactProject) { self.store = store; self.project = project; _draft = State(initialValue: project.artifact) }
-    var body: some View { Group { TextField("Title", text: $draft.title); TextField("Summary", text: $draft.summary, axis: .vertical); TextField("Subject", text: optional($draft.subject)); TextField("Level", text: optional($draft.level)); TextField("Locale", text: optional($draft.locale)); TextField("Learning objective", text: optional($draft.learningObjective), axis: .vertical); TextField("Tags (comma separated)", text: Binding(get: { draft.tags.joined(separator: ", ") }, set: { draft.tags = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } })); Button("Save details") { Task { var details = draft; details.tags.removeAll { $0.isEmpty }; let optionalFields: [WritableKeyPath<Artifact, String?>] = [\.subject, \.level, \.locale, \.learningObjective]; for field in optionalFields where details[keyPath: field]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { details[keyPath: field] = nil }; do { try await store.updateDetails(details); error = nil } catch { let presentation = store.present(error, during: .directSave); self.error = presentation.requestsWorkshopAccess ? nil : presentation.message } } }; if let error { Text(error).foregroundStyle(TappletTheme.danger) } }
+    var body: some View { Group { TextField("Title", text: $draft.title); TextField("Summary", text: $draft.summary, axis: .vertical); TextField("Subject", text: optional($draft.subject)); TextField("Level", text: optional($draft.level)); TextField("Locale", text: optional($draft.locale)); TextField("Learning objective", text: optional($draft.learningObjective), axis: .vertical); TextField("Tags (comma separated)", text: Binding(get: { draft.tags.joined(separator: ", ") }, set: { draft.tags = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } })); Button("Save details") { Task { var details = draft; details.tags.removeAll { $0.isEmpty }; let optionalFields: [WritableKeyPath<Artifact, String?>] = [\.subject, \.level, \.locale, \.learningObjective]; for field in optionalFields where details[keyPath: field]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { details[keyPath: field] = nil }; do { try await store.updateDetails(details); error = nil } catch { self.error = store.errorMessage(for: error) } } }; if let error { Text(error).foregroundStyle(TappletTheme.danger) } }
     }
     private func optional(_ value: Binding<String?>) -> Binding<String> { Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 }) }
 }

@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 
 export function parseClassNumber(value, usage = 'Expected a four-digit class number.') {
   if (typeof value !== 'string' || !/^\d{4}$/.test(value)) {
@@ -20,6 +20,11 @@ export function parseMaximumUses(value, usage = 'Expected maximum uses from 1 to
 
 export function createClassCode(selectNumber = randomInt) {
   return String(selectNumber(1_000_000)).padStart(6, '0');
+}
+
+// The API stores class codes only as this hash.
+export function classCodeHash(code) {
+  return createHash('sha256').update(`class-code:${code}`).digest('hex');
 }
 
 export function normaliseClassCode(value) {

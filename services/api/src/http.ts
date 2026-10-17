@@ -8,6 +8,10 @@ export interface ApiErrorBody {
   };
 }
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'x-content-type-options': 'nosniff',

@@ -1,4 +1,4 @@
-import { readBodyBytes } from "../http";
+import { isRecord, readBodyBytes } from "../http";
 
 export interface ModelPricing {
   source: "openrouter";
@@ -9,10 +9,6 @@ export interface ModelPricing {
 }
 
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
-
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 // OpenRouter reports USD per token as decimal strings.
 function perMillion(value: unknown): number | null {
@@ -29,16 +25,16 @@ function canonical(id: string): string {
 }
 
 export function findModelPricing(value: unknown, model: string): ModelPricing | null {
-  if (!record(value) || !Array.isArray(value.data)) return null;
+  if (!isRecord(value) || !Array.isArray(value.data)) return null;
   const wanted = canonical(model.trim());
   if (!wanted) return null;
   let suffixMatch: ModelPricing | null = null;
   for (const entry of value.data) {
-    if (!record(entry) || typeof entry.id !== "string") continue;
+    if (!isRecord(entry) || typeof entry.id !== "string") continue;
     const id = canonical(entry.id);
     const exact = id === wanted;
     if (!exact && (id.includes(":") || id.split("/").pop() !== wanted)) continue;
-    const pricing = record(entry.pricing) ? entry.pricing : {};
+    const pricing = isRecord(entry.pricing) ? entry.pricing : {};
     const input = perMillion(pricing.prompt);
     const output = perMillion(pricing.completion);
     if (input === null || output === null) continue;

@@ -932,7 +932,7 @@ function teacherComment(value: unknown): string | undefined {
   return trimmed && trimmed.length <= MAX_COMMENT_CHARACTERS ? trimmed : undefined;
 }
 
-function escapeHtmlAttribute(value: string): string {
+export function escapeHtml(value: string): string {
   return value.replace(
     /[&<>"']/g,
     (character) =>
@@ -994,7 +994,7 @@ function applyHostInsert(
     .map((asset) => {
       const alt = asset.decorative
         ? ""
-        : escapeHtmlAttribute(asset.alternativeText ?? "");
+        : escapeHtml(asset.alternativeText ?? "");
       return `<figure data-tapplet-managed-image="${asset.id}" style="margin:1rem auto;text-align:center"><img src="assets/${asset.id}" alt="${alt}"${asset.decorative ? ' role="presentation" aria-hidden="true"' : ""} style="max-width:100%;height:auto"></figure>`;
     })
     .join("\n");
