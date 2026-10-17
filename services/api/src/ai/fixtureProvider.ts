@@ -6,19 +6,7 @@ import type {
   ModerationDecision,
   TeacherBrief,
 } from "./provider";
-function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      })[character]!,
-  );
-}
+import { escapeHtml } from "../generation";
 
 function page(title: string, detail: string) {
   const safeTitle = escapeHtml(title);

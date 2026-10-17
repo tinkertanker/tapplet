@@ -25,7 +25,6 @@ enum TappletTheme {
         static let section = Font.system(.headline, design: .rounded, weight: .semibold)
         static let cardTitle = Font.system(.title3, design: .rounded, weight: .semibold)
         static let eyebrow = Font.system(.caption, design: .rounded, weight: .semibold)
-        static let actionSmall = Font.system(.subheadline, design: .rounded, weight: .semibold)
     }
 }
 

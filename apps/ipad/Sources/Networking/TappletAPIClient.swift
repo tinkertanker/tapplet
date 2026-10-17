@@ -122,7 +122,7 @@ struct TappletAPIClient: TappletAPI, Sendable {
 
     func registerDevice(accessCode: String) async throws {
         struct Body: Encodable { let accessCode: String }
-        let cleaned = accessCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased().replacingOccurrences(of: "-", with: "")
+        let cleaned = WorkshopAccessCodeValidator.normalizedCode(accessCode)
         let registration: DeviceRegistration = try await unauthorised("/v1/devices/register", method: "POST", body: Body(accessCode: cleaned))
         try await tokenStore.storeToken(registration.token)
     }

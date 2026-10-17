@@ -34,7 +34,11 @@ export interface RequiredManagedAsset {
   alternativeText: string | null;
   decorative: boolean;
 }
-const MAX_HTML_BYTES = 200_000;
+// Every provider caps generate, revise and repair at 32,000 output tokens, and
+// reasoning shares that budget. JSON-escaped HTML costs roughly 3-4 bytes per
+// token, so 64 KB (about 16-21k tokens) is HTML the next revise can re-emit.
+// Keep scripts/lib/html-artifact.mjs in step.
+export const MAX_HTML_BYTES = 64_000;
 const MAX_COMMENT_CHARACTERS = 600;
 export const DEFAULT_MAX_MODEL_REPAIRS = 2;
 // The iPad waits 150 seconds. Start a repair only if a full model call still
@@ -737,7 +741,10 @@ function inspect(
     };
     parsed = parsedHtml;
     if (new TextEncoder().encode(html).byteLength > MAX_HTML_BYTES)
-      issues.push({ kind: "structure", message: "HTML exceeds 200KB." });
+      issues.push({
+        kind: "structure",
+        message: `HTML exceeds ${MAX_HTML_BYTES / 1000}KB.`,
+      });
     if (
       !/^\s*<!doctype html>/i.test(html) ||
       !/<html[\s>]/i.test(html) ||
@@ -934,7 +941,7 @@ function teacherComment(value: unknown): string | undefined {
   return trimmed && trimmed.length <= MAX_COMMENT_CHARACTERS ? trimmed : undefined;
 }
 
-function escapeHtmlAttribute(value: string): string {
+export function escapeHtml(value: string): string {
   return value.replace(
     /[&<>"']/g,
     (character) =>
@@ -996,7 +1003,7 @@ function applyHostInsert(
     .map((asset) => {
       const alt = asset.decorative
         ? ""
-        : escapeHtmlAttribute(asset.alternativeText ?? "");
+        : escapeHtml(asset.alternativeText ?? "");
       return `<figure data-tapplet-managed-image="${asset.id}" style="margin:1rem auto;text-align:center"><img src="assets/${asset.id}" alt="${alt}"${asset.decorative ? ' role="presentation" aria-hidden="true"' : ""} style="max-width:100%;height:auto"></figure>`;
     })
     .join("\n");

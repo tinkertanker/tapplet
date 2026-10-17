@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normaliseClassCode, parseClassNumber } from './class-access.mjs';
+import { classCodeHash, normaliseClassCode, parseClassNumber } from './class-access.mjs';
+import { executeD1 } from './lib/wrangler-d1.mjs';
 
 const usage = 'Usage: npm run class-access:shorten -- <4-digit class number> <--local|--remote>';
 const classNumber = parseClassNumber(process.argv[2], usage);
@@ -19,16 +18,13 @@ const code = lines.length === 1 ? normaliseClassCode(lines[0]) : null;
 if (!code || !/^\d{4}[A-Z]{8}$/.test(code) || !code.startsWith(classNumber)) {
   throw new Error(`${outputPath} must contain the original twelve-character code for this class.`);
 }
-const hash = (value) => createHash('sha256').update(`class-code:${value}`).digest('hex');
-const fullHash = hash(code);
-const shortHash = hash(code.slice(-6));
+const fullHash = classCodeHash(code);
+const shortHash = classCodeHash(code.slice(-6));
 // One row owns both forms: never reset capacity, usage or expiry during backfill.
 const statement = `UPDATE class_codes SET short_code_hash='${shortHash}' ` +
   `WHERE code_hash='${fullHash}' AND (short_code_hash IS NULL OR short_code_hash='${shortHash}') ` +
   'RETURNING label, maximum_uses, use_count, expires_at;';
-const result = spawnSync('npx', [
-  'wrangler', 'd1', 'execute', 'DB', target, '--profile', 'tinkertanker', '--json', '--command', statement,
-], { cwd: resolve(repositoryRoot, 'services/api'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const result = executeD1(statement, target);
 let responses;
 try {
   if (result.status !== 0) throw new Error();

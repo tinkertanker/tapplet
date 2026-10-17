@@ -12,8 +12,6 @@ struct PreparedAppletImage: Equatable, Sendable {
     let height: Int
     let sha256: String
     var warnings: [AdvisoryWarning] = []
-
-    var fileExtension: String { "jpg" }
 }
 
 struct AppletImageAssetRecord: Codable, Equatable, Sendable {

@@ -297,3 +297,12 @@ struct RefineSuggestion: Identifiable, Sendable {
         RefineSuggestion(id: "bigger", title: "Make the text and buttons bigger")
     ]
 }
+
+extension String {
+    /// Adds a suggested phrase on its own line, or uses it alone when the text is blank.
+    func addingSuggestion(_ suggestion: String) -> String {
+        if trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return suggestion }
+        if contains(suggestion) { return self }
+        return self + (hasSuffix("\n") ? suggestion : "\n\(suggestion)")
+    }
+}

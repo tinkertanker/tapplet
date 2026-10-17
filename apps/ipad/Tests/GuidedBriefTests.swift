@@ -46,4 +46,11 @@ final class GuidedBriefTests: XCTestCase {
         XCTAssertEqual(ActivityFormat.allCases.map(\.rawValue), ["game", "quiz", "simulation", "practice"])
         XCTAssertEqual(RefineSuggestion.all.map(\.id), ["timer", "lives", "streak", "explain", "harder", "bigger"])
     }
+
+    func testSuggestionsAreAddedOnceOnTheirOwnLine() {
+        XCTAssertEqual(" \n".addingSuggestion("Add a timer"), "Add a timer")
+        XCTAssertEqual("Make it harder".addingSuggestion("Add a timer"), "Make it harder\nAdd a timer")
+        XCTAssertEqual("Make it harder\n".addingSuggestion("Add a timer"), "Make it harder\nAdd a timer")
+        XCTAssertEqual("Add a timer".addingSuggestion("Add a timer"), "Add a timer")
+    }
 }

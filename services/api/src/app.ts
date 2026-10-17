@@ -123,6 +123,13 @@ function optionalForm(value: unknown): ActivityForm | undefined {
     );
   return form as ActivityForm;
 }
+// BCP 47-shaped tags such as en-SG, fr or zh-Hans-SG; sent to the model as part of the brief.
+function optionalLocale(value: unknown): string | undefined {
+  const locale = optionalStr(value, "Locale", 30);
+  if (locale && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale))
+    throw new HttpError(422, "INVALID_INPUT", "Locale must be a language tag such as en-SG.");
+  return locale;
+}
 function inferSubject(learnerContext: string): string {
   const text = learnerContext.toLowerCase();
   if (/\bmaths?\b|\bmathematics\b|\balgebra\b/.test(text)) return "mathematics";
@@ -167,6 +174,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
   const learnerContext = str(guided.learnerContext, "Learner context", 300);
   const format = optionalForm(guided.format);
   const sourceContent = optionalStr(guided.sourceContent, "Source content", 4000);
+  const locale = optionalLocale(guided.locale);
   return {
     // Studio joins every answer (up to 7,500 characters) with its question.
     creationBrief: str(b.creationBrief, "Creation brief", 8000),
@@ -188,6 +196,7 @@ function brief(b: Record<string, unknown>): GuidedGeneration {
       feedback: str(guided.feedback, "Feedback", 1000),
       classroomFit: str(guided.classroomFit, "Classroom fit", 1000),
       ...(format ? { format } : {}),
+      ...(locale ? { locale } : {}),
     },
   };
 }
@@ -205,11 +214,13 @@ function remixBrief(source: ArtifactRecord): TeacherBrief {
     studentAction: source.summary.slice(0, 600),
     feedback: "Ask the teacher for feedback on this remixed tapplet.",
     classroomFit: source.level ?? "Classroom use",
+    ...(source.locale ? { locale: source.locale } : {}),
   };
 }
-async function digest(html: string) {
-  return sha256(html);
-}
+const headRevisionConflict = () =>
+  new HttpError(409, "HEAD_REVISION_CONFLICT", "Artifact head changed.");
+const storageLimitReached = () =>
+  new HttpError(429, "ARTIFACT_STORAGE_LIMIT_REACHED", "Saved tapplet limit reached.");
 function design(r: RevisionRecord): DesignCard | undefined {
   return r.designCard ? (JSON.parse(r.designCard) as DesignCard) : undefined;
 }
@@ -230,7 +241,7 @@ function artifactResponse(artifact: ArtifactRecord) {
     updatedAt: artifact.updatedAt,
   };
 }
-function revisionResponse(revision: RevisionRecord, origin: string) {
+function revisionResponse(revision: RevisionRecord) {
   return {
     id: revision.id,
     artifactId: revision.artifactId,
@@ -509,7 +520,6 @@ export function createStudioApp(d: Deps) {
   async function projectResponse(
     a: ArtifactRecord,
     o: string,
-    origin: string,
     extras: {
       revision?: RevisionRecord;
       html?: string | null;
@@ -536,15 +546,13 @@ export function createStudioApp(d: Deps) {
         publication: p ? publication(p, d.config.publicPlayerOrigin) : null,
         publicationStale: !!p && p.revisionId !== a.headRevisionId,
       },
-      headRevision: head ? revisionResponse(head, origin) : null,
+      headRevision: head ? revisionResponse(head) : null,
       html,
-      revisions: revisionRecords.map((revision) =>
-        revisionResponse(revision, origin),
-      ),
+      revisions: revisionRecords.map(revisionResponse),
     };
   }
   async function persist(html: string) {
-    const h = await digest(html);
+    const h = await sha256(html);
     await d.sources.putSource(h, html);
     return h;
   }
@@ -553,11 +561,7 @@ export function createStudioApp(d: Deps) {
       (await d.repository.countArtifacts(ownerHash)) >=
       d.config.maximumDraftsPerOwner
     )
-      throw new HttpError(
-        429,
-        "ARTIFACT_STORAGE_LIMIT_REACHED",
-        "Saved tapplet limit reached.",
-      );
+      throw storageLimitReached();
     return quota(r, ownerHash, "artifact");
   }
   async function handle(r: Request): Promise<Response> {
@@ -802,11 +806,17 @@ export function createStudioApp(d: Deps) {
             ),
           ])
         : [null, false];
-      const preferredAllowed = !!(preferred && (ownedPreferred || retrievablePreferred));
-      const found = request.preferredExampleRevisionId
-        ? preferredAllowed && preferred
-          ? [{ revisionId: preferred.id, descriptor: "Teacher-selected example" }]
-          : []
+      const usePreferred = !!(preferred && (ownedPreferred || retrievablePreferred));
+      // An unavailable teacher choice falls back to automatic retrieval.
+      if (request.preferredExampleRevisionId && !usePreferred)
+        warnings.push({
+          source: "prompt",
+          code: "PREFERRED_EXAMPLE_UNAVAILABLE",
+          message:
+            "The example you chose was unavailable, so it was not used. Tapplet Studio looked for similar examples instead.",
+        });
+      const found = usePreferred && preferred
+        ? [{ revisionId: preferred.id, descriptor: "Teacher-selected example" }]
         : query
           ? await d.repository.searchRetrieval(query, 2, now().toISOString())
           : [];
@@ -832,7 +842,7 @@ export function createStudioApp(d: Deps) {
         emitOperationalTrace(trace.sink, {
           kind: "retrieval",
           requestId: trace.requestId,
-          mode: request.preferredExampleRevisionId
+          mode: usePreferred
             ? "preferred"
             : query
               ? "automatic"
@@ -896,7 +906,7 @@ export function createStudioApp(d: Deps) {
         summary: out.designCard?.description?.trim() || b.studentAction,
         subject: b.subject === "other" ? null : b.subject,
         level: b.learnerContext ?? b.level,
-        locale: "en-SG",
+        locale: b.locale ?? "en-SG",
         learningObjective: b.learningObjective,
         tags: out.designCard?.tags ?? [],
         creationBrief: request.creationBrief,
@@ -916,11 +926,7 @@ export function createStudioApp(d: Deps) {
           d.config.maximumDraftsPerOwner,
         ))
       )
-        throw new HttpError(
-          429,
-          "ARTIFACT_STORAGE_LIMIT_REACHED",
-          "Saved tapplet limit reached.",
-        );
+        throw storageLimitReached();
       if (trace) {
         emitOperationalTrace(trace.sink, {
           kind: "artifact_commit",
@@ -936,7 +942,7 @@ export function createStudioApp(d: Deps) {
       }
       return json(
         {
-          ...(await projectResponse(a, o, u.origin, {
+          ...(await projectResponse(a, o, {
             revision: rv,
             html: out.html,
             publication: null,
@@ -1032,7 +1038,7 @@ export function createStudioApp(d: Deps) {
       if (!a)
         throw new HttpError(404, "ARTIFACT_NOT_FOUND", "Artifact unavailable.");
       if (s.length === 3 && r.method === "GET")
-        return json(await projectResponse(a, o, u.origin));
+        return json(await projectResponse(a, o));
       if (s.length === 3 && r.method === "DELETE") {
         const references = await d.repository.getArtifactStorageReferences(
           a.id,
@@ -1084,7 +1090,7 @@ export function createStudioApp(d: Deps) {
               .updateArtifactMetadata(a.id, o, metadata, now().toISOString())
               .then(async (value) =>
                 value
-                  ? (await projectResponse(value, o, u.origin)).artifact
+                  ? (await projectResponse(value, o)).artifact
                   : null,
               ),
             ...(warnings.length ? { warnings } : {}),
@@ -1105,21 +1111,17 @@ export function createStudioApp(d: Deps) {
             now().toISOString(),
           ))
         )
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         return json(
           await d.repository
             .getArtifact(a.id, o)
-            .then((value) => projectResponse(value!, o, u.origin)),
+            .then((value) => projectResponse(value!, o)),
         );
       }
       if (s[3] === "revisions" && s.length === 4 && r.method === "GET")
         return json({
           revisions: (await d.repository.listRevisions(a.id, o)).map(
-            (revision) => revisionResponse(revision, u.origin),
+            revisionResponse,
           ),
         });
       if (s[3] === "revisions" && s.length === 4 && r.method === "POST") {
@@ -1142,11 +1144,7 @@ export function createStudioApp(d: Deps) {
             "Required asset ID is invalid.",
           );
         if (a.headRevisionId !== expected)
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         const requiredAssets = requiredAssetId
           ? await validateAssetReferences([requiredAssetId], o)
           : [];
@@ -1211,11 +1209,7 @@ export function createStudioApp(d: Deps) {
         );
         const assetIds = await assets(out.html, o);
         if (!(await d.repository.createRevision(rv, o, expected, assetIds)))
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         if (trace) {
           emitOperationalTrace(trace.sink, {
             kind: "artifact_commit",
@@ -1239,7 +1233,6 @@ export function createStudioApp(d: Deps) {
                 ? { ...latest, headRevisionId: rid }
                 : { ...a, headRevisionId: rid, updatedAt: timestamp },
               o,
-              u.origin,
               { revision: rv, html: out.html },
             )),
             ...(warnings.length ? { warnings } : {}),
@@ -1255,11 +1248,7 @@ export function createStudioApp(d: Deps) {
             100,
           );
         if (a.headRevisionId !== expected)
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         const rv = await d.repository.getRevision(expected),
           html = rv && (await d.sources.getSource(rv.sourceHash));
         if (!rv || !html)
@@ -1391,10 +1380,10 @@ export function createStudioApp(d: Deps) {
         const keepBriefs =
           !!ownedArtifact || sourceArtifact.ownerHash === CURATED_SEED_OWNER;
         await reserveArtifactCreation(r, o);
+        await persist(html);
         const aid = id(),
           rid = id(),
           timestamp = now().toISOString(),
-          hash = await persist(html),
           copy = {
             ...rv,
             id: rid,
@@ -1441,14 +1430,10 @@ export function createStudioApp(d: Deps) {
             d.config.maximumDraftsPerOwner,
           ))
         )
-          throw new HttpError(
-            429,
-            "ARTIFACT_STORAGE_LIMIT_REACHED",
-            "Saved tapplet limit reached.",
-          );
+          throw storageLimitReached();
         return json(
           {
-            ...(await projectResponse(artifact, o, u.origin, {
+            ...(await projectResponse(artifact, o, {
               revision: copy,
               html,
               publication: null,

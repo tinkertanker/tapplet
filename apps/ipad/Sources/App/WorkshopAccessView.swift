@@ -215,7 +215,7 @@ struct WorkshopAccessView: View {
             do {
                 try await store.registerWorkshopAccess(accessCode)
             } catch {
-                registrationError = store.present(error, during: .activation)
+                registrationError = store.present(error)
                 codeIsFocused = true
             }
         }

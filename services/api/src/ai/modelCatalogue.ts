@@ -1,4 +1,4 @@
-import { readBodyBytes } from "../http";
+import { isRecord, readBodyBytes } from "../http";
 
 export interface CatalogueModel {
   id: string;
@@ -19,17 +19,13 @@ export const MODEL_PROVIDERS = new Set([
   "openai", "anthropic", "gemini", "deepseek", "openrouter", "opencode-go", "opencode-zen",
 ]);
 
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function parseCatalogue(value: unknown): CatalogueModel[] {
-  if (!record(value) || value.object !== "list" || value.version !== 1 ||
+  if (!isRecord(value) || value.object !== "list" || value.version !== 1 ||
     !Array.isArray(value.data) || value.data.length > 500) throw new Error("Invalid catalogue");
   const seen = new Set<string>();
   const defaults = new Set<string>();
   return value.data.map((entry: unknown) => {
-    if (!record(entry)) throw new Error("Invalid model");
+    if (!isRecord(entry)) throw new Error("Invalid model");
     const { id, provider, display_name, tier, is_default } = entry;
     if (typeof id !== "string" || !/^[^\s\x00-\x1f\x7f]{1,200}$/.test(id) ||
       typeof provider !== "string" || !MODEL_PROVIDERS.has(provider) ||

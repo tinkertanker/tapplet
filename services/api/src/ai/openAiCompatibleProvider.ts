@@ -14,7 +14,7 @@ import type {
   RepairContext,
   TeacherBrief,
 } from "./provider";
-import { MODEL_CALL_TIMEOUT_MS, ModelProviderError } from "./provider";
+import { MODEL_CALL_TIMEOUT_MS, ModelProviderError, parseModerationDecision } from "./provider";
 import type {
   ModelOperation,
   OperationalTraceContext,
@@ -96,27 +96,17 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     const r = await this.complete(
       MODERATION_SYSTEM_PROMPT,
       html,
-      // Reasoning shares the output budget with the moderation JSON.
-      this.o.api === "responses" && new URL(this.o.baseUrl).hostname === "api.openai.com"
-        ? 4096
-        : 500,
+      // Every Responses route reasons during moderation (OpenAI, and the GPT
+      // and Muse Spark families on OpenCode Go), and reasoning shares the
+      // output budget with the moderation JSON.
+      this.o.api === "responses" ? 4096 : 500,
       true,
       this.o.moderationReasoningOptions,
       "moderate",
       trace,
       sessionId,
     );
-    if (
-      !r ||
-      typeof r !== "object" ||
-      typeof Reflect.get(r, "safe") !== "boolean" ||
-      !Array.isArray(Reflect.get(r, "categories"))
-    )
-      throw new ModelProviderError("Invalid moderation response", true);
-    return {
-      safe: Reflect.get(r, "safe") as boolean,
-      categories: Reflect.get(r, "categories") as string[],
-    };
+    return parseModerationDecision(r);
   }
   private async complete(
     system: string,
@@ -202,15 +192,10 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       error?: { message?: string };
       usage?: ProviderUsage;
     } | null;
+    const traceResponse = (status: "success" | "error") =>
+      this.emitTrace(trace, this.traceEvent(operation, status, started, systemBytes, inputBytes, body));
     if (!response.ok) {
-      this.emitTrace(trace, this.traceEvent(
-        operation,
-        "error",
-        started,
-        systemBytes,
-        inputBytes,
-        body,
-      ));
+      traceResponse("error");
       throw new ModelProviderError(
         body?.error?.message ?? `HTTP ${response.status}`,
         response.status === 429 || response.status >= 500,
@@ -226,14 +211,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       || body?.error != null
     );
     if (truncated || protocolFailure) {
-      this.emitTrace(trace, this.traceEvent(
-        operation,
-        "error",
-        started,
-        systemBytes,
-        inputBytes,
-        body,
-      ));
+      traceResponse("error");
       throw new ModelProviderError(
         truncated ? "Model output truncated" : "Model response not completed",
         true,
@@ -247,36 +225,15 @@ export class OpenAiCompatibleProvider implements ModelProvider {
           .join("")
       : body?.choices?.[0]?.message?.content;
     if (!text) {
-      this.emitTrace(trace, this.traceEvent(
-        operation,
-        "error",
-        started,
-        systemBytes,
-        inputBytes,
-        body,
-      ));
+      traceResponse("error");
       throw new ModelProviderError("No model output", true);
     }
     try {
       const result: unknown = JSON.parse(text);
-      this.emitTrace(trace, this.traceEvent(
-        operation,
-        "success",
-        started,
-        systemBytes,
-        inputBytes,
-        body,
-      ));
+      traceResponse("success");
       return result;
     } catch {
-      this.emitTrace(trace, this.traceEvent(
-        operation,
-        requireJson ? "error" : "success",
-        started,
-        systemBytes,
-        inputBytes,
-        body,
-      ));
+      traceResponse(requireJson ? "error" : "success");
       if (requireJson)
         throw new ModelProviderError("Malformed model JSON", false);
       return text;

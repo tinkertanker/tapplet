@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -117,10 +117,10 @@ test('uses a convergent remote insert and confirms exact metadata without exposi
 test('CLI replaces only a confirmed numeric collision and preserves uncertain retries', (t) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'tapplet-class-allocation-')));
   t.after(() => process.platform === 'darwin' ? spawnSync('trash', [root]) : rmSync(root, { recursive: true, force: true }));
-  for (const directory of ['scripts', 'services/api', 'bin', '.studio-class-codes']) {
+  for (const directory of ['scripts/lib', 'services/api', 'bin', '.studio-class-codes']) {
     mkdirSync(join(root, directory), { recursive: true });
   }
-  for (const name of ['class-access.mjs', 'provision-class-access.mjs']) {
+  for (const name of ['class-access.mjs', 'provision-class-access.mjs', 'lib/wrangler-d1.mjs']) {
     copyFileSync(new URL(name, import.meta.url), join(root, 'scripts', name));
   }
   const path = join(root, '.studio-class-codes', '0042.txt');
@@ -198,23 +198,27 @@ db.close();
 test('shortening reports backend failures without exposing credential hashes', (t) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'tapplet-class-shortening-')));
   t.after(() => process.platform === 'darwin' ? spawnSync('trash', [root]) : rmSync(root, { recursive: true, force: true }));
-  for (const directory of ['scripts', 'services/api', 'bin', '.studio-class-codes']) {
+  for (const directory of ['scripts/lib', 'services/api', 'bin', '.studio-class-codes']) {
     mkdirSync(join(root, directory), { recursive: true });
   }
-  for (const name of ['class-access.mjs', 'shorten-class-access.mjs']) {
+  for (const name of ['class-access.mjs', 'shorten-class-access.mjs', 'lib/wrangler-d1.mjs']) {
     copyFileSync(new URL(name, import.meta.url), join(root, 'scripts', name));
   }
   writeFileSync(join(root, '.studio-class-codes/0042.txt'), '0042ABCDEFGH\n', { mode: 0o600 });
   writeFileSync(join(root, 'bin/npx'), `#!/usr/bin/env node
+require('node:fs').writeFileSync(process.env.REACHED, '');
 const message = 'SECRET ' + process.argv.at(-1);
 if (process.env.BAD_JSON === '1') { console.log(message); } else { console.error(message); process.exitCode = 1; }
 `, { mode: 0o700 });
   for (const badJson of ['0', '1']) {
+    const reached = join(root, `reached-${badJson}`);
     const result = spawnSync(process.execPath, [join(root, 'scripts/shorten-class-access.mjs'), '0042', '--local'], {
-      env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, BAD_JSON: badJson },
+      env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, BAD_JSON: badJson, REACHED: reached },
       encoding: 'utf8',
     });
     assert.notEqual(result.status, 0);
+    assert.ok(existsSync(reached), 'the mocked Wrangler must be called');
+    assert.match(result.stderr, /Could not confirm the shortened class code/);
     assert.doesNotMatch(result.stdout + result.stderr, /SECRET|short_code_hash|UPDATE class_codes/);
     assert.equal(readFileSync(join(root, '.studio-class-codes/0042.txt'), 'utf8'), '0042ABCDEFGH\n');
   }
