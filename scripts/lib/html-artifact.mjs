@@ -1,7 +1,8 @@
 import { parse as parseJavaScript } from 'acorn';
 import { parse as parseHtml, parseFragment } from 'parse5';
 
-export const MAX_HTML_BYTES = 200_000;
+// Matches MAX_HTML_BYTES in services/api/src/generation.ts (the revise output budget).
+export const MAX_HTML_BYTES = 64_000;
 
 // formaction is checked here as well as src, href and action. The value is
 // matched in a lookahead so a value never hides a later name, as in
