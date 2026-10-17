@@ -6,7 +6,6 @@ import type {
   CuratedSeedInput,
   ExtendPublicationResult,
   PublicationRecord,
-  RetrievalEntry,
   RegistrationResult,
   RevisionRecord,
   StudioRepository,

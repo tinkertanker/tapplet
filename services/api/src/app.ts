@@ -207,9 +207,10 @@ function remixBrief(source: ArtifactRecord): TeacherBrief {
     classroomFit: source.level ?? "Classroom use",
   };
 }
-async function digest(html: string) {
-  return sha256(html);
-}
+const headRevisionConflict = () =>
+  new HttpError(409, "HEAD_REVISION_CONFLICT", "Artifact head changed.");
+const storageLimitReached = () =>
+  new HttpError(429, "ARTIFACT_STORAGE_LIMIT_REACHED", "Saved tapplet limit reached.");
 function design(r: RevisionRecord): DesignCard | undefined {
   return r.designCard ? (JSON.parse(r.designCard) as DesignCard) : undefined;
 }
@@ -230,7 +231,7 @@ function artifactResponse(artifact: ArtifactRecord) {
     updatedAt: artifact.updatedAt,
   };
 }
-function revisionResponse(revision: RevisionRecord, origin: string) {
+function revisionResponse(revision: RevisionRecord) {
   return {
     id: revision.id,
     artifactId: revision.artifactId,
@@ -481,7 +482,6 @@ export function createStudioApp(d: Deps) {
   async function projectResponse(
     a: ArtifactRecord,
     o: string,
-    origin: string,
     extras: {
       revision?: RevisionRecord;
       html?: string | null;
@@ -508,15 +508,13 @@ export function createStudioApp(d: Deps) {
         publication: p ? publication(p, d.config.publicPlayerOrigin) : null,
         publicationStale: !!p && p.revisionId !== a.headRevisionId,
       },
-      headRevision: head ? revisionResponse(head, origin) : null,
+      headRevision: head ? revisionResponse(head) : null,
       html,
-      revisions: revisionRecords.map((revision) =>
-        revisionResponse(revision, origin),
-      ),
+      revisions: revisionRecords.map(revisionResponse),
     };
   }
   async function persist(html: string) {
-    const h = await digest(html);
+    const h = await sha256(html);
     await d.sources.putSource(h, html);
     return h;
   }
@@ -525,11 +523,7 @@ export function createStudioApp(d: Deps) {
       (await d.repository.countArtifacts(ownerHash)) >=
       d.config.maximumDraftsPerOwner
     )
-      throw new HttpError(
-        429,
-        "ARTIFACT_STORAGE_LIMIT_REACHED",
-        "Saved tapplet limit reached.",
-      );
+      throw storageLimitReached();
     await quota(r, ownerHash, "artifact");
   }
   async function handle(r: Request): Promise<Response> {
@@ -878,11 +872,7 @@ export function createStudioApp(d: Deps) {
           d.config.maximumDraftsPerOwner,
         ))
       )
-        throw new HttpError(
-          429,
-          "ARTIFACT_STORAGE_LIMIT_REACHED",
-          "Saved tapplet limit reached.",
-        );
+        throw storageLimitReached();
       if (trace) {
         emitOperationalTrace(trace.sink, {
           kind: "artifact_commit",
@@ -898,7 +888,7 @@ export function createStudioApp(d: Deps) {
       }
       return json(
         {
-          ...(await projectResponse(a, o, u.origin, {
+          ...(await projectResponse(a, o, {
             revision: rv,
             html: out.html,
             publication: null,
@@ -994,7 +984,7 @@ export function createStudioApp(d: Deps) {
       if (!a)
         throw new HttpError(404, "ARTIFACT_NOT_FOUND", "Artifact unavailable.");
       if (s.length === 3 && r.method === "GET")
-        return json(await projectResponse(a, o, u.origin));
+        return json(await projectResponse(a, o));
       if (s.length === 3 && r.method === "DELETE") {
         const references = await d.repository.getArtifactStorageReferences(
           a.id,
@@ -1046,7 +1036,7 @@ export function createStudioApp(d: Deps) {
               .updateArtifactMetadata(a.id, o, metadata, now().toISOString())
               .then(async (value) =>
                 value
-                  ? (await projectResponse(value, o, u.origin)).artifact
+                  ? (await projectResponse(value, o)).artifact
                   : null,
               ),
             ...(warnings.length ? { warnings } : {}),
@@ -1067,21 +1057,17 @@ export function createStudioApp(d: Deps) {
             now().toISOString(),
           ))
         )
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         return json(
           await d.repository
             .getArtifact(a.id, o)
-            .then((value) => projectResponse(value!, o, u.origin)),
+            .then((value) => projectResponse(value!, o)),
         );
       }
       if (s[3] === "revisions" && s.length === 4 && r.method === "GET")
         return json({
           revisions: (await d.repository.listRevisions(a.id, o)).map(
-            (revision) => revisionResponse(revision, u.origin),
+            revisionResponse,
           ),
         });
       if (s[3] === "revisions" && s.length === 4 && r.method === "POST") {
@@ -1104,11 +1090,7 @@ export function createStudioApp(d: Deps) {
             "Required asset ID is invalid.",
           );
         if (a.headRevisionId !== expected)
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         const requiredAssets = requiredAssetId
           ? await validateAssetReferences([requiredAssetId], o)
           : [];
@@ -1168,11 +1150,7 @@ export function createStudioApp(d: Deps) {
         );
         const assetIds = await assets(out.html, o);
         if (!(await d.repository.createRevision(rv, o, expected, assetIds)))
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         if (trace) {
           emitOperationalTrace(trace.sink, {
             kind: "artifact_commit",
@@ -1196,7 +1174,6 @@ export function createStudioApp(d: Deps) {
                 ? { ...latest, headRevisionId: rid }
                 : { ...a, headRevisionId: rid, updatedAt: timestamp },
               o,
-              u.origin,
               { revision: rv, html: out.html },
             )),
             ...(warnings.length ? { warnings } : {}),
@@ -1212,11 +1189,7 @@ export function createStudioApp(d: Deps) {
             100,
           );
         if (a.headRevisionId !== expected)
-          throw new HttpError(
-            409,
-            "HEAD_REVISION_CONFLICT",
-            "Artifact head changed.",
-          );
+          throw headRevisionConflict();
         const rv = await d.repository.getRevision(expected),
           html = rv && (await d.sources.getSource(rv.sourceHash));
         if (!rv || !html)
@@ -1348,10 +1321,10 @@ export function createStudioApp(d: Deps) {
         const keepBriefs =
           !!ownedArtifact || sourceArtifact.ownerHash === CURATED_SEED_OWNER;
         await reserveArtifactCreation(r, o);
+        await persist(html);
         const aid = id(),
           rid = id(),
           timestamp = now().toISOString(),
-          hash = await persist(html),
           copy = {
             ...rv,
             id: rid,
@@ -1398,14 +1371,10 @@ export function createStudioApp(d: Deps) {
             d.config.maximumDraftsPerOwner,
           ))
         )
-          throw new HttpError(
-            429,
-            "ARTIFACT_STORAGE_LIMIT_REACHED",
-            "Saved tapplet limit reached.",
-          );
+          throw storageLimitReached();
         return json(
           {
-            ...(await projectResponse(artifact, o, u.origin, {
+            ...(await projectResponse(artifact, o, {
               revision: copy,
               html,
               publication: null,
