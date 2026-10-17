@@ -69,16 +69,9 @@ struct AppletEditorView: View {
                 Button(working ? "Updating…" : "Make this change") {
                     let submittedPrompt = prompt
                     // The editor can close before the change finishes; the store keeps its state.
-                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
-                    store.refinementErrors[projectID] = nil
-                    Task {
-                        defer { store.refiningProjectIDs.remove(projectID) }
-                        do {
-                            let warnings = try await store.refine(submittedPrompt, projectID: projectID)
-                            if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
-                        } catch {
-                            if let message = store.errorMessage(for: error) { store.refinementErrors[projectID] = message }
-                        }
+                    store.runChange(to: projectID) {
+                        let warnings = try await store.refine(submittedPrompt, projectID: projectID)
+                        if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
                     }
                 }
                 .disabled(working || isMovingHead || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -155,12 +148,8 @@ private struct ImageManagementView: View {
                 Label(assetID, systemImage: "photo")
                 Spacer()
                 Button("Remove", role: .destructive) {
-                    guard store.refiningProjectIDs.insert(projectID).inserted else { return }
-                    store.refinementErrors[projectID] = nil
-                    Task {
-                        defer { store.refiningProjectIDs.remove(projectID) }
-                        do { try await store.removeImage(assetID: assetID, projectID: projectID) }
-                        catch { show(error) }
+                    store.runChange(to: projectID) {
+                        try await store.removeImage(assetID: assetID, projectID: projectID)
                     }
                 }
                 .disabled(isWorking)
@@ -199,22 +188,14 @@ private struct ImageManagementView: View {
     }
 
     private func upload() {
-        guard let pendingData, store.refiningProjectIDs.insert(projectID).inserted else { return }
-        error = nil
-        store.refinementErrors[projectID] = nil
-        Task {
-            defer { store.refiningProjectIDs.remove(projectID) }
-            do {
-                try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
-                // Keep an image chosen while this one was being inserted, with its description.
-                if self.pendingData == pendingData { self.pendingData = nil; description = ""; decorative = false; photo = nil }
-            } catch { show(error) }
+        guard let pendingData else { return }
+        // A failure is kept in the store, like a failed change, so a reopened editor still shows it.
+        let started = store.runChange(to: projectID) {
+            try await store.addImage(pendingData, description: description, decorative: decorative, projectID: projectID)
+            // Keep an image chosen while this one was being inserted, with its description.
+            if self.pendingData == pendingData { self.pendingData = nil; description = ""; decorative = false; photo = nil }
         }
-    }
-
-    // Kept in the store, like a failed change, so it is still shown if the editor was reopened meanwhile.
-    private func show(_ error: Error) {
-        if let message = store.errorMessage(for: error) { store.refinementErrors[projectID] = message }
+        if started { error = nil }
     }
 }
 

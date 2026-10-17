@@ -80,6 +80,13 @@ struct ArtifactProject: Codable, Equatable, Identifiable, Sendable {
     var isExample = false
     var id: String { artifact.id }
     var updatedAt: Date { parseAPITimestamp(artifact.updatedAt) ?? .distantPast }
+
+    /// Keeps cached images this project's response did not list, so offline
+    /// previews of earlier revisions still find them.
+    mutating func keepCachedAssets(_ cached: [LocalAppletAssetFile]) {
+        let incomingIDs = Set(localAssets.map(\.id))
+        localAssets.append(contentsOf: cached.filter { !incomingIDs.contains($0.id) })
+    }
 }
 
 /// The API writes ISO 8601 timestamps with or without fractional seconds.

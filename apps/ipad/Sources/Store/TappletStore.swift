@@ -104,6 +104,19 @@ private enum RestoreFetch: Sendable {
         }
         return TappletErrorPresentation(title: "Tapplet Studio could not complete this action", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
     }
+    /// Runs a change to a project unless one is already running. The busy state
+    /// and any failure stay in the store, so a reopened editor still shows them.
+    @discardableResult
+    func runChange(to projectID: String, _ change: @escaping @MainActor () async throws -> Void) -> Bool {
+        guard refiningProjectIDs.insert(projectID).inserted else { return false }
+        refinementErrors[projectID] = nil
+        Task {
+            defer { refiningProjectIDs.remove(projectID) }
+            do { try await change() }
+            catch { if let message = errorMessage(for: error) { refinementErrors[projectID] = message } }
+        }
+        return true
+    }
     /// The inline message for a failure, or nil when the class-code sheet is shown instead.
     func errorMessage(for error: Error) -> String? {
         let presentation = present(error)
@@ -262,22 +275,22 @@ private enum RestoreFetch: Sendable {
         return result.warnings
     }
     func restore(revision: ArtifactRevision, projectID: String) async throws {
-        let current = try project(projectID)
-        let moved = try await api.setHead(id: projectID, revisionId: revision.id, expectedHeadRevisionId: current.artifact.headRevisionId)
-        upsert(await withMissingAssets(moved))
+        try await moveHead(projectID: projectID, to: revision.id)
     }
     func undo(projectID: String) async throws {
-        let current = try project(projectID); guard let parent = current.source.revision.parentRevisionId else { return }
-        let moved = try await api.setHead(id: projectID, revisionId: parent, expectedHeadRevisionId: current.artifact.headRevisionId)
+        guard let parent = try project(projectID).source.revision.parentRevisionId else { return }
+        try await moveHead(projectID: projectID, to: parent)
+    }
+    private func moveHead(projectID: String, to revisionID: String) async throws {
+        let current = try project(projectID)
+        let moved = try await api.setHead(id: projectID, revisionId: revisionID, expectedHeadRevisionId: current.artifact.headRevisionId)
         upsert(await withMissingAssets(moved))
     }
     /// An earlier revision can reference images this iPad never downloaded, for
     /// example after Restore tapplets. Cache them before the offline preview loads it.
     private func withMissingAssets(_ incoming: ArtifactProject) async -> ArtifactProject {
         var project = incoming
-        let incomingIDs = Set(project.localAssets.map(\.id))
-        let cached = projects.first { $0.id == incoming.id }?.localAssets ?? []
-        project.localAssets.append(contentsOf: cached.filter { !incomingIDs.contains($0.id) })
+        project.keepCachedAssets(projects.first { $0.id == incoming.id }?.localAssets ?? [])
         return (try? await cacheAssets(in: project)) ?? project
     }
     func updateDetails(_ artifact: Artifact) async throws {
@@ -308,16 +321,23 @@ private enum RestoreFetch: Sendable {
         return result.value
     }
     func unpublish(projectID: String) async throws {
-        guard let slug = try project(projectID).artifact.publication?.slug else { return }
-        try await api.revoke(slug: slug)
-        var current = try project(projectID)
-        guard current.artifact.publication?.slug == slug else { return }
-        current.artifact.publication = nil
-        upsert(current)
+        try await updatePublication(projectID: projectID) { slug in
+            try await self.api.revoke(slug: slug)
+            return nil
+        }
     }
     func extendPublication(projectID: String) async throws {
+        try await updatePublication(projectID: projectID) { slug in
+            try await self.api.extend(slug: slug, days: 90)
+        }
+    }
+    /// Applies a change to the live link, unless the project was republished meanwhile.
+    private func updatePublication(
+        projectID: String,
+        _ change: (String) async throws -> ArtifactPublication?
+    ) async throws {
         guard let slug = try project(projectID).artifact.publication?.slug else { return }
-        let publication = try await api.extend(slug: slug, days: 90)
+        let publication = try await change(slug)
         var current = try project(projectID)
         guard current.artifact.publication?.slug == slug else { return }
         current.artifact.publication = publication
@@ -334,8 +354,7 @@ private enum RestoreFetch: Sendable {
             // project must still remain deletable.
         }
         projects.removeAll { $0.id == projectID }
-        let name = projectID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? projectID
-        try? FileManager.default.removeItem(at: projectDirectory.appending(path: "\(name).json"))
+        try? FileManager.default.removeItem(at: projectFileURL(projectID, fallbackName: projectID))
     }
     private static func hasNoPotentiallyLivePublication(_ publication: ArtifactPublication?) -> Bool {
         guard let publication else { return true }
@@ -479,17 +498,20 @@ private enum RestoreFetch: Sendable {
     private func upsert(_ project: ArtifactProject) {
         var project = project
         if let cached = projects.first(where: { $0.id == project.id }) {
-            let incomingIDs = Set(project.localAssets.map(\.id))
-            project.localAssets.append(contentsOf: cached.localAssets.filter { !incomingIDs.contains($0.id) })
+            project.keepCachedAssets(cached.localAssets)
         }
         projects.removeAll { $0.id == project.id }
         projects.append(project)
         persist(project)
     }
     private func persist(_ project: ArtifactProject) {
-        let name = project.id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? UUID().uuidString
-        do { try JSONEncoder().encode(project).write(to: projectDirectory.appending(path: "\(name).json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
+        let url = projectFileURL(project.id, fallbackName: UUID().uuidString)
+        do { try JSONEncoder().encode(project).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
         catch { recoveryNotice = "Tapplet Studio could not save this tapplet for offline use." }
+    }
+    private func projectFileURL(_ projectID: String, fallbackName: @autoclosure () -> String) -> URL {
+        let name = projectID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? fallbackName()
+        return projectDirectory.appending(path: "\(name).json")
     }
     private static func loadCachedProjects(from directory: URL) -> [ArtifactProject] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
