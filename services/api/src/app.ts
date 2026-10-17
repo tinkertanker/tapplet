@@ -1,7 +1,7 @@
-import type { ModelProvider, TeacherBrief, DesignCard } from "./ai/provider";
+import type { ModelProvider, TeacherBrief } from "./ai/provider";
 import { ModelProviderError } from "./ai/provider";
 import { ClassAccessError } from "./ai/tkslopper";
-import type { AssetRecord, AssetStore, StoredAsset } from "./assets";
+import type { AssetRecord, AssetStore } from "./assets";
 import {
   classCodeAttemptNetworkHashFrom,
   DEVICE_TOKEN_RECOVERY_DAYS,
@@ -45,7 +45,6 @@ import {
   inspectTeacherBrief,
   inspectText,
   inspectUnknownText,
-  type AdvisoryWarning,
 } from "./moderation";
 import { PROMPT_VERSION } from "./ai/prompts";
 import { cleanupArtifactStorage, type SourceStore } from "./sourceStore";
@@ -60,6 +59,33 @@ import {
   CURATED_SEED_OWNER,
   retrievalDescriptor,
 } from "./storage/repository";
+import {
+  brief,
+  days,
+  generationRetrievalQuery,
+  ID,
+  obj,
+  optionalStr,
+  REASONS,
+  remixBrief,
+  retrievalQuery,
+  SLUG,
+  str,
+  stringList,
+} from "./appInput";
+import {
+  artifactResponse,
+  assetResponse,
+  design,
+  headRevisionConflict,
+  image,
+  moderationUnavailableWarning,
+  publication,
+  publicationReviewWarning,
+  revisionResponse,
+  sourceResponse,
+  storageLimitReached,
+} from "./appResponses";
 interface Deps {
   repository: StudioRepository;
   provider: ModelProvider;
@@ -73,289 +99,6 @@ interface Deps {
   createSlug?: () => string;
   traceSink?: OperationalTraceSink;
   generationPolicy?: Pick<GenerationOptions, "maxModelRepairs">;
-}
-const ID = /^[A-Za-z0-9_-]{1,100}$/,
-  SLUG = /^[A-Za-z0-9_-]{16,64}$/,
-  REASONS = new Set([
-    "inappropriate",
-    "personal-data",
-    "copyright",
-    "accessibility",
-    "other",
-  ]);
-function obj(v: unknown): Record<string, unknown> {
-  if (!v || typeof v !== "object" || Array.isArray(v))
-    throw new HttpError(400, "INVALID_BODY", "Body must be a JSON object.");
-  return v as Record<string, unknown>;
-}
-function str(v: unknown, n: string, max: number) {
-  if (typeof v !== "string" || !v.trim() || v.trim().length > max)
-    throw new HttpError(422, "INVALID_INPUT", `${n} is required or too long.`);
-  return v.trim();
-}
-function optionalStr(v: unknown, n: string, max: number): string | undefined {
-  if (v === undefined || v === null || v === "") return undefined;
-  return str(v, n, max);
-}
-function days(d: Date, n: number) {
-  return new Date(d.getTime() + n * 86400000).toISOString();
-}
-function retrievalQuery(value: string): string | null {
-  const terms = value
-    .normalize("NFKC")
-    .match(/[\p{L}\p{N}]+/gu)
-    ?.slice(0, 12);
-  return terms?.length
-    ? terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ")
-    : null;
-}
-const ACTIVITY_FORMS = ["game", "quiz", "simulation", "practice"] as const;
-type ActivityForm = (typeof ACTIVITY_FORMS)[number];
-function optionalForm(value: unknown): ActivityForm | undefined {
-  const raw = optionalStr(value, "Activity form", 20);
-  if (!raw) return undefined;
-  const form = raw.toLowerCase();
-  if (!ACTIVITY_FORMS.includes(form as ActivityForm))
-    throw new HttpError(
-      422,
-      "INVALID_INPUT",
-      "Activity form must be game, quiz, simulation or practice.",
-    );
-  return form as ActivityForm;
-}
-// BCP 47-shaped tags such as en-SG, fr or zh-Hans-SG; sent to the model as part of the brief.
-function optionalLocale(value: unknown): string | undefined {
-  const locale = optionalStr(value, "Locale", 30);
-  if (locale && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale))
-    throw new HttpError(422, "INVALID_INPUT", "Locale must be a language tag such as en-SG.");
-  return locale;
-}
-function inferSubject(learnerContext: string): string {
-  const text = learnerContext.toLowerCase();
-  if (/\bmaths?\b|\bmathematics\b|\balgebra\b/.test(text)) return "mathematics";
-  if (
-    /\bsci(?:ence)?\b|\bphy(?:sics)?\b|\bchem(?:istry)?\b|\bbio(?:logy)?\b/.test(
-      text,
-    )
-  )
-    return "science";
-  if (/\benglish\b|\blit(?:erature)?\b|\bliteracy\b|\bspelling\b/.test(text))
-    return "english";
-  if (/\bhumanities\b|\bgeog(?:raphy)?\b|\bhist(?:ory)?\b/.test(text))
-    return "humanities";
-  if (/\bcivics\b|\bcitizenship\b|\bsocial studies\b/.test(text)) return "civics";
-  if (
-    /\b(?:chinese|malay|tamil|mother tongue|mtl|higher chinese|higher malay|higher tamil)\b/.test(
-      text,
-    )
-  )
-    return "languages";
-  return "other";
-}
-function generationRetrievalQuery(brief: TeacherBrief): string | null {
-  return retrievalQuery(
-    [brief.format, brief.learnerContext ?? `${brief.level} ${brief.subject}`, brief.learningObjective]
-      .filter(Boolean)
-      .join(" "),
-  );
-}
-function stringList(value: unknown, name: string, maximum: number): string[] {
-  if (!Array.isArray(value) || value.length > maximum)
-    throw new HttpError(422, "INVALID_INPUT", `${name} must be a short list.`);
-  return value.map((entry) => str(entry, name, 60));
-}
-interface GuidedGeneration {
-  creationBrief: string;
-  brief: TeacherBrief;
-  preferredExampleRevisionId: string | null;
-}
-function brief(b: Record<string, unknown>): GuidedGeneration {
-  const guided = obj(b.brief);
-  const learnerContext = str(guided.learnerContext, "Learner context", 300);
-  const format = optionalForm(guided.format);
-  const sourceContent = optionalStr(guided.sourceContent, "Source content", 4000);
-  const locale = optionalLocale(guided.locale);
-  return {
-    // Studio joins every answer (up to 7,500 characters) with its question.
-    creationBrief: str(b.creationBrief, "Creation brief", 8000),
-    preferredExampleRevisionId:
-      b.preferredExampleRevisionId == null
-        ? null
-        : str(b.preferredExampleRevisionId, "Preferred example revision", 100),
-    brief: {
-      level: learnerContext,
-      subject: inferSubject(learnerContext),
-      learnerContext,
-      learningObjective: str(
-        guided.learningObjective,
-        "Learning objective",
-        600,
-      ),
-      studentAction: str(guided.studentAction, "Student action", 600),
-      ...(sourceContent ? { content: sourceContent, sourceContent } : {}),
-      feedback: str(guided.feedback, "Feedback", 1000),
-      classroomFit: str(guided.classroomFit, "Classroom fit", 1000),
-      ...(format ? { format } : {}),
-      ...(locale ? { locale } : {}),
-    },
-  };
-}
-function remixBrief(source: ArtifactRecord): TeacherBrief {
-  return {
-    level: source.level ?? "General",
-    subject: source.subject ?? "General",
-    learnerContext: `${source.level ?? "General"} ${source.subject ?? "General"}`
-      .trim()
-      .slice(0, 300),
-    learningObjective: (source.learningObjective ?? source.title).slice(
-      0,
-      600,
-    ),
-    studentAction: source.summary.slice(0, 600),
-    feedback: "Ask the teacher for feedback on this remixed tapplet.",
-    classroomFit: source.level ?? "Classroom use",
-    ...(source.locale ? { locale: source.locale } : {}),
-  };
-}
-const headRevisionConflict = () =>
-  new HttpError(409, "HEAD_REVISION_CONFLICT", "Artifact head changed.");
-const storageLimitReached = () =>
-  new HttpError(429, "ARTIFACT_STORAGE_LIMIT_REACHED", "Saved tapplet limit reached.");
-function design(r: RevisionRecord): DesignCard | undefined {
-  return r.designCard ? (JSON.parse(r.designCard) as DesignCard) : undefined;
-}
-function artifactResponse(artifact: ArtifactRecord) {
-  return {
-    id: artifact.id,
-    title: artifact.title,
-    summary: artifact.summary,
-    subject: artifact.subject,
-    level: artifact.level,
-    locale: artifact.locale,
-    learningObjective: artifact.learningObjective,
-    tags: artifact.tags,
-    creationBrief: artifact.creationBrief,
-    headRevisionId: artifact.headRevisionId,
-    remixedFromRevisionId: artifact.remixedFromRevisionId,
-    createdAt: artifact.createdAt,
-    updatedAt: artifact.updatedAt,
-  };
-}
-function revisionResponse(revision: RevisionRecord) {
-  return {
-    id: revision.id,
-    artifactId: revision.artifactId,
-    parentRevisionId: revision.parentRevisionId,
-    sourceHash: revision.sourceHash,
-    byteLength: revision.sourceBytes,
-    kind: (
-      {
-        generation: "generate",
-        revision: "revise",
-        remix: "remix",
-        import: "seed",
-      } as const
-    )[revision.kind],
-    instruction: revision.instruction,
-    designCard: revision.designCard,
-    comment: revision.comment ?? null,
-    // Screenshots are private; the iPad must not receive a URL that AsyncImage
-    // cannot authenticate. Upload success remains part of the wire contract.
-    screenshotUrl: null,
-    model: revision.modelVersion,
-    promptVersion: revision.promptVersion,
-    createdAt: revision.createdAt,
-  };
-}
-function publication(p: PublicationRecord, origin: string) {
-  return {
-    slug: p.slug,
-    url: `${origin}/${p.slug}`,
-    artifactId: p.artifactId,
-    revisionId: p.revisionId,
-    title: p.title,
-    createdAt: p.createdAt,
-    expiresAt: p.expiresAt,
-    revokedAt: p.revokedAt,
-  };
-}
-function sourceResponse(html: string) {
-  return new Response(html, {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "private, no-store",
-    },
-  });
-}
-function image(a: StoredAsset) {
-  const h = new Headers();
-  a.object.writeHttpMetadata(h);
-  h.set("etag", a.object.httpEtag);
-  h.set("x-content-type-options", "nosniff");
-  return new Response(a.object.body, { headers: h });
-}
-function assetResponse(asset: StoredAsset["record"]) {
-  return {
-    asset: {
-      id: asset.id,
-      kind: "image",
-      mediaType: asset.contentType,
-      width: asset.width,
-      height: asset.height,
-      byteLength: asset.byteLength,
-      sha256: asset.sha256,
-    },
-    accessibility: {
-      alternativeText: asset.alternativeText,
-      decorative: asset.decorative,
-    },
-    ...(asset.warnings?.length ? { warnings: asset.warnings } : {}),
-  };
-}
-
-function publicationReviewWarning(categories: string[]): AdvisoryWarning {
-  const labels = [
-    ...new Set(
-      categories
-        .filter((category): category is string => typeof category === "string")
-        .flatMap(moderationCategoryLabel),
-    ),
-  ];
-  return {
-    source: "publication",
-    code: "AI_CONTENT_REVIEW_FLAGGED",
-    message: labels.length
-      ? `AI review flagged possible ${labels.join(", ")}. Check the tapplet; you can keep sharing it or edit and publish again.`
-      : "AI review flagged content that may need attention. Check the tapplet; you can keep sharing it or edit and publish again.",
-    ...(labels.length ? { categories: labels } : {}),
-  };
-}
-
-function moderationCategoryLabel(category: string): string[] {
-  const value = category.toLowerCase().replaceAll("_", " ").replaceAll("-", " ");
-  if (value.includes("personal") || value.includes("privacy"))
-    return ["personal information"];
-  if (value.includes("minor") || value.includes("child"))
-    return ["content involving children"];
-  if (value.includes("sexual") || value.includes("nudity"))
-    return ["sexual content"];
-  if (value.includes("self harm") || value.includes("suicide"))
-    return ["self-harm content"];
-  if (value.includes("violent") || value.includes("violence") || value.includes("harm"))
-    return ["harmful or violent content"];
-  if (value.includes("hate")) return ["hateful content"];
-  if (value.includes("weapon") || value.includes("drug"))
-    return ["weapons or illegal drugs"];
-  return [];
-}
-
-function moderationUnavailableWarning(): AdvisoryWarning {
-  return {
-    source: "publication",
-    code: "AI_CONTENT_REVIEW_UNAVAILABLE",
-    message:
-      "AI review was unavailable. Check the tapplet before sharing; you can continue or edit and publish again.",
-  };
 }
 export function createStudioApp(d: Deps) {
   const now = d.now ?? (() => new Date()),
