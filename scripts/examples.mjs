@@ -1,59 +1,15 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import {
-  seedApiRecord,
-  serializeSeedFixtures,
-  productionSeedParityIssues,
-  validateHtmlArtifact,
-  validateSeedManifest,
-} from './lib/html-artifact.mjs';
+import { serializeSeedFixtures, productionSeedParityIssues } from './lib/html-artifact.mjs';
+import { loadValidatedSeeds } from './lib/seed-corpus.mjs';
+import { d1Results, executeD1 } from './lib/wrangler-d1.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const seedDirectory = path.join(repoRoot, 'apps', 'ipad', 'Resources', 'Examples');
-const manifestPath = path.join(seedDirectory, 'manifest.json');
 const fixtureDirectory = path.join(repoRoot, 'scripts', 'fixtures', 'examples');
-
-async function loadValidatedSeeds() {
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  const manifestFailures = validateSeedManifest(manifest, { expectedCount: 18 });
-  if (manifestFailures.length) throw new Error(`Tapplet HTML seed validation failed:\n- ${manifestFailures.map((issue) => `manifest: ${issue.message}`).join('\n- ')}`);
-  const failures = [];
-  const records = [];
-  const listedFiles = new Set();
-  for (const seed of manifest.seeds ?? []) {
-    const sourcePath = path.resolve(seedDirectory, seed.filename ?? '');
-    if (path.dirname(sourcePath) !== seedDirectory) {
-      failures.push(`${seed.id ?? 'unknown'}: filename escapes apps/ipad/Resources/Examples.`);
-      continue;
-    }
-    listedFiles.add(seed.filename);
-    let html;
-    try {
-      html = await readFile(sourcePath, 'utf8');
-    } catch {
-      failures.push(`${seed.id}: missing source file ${seed.filename}.`);
-      continue;
-    }
-    const result = validateHtmlArtifact(html);
-    result.issues.forEach((issue) => failures.push(`${seed.id} [${issue.code}]: ${issue.message}`));
-    const title = /<title\b[^>]*>([^<]+)<\/title>/i.exec(html)?.[1].trim();
-    const locale = /<html\b[^>]*\blang=["']([^"']+)["']/i.exec(html)?.[1];
-    if (title !== seed.title) failures.push(`${seed.id}: manifest title does not match <title>.`);
-    if (locale !== seed.locale) failures.push(`${seed.id}: manifest locale does not match <html lang>.`);
-    records.push(seedApiRecord(seed, html));
-  }
-  const sourceFiles = (await readdir(seedDirectory, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.html'))
-    .map((entry) => entry.name);
-  sourceFiles.filter((file) => !listedFiles.has(file)).forEach((file) => failures.push(`${file}: HTML source is not listed in the manifest.`));
-  if (failures.length) throw new Error(`Tapplet HTML seed validation failed:\n- ${failures.join('\n- ')}`);
-  return { manifest, records };
-}
 
 async function packageFixtures() {
   const { manifest, records } = await loadValidatedSeeds();
@@ -104,19 +60,9 @@ async function verifyProductionSeedParity() {
     source_hash: createHash('sha256').update(record.artifact.html).digest('hex'),
   }));
   const query = 'SELECT r.artifact_id, r.revision_id, v.source_hash FROM retrieval_entries r JOIN revisions v ON v.id=r.revision_id WHERE r.curated=1 ORDER BY r.artifact_id';
-  const result = spawnSync(
-    'npx',
-    ['wrangler', 'd1', 'execute', 'DB', '--remote', '--profile', 'tinkertanker', '--json', '--command', query],
-    { cwd: path.join(repoRoot, 'services', 'api'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
+  const result = executeD1(query);
   if (result.status !== 0) throw new Error('Could not read production curated seed metadata with Wrangler.');
-  let remote;
-  try {
-    const executions = JSON.parse(result.stdout);
-    remote = executions?.[0]?.success === true ? executions[0].results : undefined;
-  } catch {
-    remote = undefined;
-  }
+  const remote = d1Results(result.stdout);
   if (!Array.isArray(remote)) throw new Error('Wrangler did not return production curated seed metadata as JSON.');
   const issues = productionSeedParityIssues(expected, remote);
   if (issues.length) throw new Error(`Production curated seed parity failed:\n- ${issues.join('\n- ')}`);

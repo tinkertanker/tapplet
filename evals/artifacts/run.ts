@@ -1,54 +1,7 @@
-import { readFile, readdir } from "node:fs/promises";
-import path from "node:path";
-import {
-  validateHtmlArtifact,
-  validateSeedManifest,
-} from "../../scripts/lib/html-artifact.mjs";
-
-const repoRoot = path.resolve(import.meta.dirname, "../..");
-const directory = path.join(repoRoot, "apps", "ipad", "Resources", "Examples");
+import { loadValidatedSeeds } from "../../scripts/lib/seed-corpus.mjs";
 
 async function main(): Promise<void> {
-  const manifest = JSON.parse(
-    await readFile(path.join(directory, "manifest.json"), "utf8"),
-  );
-  const manifestIssues = validateSeedManifest(manifest, { expectedCount: 18 });
-  if (manifestIssues.length)
-    throw new Error(
-      `HTML artifact corpus failed:\n- ${manifestIssues.map((issue: { message: string }) => `manifest: ${issue.message}`).join("\n- ")}`,
-    );
-  const failures: string[] = [];
-  const listed = new Set<string>();
-  for (const seed of manifest.seeds ?? []) {
-    listed.add(seed.filename);
-    let html: string;
-    try {
-      html = await readFile(path.join(directory, seed.filename), "utf8");
-    } catch {
-      failures.push(`${seed.id}: source file is missing.`);
-      continue;
-    }
-    const result = validateHtmlArtifact(html);
-    result.issues.forEach((issue: { code: string; message: string }) =>
-      failures.push(`${seed.id} [${issue.code}]: ${issue.message}`),
-    );
-    if (!html.includes(`<title>${seed.title}</title>`))
-      failures.push(
-        `${seed.id}: manifest title differs from the document title.`,
-      );
-    if (!new RegExp(`<html\\b[^>]*lang=["']${seed.locale}["']`, "i").test(html))
-      failures.push(`${seed.id}: manifest locale differs from html lang.`);
-  }
-  const htmlFiles = (await readdir(directory)).filter((file) =>
-    file.endsWith(".html"),
-  );
-  htmlFiles
-    .filter((file) => !listed.has(file))
-    .forEach((file) => failures.push(`${file}: not listed in manifest.`));
-  if (failures.length)
-    throw new Error(
-      `Tapplet HTML artifact corpus failed:\n- ${failures.join("\n- ")}`,
-    );
+  const { manifest } = await loadValidatedSeeds();
   const subjects = new Set(
     manifest.seeds.map((seed: { subject: string }) => seed.subject),
   );
