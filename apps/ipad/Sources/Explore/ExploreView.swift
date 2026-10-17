@@ -312,8 +312,7 @@ struct ExploreView: View {
             do {
                 try await store.remix(project)
             } catch {
-                let presentation = store.present(error, during: .generation)
-                self.error = presentation.requestsWorkshopAccess ? nil : presentation.message
+                self.error = store.errorMessage(for: error)
             }
         }
     }

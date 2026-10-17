@@ -150,7 +150,7 @@ final class TappletStoreTests: XCTestCase {
         )
         let plan = try XCTUnwrap(StarterPlan.all.first)
         store.applyStarterPlan(plan)
-        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"), during: .generation)
+        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"))
 
         store.selectedSection = .explore
         store.openMake()
@@ -158,7 +158,7 @@ final class TappletStoreTests: XCTestCase {
 
         store.applyStarterPlan(plan)
         XCTAssertNil(store.guidedMakeCreationError)
-        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"), during: .generation)
+        store.guidedMakeCreationError = store.present(TappletAPIError.transport("offline"))
         store.resetGuidedMake()
         XCTAssertNil(store.guidedMakeCreationError)
     }
@@ -417,48 +417,36 @@ final class TappletStoreTests: XCTestCase {
         XCTAssertTrue(store.showsWorkshopAccess)
 
         store.dismissWorkshopAccess()
-        let presentation = store.present(
-            TappletAPIError.server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again"),
-            during: .generation
-        )
+        let presentation = store.present(TappletAPIError.server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again"))
 
         XCTAssertTrue(presentation.requestsWorkshopAccess)
         XCTAssertEqual(store.workshopAccessState, .registrationRequired)
         XCTAssertTrue(store.showsWorkshopAccess)
 
         store.dismissWorkshopAccess()
-        let localPresentation = store.present(
-            TappletAPIError.registrationRequired,
-            during: .generation
-        )
+        let localPresentation = store.present(TappletAPIError.registrationRequired)
         XCTAssertTrue(localPresentation.requestsWorkshopAccess)
         XCTAssertTrue(store.showsWorkshopAccess)
     }
 
     @MainActor
-    func testRegistrationErrorsRequestAccessFromEveryOperation() {
+    func testErrorMessageIsHiddenWhenAccessIsRequested() {
         let project = makeProject(revisionID: "r1", html: "<html></html>")
         let store = TappletStore(
             api: ArtifactAPIStub(generated: project, revised: project),
             storageDirectory: temporaryDirectory(),
             bundle: Bundle(for: Self.self)
         )
-        let operations: [TappletOperation] = [
-            .activation, .generation, .refinement, .undo, .directSave, .publish,
-            .unpublish, .extend, .restore, .delete, .image
-        ]
 
-        for operation in operations {
-            store.dismissWorkshopAccess()
-            let presentation = store.present(
-                TappletAPIError.server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again"),
-                during: operation
-            )
+        XCTAssertNil(store.errorMessage(for: TappletAPIError.server(401, "DEVICE_REGISTRATION_REQUIRED", "Register again")))
+        XCTAssertTrue(store.showsWorkshopAccess)
+        store.dismissWorkshopAccess()
 
-            XCTAssertTrue(presentation.requestsWorkshopAccess, "\(operation) should ask for a class code")
-            XCTAssertNotEqual(presentation.title, "Tapplet Studio could not complete this action")
-            XCTAssertTrue(store.showsWorkshopAccess)
-        }
+        XCTAssertEqual(
+            store.errorMessage(for: TappletAPIError.transport("offline")),
+            store.present(TappletAPIError.transport("offline")).message
+        )
+        XCTAssertFalse(store.showsWorkshopAccess)
     }
 
     @MainActor

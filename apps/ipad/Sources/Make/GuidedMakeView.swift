@@ -481,7 +481,7 @@ struct GuidedMakeView: View {
                 if store.advisoryNotice == nil { store.resetGuidedMake() }
             } catch {
                 // Lost access opens the class-code sheet; a panel would outlive activation.
-                let presentation = store.present(error, during: .generation)
+                let presentation = store.present(error)
                 store.guidedMakeCreationError = presentation.requestsWorkshopAccess ? nil : presentation
             }
         }

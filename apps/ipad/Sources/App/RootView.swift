@@ -132,19 +132,15 @@ struct TappletRootView: View {
             Text(store.recoveryNotice ?? "")
         }
         .overlay(alignment: .bottom) {
-            if let notice = store.advisoryNotice ?? store.notice {
-                let isAdvisory = store.advisoryNotice != nil
+            if let notice = store.advisoryNotice {
                 HStack(spacing: 12) {
-                    Image(systemName: isAdvisory ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(TappletTheme.accent)
                         .accessibilityHidden(true)
                     Text(notice)
                         .font(.callout.weight(.medium))
                     Button {
-                        withAnimation {
-                            if isAdvisory { store.advisoryNotice = nil }
-                            else { store.notice = nil }
-                        }
+                        withAnimation { store.advisoryNotice = nil }
                     } label: {
                         Image(systemName: "xmark")
                             .frame(width: 44, height: 44)
@@ -163,23 +159,11 @@ struct TappletRootView: View {
                 .padding(20)
                 .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier(isAdvisory ? "advisory-warning" : "notice")
-                .task(id: notice) {
-                    guard !isAdvisory else { return }
-                    guard !UIAccessibility.isVoiceOverRunning else { return }
-                    try? await Task.sleep(for: .seconds(4))
-                    guard store.notice == notice else { return }
-                    withAnimation { store.notice = nil }
-                }
+                .accessibilityIdentifier("advisory-warning")
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: store.notice)
         .animation(.easeInOut(duration: 0.2), value: store.advisoryNotice)
-        .onChange(of: store.notice) { _, notice in
-            guard let notice else { return }
-            UIAccessibility.post(notification: .announcement, argument: notice)
-        }
         .onChange(of: store.advisoryNotice) { _, notice in
             guard let notice else { return }
             UIAccessibility.post(notification: .announcement, argument: notice)
