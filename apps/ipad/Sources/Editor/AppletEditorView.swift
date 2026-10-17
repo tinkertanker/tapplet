@@ -60,13 +60,7 @@ struct AppletEditorView: View {
                 }
                 FlowLayout(spacing: 8) {
                     ForEach(RefineSuggestion.all) { suggestion in
-                        Button(suggestion.title) {
-                            if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                prompt = suggestion.title
-                            } else if !prompt.contains(suggestion.title) {
-                                prompt += prompt.hasSuffix("\n") ? suggestion.title : "\n\(suggestion.title)"
-                            }
-                        }
+                        Button(suggestion.title) { prompt = prompt.addingSuggestion(suggestion.title) }
                         .buttonStyle(TappletSecondaryButtonStyle(borderShape: .capsule))
                         .font(.subheadline)
                         .accessibilityIdentifier("refine-suggestion-\(suggestion.id)")

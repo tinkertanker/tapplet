@@ -454,13 +454,9 @@ struct GuidedMakeView: View {
 
     private func addSuggestion(_ suggestion: String) {
         guard !store.isCreatingGuidedDraft else { return }
-        guard !cleanResponse.isEmpty else {
-            store.guidedMakeResponse = suggestion
-            responseIsFocused = false
-            return
-        }
-        guard !store.guidedMakeResponse.contains(suggestion) else { return }
-        store.guidedMakeResponse += store.guidedMakeResponse.hasSuffix("\n") ? suggestion : "\n\(suggestion)"
+        // An answer that already has this suggestion keeps its focus.
+        guard cleanResponse.isEmpty || !store.guidedMakeResponse.contains(suggestion) else { return }
+        store.guidedMakeResponse = store.guidedMakeResponse.addingSuggestion(suggestion)
         responseIsFocused = false
     }
 

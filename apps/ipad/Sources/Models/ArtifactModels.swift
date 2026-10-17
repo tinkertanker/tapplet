@@ -64,10 +64,7 @@ struct ArtifactPublication: Codable, Equatable, Sendable {
     var expiresAt: String
     var revokedAt: String? = nil
 
-    var expirationDate: Date? {
-        (try? Date(expiresAt, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
-            ?? (try? Date(expiresAt, strategy: .iso8601))
-    }
+    var expirationDate: Date? { parseAPITimestamp(expiresAt) }
     func isExpired(at date: Date = .now) -> Bool { expirationDate.map { $0 <= date } ?? true }
     func formattedExpirationDate() -> String {
         guard let expirationDate else { return expiresAt }
@@ -82,11 +79,13 @@ struct ArtifactProject: Codable, Equatable, Identifiable, Sendable {
     var localAssets: [LocalAppletAssetFile] = []
     var isExample = false
     var id: String { artifact.id }
-    var updatedAt: Date {
-        (try? Date(artifact.updatedAt, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
-            ?? (try? Date(artifact.updatedAt, strategy: .iso8601))
-            ?? .distantPast
-    }
+    var updatedAt: Date { parseAPITimestamp(artifact.updatedAt) ?? .distantPast }
+}
+
+/// The API writes ISO 8601 timestamps with or without fractional seconds.
+func parseAPITimestamp(_ value: String) -> Date? {
+    (try? Date(value, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
+        ?? (try? Date(value, strategy: .iso8601))
 }
 
 struct ExampleArtifact: Codable, Equatable, Identifiable, Sendable {
