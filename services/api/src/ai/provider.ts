@@ -14,6 +14,7 @@ export interface TeacherBrief {
   sourceContent?: string;
   classroomFit?: string;
   format?: "game" | "quiz" | "simulation" | "practice";
+  locale?: string;
 }
 export interface DesignCard {
   title?: string;

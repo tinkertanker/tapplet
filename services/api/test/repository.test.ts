@@ -79,6 +79,14 @@ describe("MemoryStudioRepository artifact model", () => {
         2,
       ),
     ).toBe(false);
+    await repository.refundGeneration("network-generation:x", "2026-08-02");
+    expect(
+      await repository.consumeGeneration(
+        "network-generation:x",
+        "2026-08-02",
+        2,
+      ),
+    ).toBe(true);
     repository.classCodes.set("code", {
       maximumUses: 1,
       uses: 0,

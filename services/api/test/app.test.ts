@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FixtureModelProvider } from "../src/ai/fixtureProvider";
 import { OpenAiCompatibleProvider } from "../src/ai/openAiCompatibleProvider";
+import { ModelProviderError, type ModelProvider } from "../src/ai/provider";
 import { MODERATION_SYSTEM_PROMPT } from "../src/ai/prompts";
 import type { AssetStore, StoredAsset } from "../src/assets";
 import { issueDeviceToken, ownerHashFrom } from "../src/auth";
@@ -480,6 +481,7 @@ describe("Tapplet API registration and public HTML", () => {
     );
     expect(generated.status).toBe(201);
     expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    expect(((await generated.json()) as { warnings?: unknown }).warnings).toBeUndefined();
     expect(trace.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "retrieval",
@@ -585,6 +587,92 @@ describe("Tapplet API registration and public HTML", () => {
     });
   });
 
+  it("stores the brief locale and defaults to en-SG", async () => {
+    const provider = new FixtureModelProvider();
+    const generate = provider.generate.bind(provider);
+    const received: Array<string | undefined> = [];
+    provider.generate = async (brief, exemplars) => {
+      received.push(brief.locale);
+      return generate(brief, exemplars);
+    };
+    app = createStudioApp({ repository, provider, config, sources });
+
+    const french = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, locale: "fr-FR" },
+      }),
+    );
+    expect(french.status).toBe(201);
+    const frenchBody = (await french.json()) as { artifact: { id: string; locale: string } };
+    expect(frenchBody.artifact.locale).toBe("fr-FR");
+    expect(
+      JSON.parse(repository.artifacts.get(frenchBody.artifact.id)!.generationBrief),
+    ).toMatchObject({ locale: "fr-FR" });
+
+    const unspecified = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(unspecified.status).toBe(201);
+    const unspecifiedBody = (await unspecified.json()) as { artifact: { id: string; locale: string } };
+    expect(unspecifiedBody.artifact.locale).toBe("en-SG");
+    expect(
+      JSON.parse(repository.artifacts.get(unspecifiedBody.artifact.id)!.generationBrief),
+    ).not.toHaveProperty("locale");
+    expect(received).toEqual(["fr-FR", undefined]);
+
+    const invalid = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, locale: "French please" },
+      }),
+    );
+    expect(invalid.status).toBe(422);
+  });
+
+  it("keeps the source locale in a cross-owner remix's brief", async () => {
+    const generated = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", {
+        ...creationBrief,
+        brief: { ...creationBrief.brief, locale: "fr-FR" },
+      }),
+    );
+    const first = (await generated.json()) as {
+      artifact: { id: string };
+      headRevision: { id: string };
+    };
+    expect(
+      (
+        await app.fetch(
+          authenticated(`/v1/artifacts/${first.artifact.id}/publish`, "POST", {
+            expectedHeadRevisionId: first.headRevision.id,
+          }),
+        )
+      ).status,
+    ).toBe(201);
+
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    const remix = await app.fetch(
+      new Request(`https://api.test/v1/revisions/${first.headRevision.id}/remix`, {
+        method: "POST",
+        headers: {
+          "x-device-token": otherToken,
+          origin: "https://studio.test",
+          "content-type": "application/json",
+        },
+        body: "{}",
+      }),
+    );
+    expect(remix.status).toBe(201);
+    const remixed = (await remix.json()) as { artifact: { id: string; locale: string } };
+    expect(remixed.artifact.locale).toBe("fr-FR");
+    expect(
+      JSON.parse(repository.artifacts.get(remixed.artifact.id)!.generationBrief),
+    ).toMatchObject({ locale: "fr-FR" });
+  });
+
   it("infers abbreviated and mother-tongue learner contexts", async () => {
     const cases: Array<[string, string]> = [
       ["P5 Sci", "science"],
@@ -611,7 +699,7 @@ describe("Tapplet API registration and public HTML", () => {
     }
   });
 
-  it("does not substitute retrieval when a preferred example cannot be resolved", async () => {
+  it("falls back to retrieval and warns when a preferred example cannot be resolved", async () => {
     const seed = {
       seedId: "fraction-equivalence-diagnostic",
       title: "Fraction Equivalence Detective",
@@ -667,7 +755,43 @@ describe("Tapplet API registration and public HTML", () => {
       }),
     );
     expect(generated.status).toBe(201);
-    expect(receivedExemplars).toEqual([]);
+    expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    const draft = (await generated.json()) as { headRevision: { id: string } };
+    expect(draft).toMatchObject({
+      warnings: [
+        expect.objectContaining({
+          source: "prompt",
+          code: "PREFERRED_EXAMPLE_UNAVAILABLE",
+        }),
+      ],
+    });
+
+    // Another teacher's unpublished draft exists but is not available to this caller.
+    const otherToken = (
+      await issueDeviceToken(secret, new Date("2026-08-02T00:00:00Z"))
+    ).token;
+    receivedExemplars = [];
+    const inaccessible = await app.fetch(
+      new Request("https://api.test/v1/artifacts/generate", {
+        method: "POST",
+        headers: {
+          "x-device-token": otherToken,
+          origin: "https://studio.test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...creationBrief,
+          preferredExampleRevisionId: draft.headRevision.id,
+        }),
+      }),
+    );
+    expect(inaccessible.status).toBe(201);
+    expect(receivedExemplars).toEqual([`${seed.seedId}-seed`]);
+    await expect(inaccessible.json()).resolves.toMatchObject({
+      warnings: [
+        expect.objectContaining({ code: "PREFERRED_EXAMPLE_UNAVAILABLE" }),
+      ],
+    });
   });
 
   it("rejects an unknown activity form", async () => {
@@ -1880,6 +2004,143 @@ describe("Tapplet API registration and public HTML", () => {
     expect(repository.artifacts.size).toBe(0);
     expect(repository.revisions.size).toBe(0);
     expect(sources.sources.size).toBe(0);
+  });
+
+  it("refunds generation quota when the provider fails before any candidate", async () => {
+    const provider = new FixtureModelProvider();
+    const generate = provider.generate.bind(provider);
+    let failNext = true;
+    provider.generate = async (...args) => {
+      if (failNext) {
+        failNext = false;
+        throw new ModelProviderError("Provider request timed out", true);
+      }
+      return generate(...args);
+    };
+    app = createStudioApp({
+      repository,
+      provider,
+      config: { ...config, dailyGenerationLimit: 1, dailyDraftCreationLimit: 1 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    const failed = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(failed.status).toBe(503);
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "MODEL_PROVIDER_ERROR" },
+    });
+    expect(
+      (
+        await app.fetch(
+          authenticated("/v1/artifacts/generate", "POST", creationBrief),
+        )
+      ).status,
+    ).toBe(201);
+  });
+
+  it("returns earlier reservations when a later quota check rejects", async () => {
+    const limits = {
+      ...config,
+      dailyDraftCreationLimit: 1,
+      dailyGenerationLimit: 1,
+    };
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: { ...limits, dailyNetworkGenerationLimit: 0 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const limited = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(limited.status).toBe(429);
+    await expect(limited.json()).resolves.toMatchObject({
+      error: { code: "NETWORK_LIMIT_REACHED" },
+    });
+
+    app = createStudioApp({
+      repository,
+      provider: new FixtureModelProvider(),
+      config: limits,
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    expect(
+      (
+        await app.fetch(
+          authenticated("/v1/artifacts/generate", "POST", creationBrief),
+        )
+      ).status,
+    ).toBe(201);
+  });
+
+  it("keeps generation charged when a repair fails after a candidate", async () => {
+    const provider: ModelProvider = new FixtureModelProvider();
+    provider.generate = async () => ({ html: "not html" });
+    provider.repair = async () => {
+      throw new ModelProviderError("Provider request timed out", true);
+    };
+    app = createStudioApp({
+      repository,
+      provider,
+      config: { ...config, dailyGenerationLimit: 1 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+
+    expect(
+      (
+        await app.fetch(
+          authenticated("/v1/artifacts/generate", "POST", creationBrief),
+        )
+      ).status,
+    ).toBe(503);
+    const limited = await app.fetch(
+      authenticated("/v1/artifacts/generate", "POST", creationBrief),
+    );
+    expect(limited.status).toBe(429);
+    await expect(limited.json()).resolves.toMatchObject({
+      error: { code: "LIMIT_REACHED" },
+    });
+  });
+
+  it("refunds revision quota when the provider fails before any candidate", async () => {
+    const provider = new FixtureModelProvider();
+    app = createStudioApp({
+      repository,
+      provider,
+      config: { ...config, dailyGenerationLimit: 2 },
+      sources,
+      now: () => new Date("2026-08-02T00:00:00Z"),
+    });
+    const generated = (await (
+      await app.fetch(
+        authenticated("/v1/artifacts/generate", "POST", creationBrief),
+      )
+    ).json()) as { artifact: { id: string }; headRevision: RevisionRecord };
+    const revise = provider.revise.bind(provider);
+    let failNext = true;
+    provider.revise = async (...args) => {
+      if (failNext) {
+        failNext = false;
+        throw new ModelProviderError("Provider request timed out", true);
+      }
+      return revise(...args);
+    };
+    const request = () =>
+      app.fetch(
+        authenticated(`/v1/artifacts/${generated.artifact.id}/revisions`, "POST", {
+          instruction: "Use a number line",
+          expectedHeadRevisionId: generated.headRevision.id,
+        }),
+      );
+
+    expect((await request()).status).toBe(503);
+    expect((await request()).status).toBe(201);
   });
 
   it("rejects a revision if the head changes while the provider is working", async () => {
