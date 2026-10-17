@@ -117,10 +117,10 @@ test('uses a convergent remote insert and confirms exact metadata without exposi
 test('CLI replaces only a confirmed numeric collision and preserves uncertain retries', (t) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'tapplet-class-allocation-')));
   t.after(() => process.platform === 'darwin' ? spawnSync('trash', [root]) : rmSync(root, { recursive: true, force: true }));
-  for (const directory of ['scripts', 'services/api', 'bin', '.studio-class-codes']) {
+  for (const directory of ['scripts/lib', 'services/api', 'bin', '.studio-class-codes']) {
     mkdirSync(join(root, directory), { recursive: true });
   }
-  for (const name of ['class-access.mjs', 'provision-class-access.mjs']) {
+  for (const name of ['class-access.mjs', 'provision-class-access.mjs', 'lib/wrangler-d1.mjs']) {
     copyFileSync(new URL(name, import.meta.url), join(root, 'scripts', name));
   }
   const path = join(root, '.studio-class-codes', '0042.txt');

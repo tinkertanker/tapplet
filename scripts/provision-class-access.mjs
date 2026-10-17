@@ -1,5 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
@@ -16,13 +15,14 @@ import {
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  classCodeHash,
   createClassCode,
   parseClassNumber,
   parseMaximumUses,
 } from './class-access.mjs';
+import { d1Results, executeD1 } from './lib/wrangler-d1.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const serviceDirectory = resolve(repositoryRoot, 'services/api');
 const outputDirectory = resolve(repositoryRoot, '.studio-class-codes');
 const usage = 'Usage: npm run class-access:provision -- <4-digit class number> <maximum uses 1-100> <future ISO expiry>';
 
@@ -73,9 +73,6 @@ export function ensureProtectedDirectory(path) {
   chmodSync(path, 0o700);
 }
 
-function codeHash(code) {
-  return createHash('sha256').update(`class-code:${code}`).digest('hex');
-}
 function sqlString(value) {
   return `'${value.replaceAll("'", "''")}'`;
 }
@@ -92,13 +89,7 @@ export function provisioningStatement({ hash, label, maximumUses, expiresAt, cre
 }
 
 export function provisioningResultMatches(output, expected) {
-  let rows;
-  try {
-    const executions = JSON.parse(output);
-    rows = executions?.[0]?.success === true ? executions[0].results : undefined;
-  } catch {
-    return false;
-  }
+  const rows = d1Results(output);
   return rows?.length === 1 && rows[0]?.label === expected.label &&
     rows[0]?.maximum_uses === expected.maximumUses && rows[0]?.expires_at === expected.expiresAt;
 }
@@ -123,7 +114,7 @@ function main() {
   let replaceConfirmedCollision = false;
   for (let attempt = 0; attempt < 20; attempt++) {
     const statement = provisioningStatement({
-      hash: codeHash(code),
+      hash: classCodeHash(code),
       ...expected,
       createdAt: new Date().toISOString(),
       allocationId,
@@ -150,11 +141,7 @@ function main() {
     } else if (!existingCodeFile) {
       writeFileSync(outputPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     }
-    const result = spawnSync(
-      'npx',
-      ['wrangler', 'd1', 'execute', 'DB', '--remote', '--profile', 'tinkertanker', '--json', '--command', statement],
-      { cwd: serviceDirectory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    const result = executeD1(statement);
     if (result.status === 0 && provisioningResultMatches(result.stdout, expected)) {
       console.log(`Provisioned class ${classNumber} with a maximum of ${maximumUses} activations.`);
       console.log(`The code was written with owner-only permissions to ${outputPath}`);
