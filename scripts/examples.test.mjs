@@ -378,6 +378,27 @@ test('editing a graded answer clears its stale ✓/✗ state', async () => {
       await page.click('#check');
       assert.deepEqual(await state('#why'), { correct: true, incorrect: false, mark: '✓', invalid: 'false' });
       assert.match(await page.textContent('#feedback'), /^✓ Correct!/);
+
+      // moving a score after grading clears the verdict and both marks but keeps the answers
+      const cleared = { correct: false, incorrect: false, mark: '', invalid: null };
+      await page.getByRole('slider', { name: 'Score 1', exact: true }).focus();
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.textContent('#feedback'), '', 'keyboard edit clears the verdict');
+      assert.deepEqual(await state('#which'), cleared, 'keyboard edit clears the mark');
+      assert.deepEqual(await state('#why'), cleared, 'keyboard edit clears the sibling mark');
+      assert.equal(await page.$eval('#which', (el) => el.value), 'mean', 'keyboard edit keeps the chosen answer');
+      await page.keyboard.press('ArrowRight');
+      await page.click('#check');
+      assert.match(await page.textContent('#feedback'), /^✓ Correct!/);
+      const box = await page.locator('#dots circle').first().boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x - 100, box.y + box.height / 2, { steps: 5 });
+      await page.mouse.up();
+      assert.equal(await page.textContent('#feedback'), '', 'pointer drag clears the verdict');
+      assert.deepEqual(await state('#which'), cleared, 'pointer drag clears the mark');
+      assert.deepEqual(await state('#why'), cleared, 'pointer drag clears the sibling mark');
+      assert.equal(await page.$eval('#why', (el) => el.value), 'all', 'pointer drag keeps the chosen answer');
       await page.close();
     }
   } finally {
