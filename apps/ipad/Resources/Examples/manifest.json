@@ -67,7 +67,7 @@
       "title": "Equivalent fractions",
       "summary": "Split and shade two bars, then check why equivalent fractions name the same amount.",
       "subject": "mathematics", "level": "upper-primary", "locale": "en-SG",
-      "learningObjective": "Recognise equivalent fractions and explain why the same operation on both parts preserves value.",
+      "learningObjective": "Recognise equivalent fractions and explain why the same operation on the numerator and denominator preserves value.",
       "tags": ["fractions", "equivalence", "diagnostic"], "interactionPattern": "choice-choice-short-answer",
       "descriptor": "Two split-and-shade bars plus three misconception checks with specific feedback.",
       "designCard": {"layout": "three-clue cards", "accent": "amber", "interaction": "decide, check, explain"}
