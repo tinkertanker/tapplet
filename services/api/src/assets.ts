@@ -151,9 +151,6 @@ function readUploadMetadata(request: Request): {
   const height = positiveIntegerHeader(request, 'x-image-height', 4_096);
   const decorative = request.headers.get('x-image-decorative') === 'true';
   const alternativeText = imageAlternativeText(request);
-  const warnings = alternativeText
-    ? advisoryWarnings('image', inspectText(alternativeText))
-    : [];
   if (!decorative && !alternativeText) {
     throw new HttpError(
       422,
@@ -164,6 +161,9 @@ function readUploadMetadata(request: Request): {
   if (alternativeText && alternativeText.length > 500) {
     throw new HttpError(422, 'ALTERNATIVE_TEXT_TOO_LONG', 'Image descriptions must be 500 characters or fewer.');
   }
+  const warnings = alternativeText
+    ? advisoryWarnings('image', inspectText(alternativeText))
+    : [];
   return { contentType, width, height, decorative, alternativeText, warnings };
 }
 

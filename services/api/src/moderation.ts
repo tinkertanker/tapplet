@@ -23,7 +23,22 @@ export interface AdvisoryWarning {
   categories?: string[];
 }
 
-const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const EMAIL_LOCAL_PART = /[A-Z0-9._%+-]+/gi;
+const EMAIL_DOMAIN = /[A-Z0-9.-]+\.[A-Z]{2,}\b/iy;
+
+function containsEmail(text: string): boolean {
+  // Consume each local-part run once. Retrying the whole email expression at
+  // every word boundary makes punctuation-heavy non-email text quadratic.
+  for (const local of text.matchAll(EMAIL_LOCAL_PART)) {
+    const end = local.index + local[0].length;
+    if (text[end] !== "@" || !/[A-Z0-9_]/i.test(local[0])) continue;
+    // Sticky matching avoids scanning later suffixes or allocating text slices.
+    EMAIL_DOMAIN.lastIndex = end + 1;
+    if (EMAIL_DOMAIN.test(text)) return true;
+  }
+  return false;
+}
+
 const PHONE = /(?:^|\D)(?:\+?65[ -]?)?[689]\d{3}[ -]?\d{4}(?:\D|$)/;
 const SINGAPORE_ID = /\b[STFGM]\d{7}[A-Z]\b/i;
 const HARM_INSTRUCTION_PATTERNS = [
@@ -86,7 +101,7 @@ export function inspectUnknownText(value: unknown): ModerationFinding[] {
 
 export function inspectText(text: string): ModerationFinding[] {
   const findings: ModerationFinding[] = [];
-  if (EMAIL.test(text)) {
+  if (containsEmail(text)) {
     findings.push({
       code: "POSSIBLE_EMAIL",
       message:

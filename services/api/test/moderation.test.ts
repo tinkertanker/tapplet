@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { inspectHtml, inspectText } from '../src/moderation';
 
 describe('deterministic moderation', () => {
+  it('handles long non-email runs without repeatedly scanning their suffixes', () => {
+    const start = performance.now();
+    expect(inspectText('a.'.repeat(40_000))).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(1_000);
+  });
+
+  it.each([
+    ['Contact Teacher+class@example.school today', true],
+    ['.teacher@example.school', true],
+    ['a@b@school.example', true],
+    ['a@b.c', false],
+    ['---@school.example', false],
+    ['a@school.example_undelimited', false],
+    ['a@school.example.test', true],
+  ])('keeps email advisory detection for %s', (text, expected) => {
+    expect(inspectText(text).some((finding) => finding.code === 'POSSIBLE_EMAIL')).toBe(expected);
+  });
+
   it('checks content displayed from inline JavaScript', () => {
     expect(inspectHtml('<script>const contact = "91234567";</script>'))
       .toEqual(expect.arrayContaining([
