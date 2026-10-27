@@ -1,22 +1,42 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, readFile, unlink, type FileHandle } from "node:fs/promises";
 import { resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir } from "node:os";
 
 const origin = (
   process.env.STUDIO_LIVE_ORIGIN ??
   "https://classroom-widgets-studio-api.tinkertanker.workers.dev"
 ).replace(/\/$/, "");
 const root = resolve(import.meta.dirname, "..");
-const statePath = resolve(
-  tmpdir(),
-  "tapplet-publication-browser-fixture.json",
-);
+// Never migrate the old shared-temporary-directory state: it is untrusted.
+const stateDirectory = resolve(homedir(), ".tapplet-publication-browser-fixture");
+const statePath = resolve(stateDirectory, "state.json");
 const action = process.argv[2];
 
 interface FixtureState {
+  origin: string;
   artifactId: string;
   slug: string;
   url: string;
+}
+
+async function openState(create: boolean): Promise<FileHandle> {
+  if (create) await mkdir(stateDirectory, { recursive: true, mode: 0o700 });
+  const directory = await lstat(stateDirectory);
+  if (!directory.isDirectory() || directory.uid !== process.getuid?.() || (directory.mode & 0o777) !== 0o700) {
+    throw new Error("Fixture state directory must be owned by this user with mode 0700.");
+  }
+  const file = await open(statePath,
+    constants.O_NOFOLLOW | constants.O_NONBLOCK | (create
+      ? constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL
+      : constants.O_RDONLY),
+    0o600);
+  const info = await file.stat();
+  if (!info.isFile() || info.uid !== process.getuid?.() || (info.mode & 0o777) !== 0o600 || info.nlink !== 1) {
+    await file.close();
+    throw new Error("Fixture state must be a private, owned regular file with mode 0600.");
+  }
+  return file;
 }
 
 async function authenticated(
@@ -64,7 +84,7 @@ async function expectSuccess(path: string, init: RequestInit): Promise<void> {
     );
 }
 
-async function prepare(): Promise<void> {
+async function prepare(stateFile: FileHandle): Promise<void> {
   const manifest = JSON.parse(
     await readFile(
       resolve(root, "apps/ipad/Resources/Examples/manifest.json"),
@@ -113,14 +133,12 @@ async function prepare(): Promise<void> {
       throw new Error("Tapplet did not return a publication URL.");
     }
     const state: FixtureState = {
+      origin,
       artifactId: artifact.id,
       slug: publication.slug,
       url: publication.url,
     };
-    await writeFile(statePath, `${JSON.stringify(state)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+    await stateFile.writeFile(`${JSON.stringify(state)}\n`, "utf8");
     console.log(state.url);
   } catch (error) {
     await expectSuccess(`/v1/artifacts/${encodeURIComponent(artifact.id)}`, {
@@ -131,26 +149,39 @@ async function prepare(): Promise<void> {
 }
 
 async function cleanup(): Promise<void> {
-  const state = JSON.parse(await readFile(statePath, "utf8")) as FixtureState;
+  const file = await openState(false);
+  let state: FixtureState;
+  try {
+    state = JSON.parse(await file.readFile("utf8")) as FixtureState;
+  } finally {
+    await file.close();
+  }
+  if (state?.origin !== origin || typeof state.artifactId !== "string" || !state.artifactId || typeof state.slug !== "string" || !state.slug) {
+    throw new Error("Fixture state is invalid or belongs to a different API origin.");
+  }
   await expectSuccess(`/v1/publications/${encodeURIComponent(state.slug)}`, {
     method: "DELETE",
   });
   await expectSuccess(`/v1/artifacts/${encodeURIComponent(state.artifactId)}`, {
     method: "DELETE",
   });
-  await writeFile(
-    statePath,
-    `${JSON.stringify({ cleanedAt: new Date().toISOString() })}\n`,
-    {
-      encoding: "utf8",
-      mode: 0o600,
-    },
-  );
+  await unlink(statePath);
   console.log("Browser fixture revoked and deleted.");
 }
 
 async function main(): Promise<void> {
-  if (action === "prepare") await prepare();
+  if (action === "prepare") {
+    // Reserve state before creating any remote resources; do not overwrite a fixture.
+    const file = await openState(true);
+    try {
+      await prepare(file);
+    } catch (error) {
+      await unlink(statePath);
+      throw error;
+    } finally {
+      await file.close();
+    }
+  }
   else if (action === "cleanup") await cleanup();
   else
     throw new Error(

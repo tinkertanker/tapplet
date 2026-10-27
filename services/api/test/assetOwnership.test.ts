@@ -59,6 +59,32 @@ function insertRevisionReference(sqlite: DatabaseSync, ownerHash: string, assetI
 }
 
 describe('asset reference ownership', () => {
+  it.each(['x-image-alt', 'x-image-alt-base64'])('bounds decoded %s before upload processing', async (header) => {
+    const store = new CloudflareAssetStore(fakeDatabase(), {} as R2Bucket);
+    const context = {
+      ownerHash: 'owner-a', networkHash: 'network-a', now: ASSET_ROW.created_at,
+      maximumNetworkCount: 100, maximumNetworkBytes: 10_000_000,
+    };
+    for (const decorative of [false, true]) {
+      for (const text of ['a'.repeat(500), 'a'.repeat(501), 'a.'.repeat(40_000)]) {
+        const request = new Request('https://api.example.test/v1/assets', {
+          method: 'POST',
+          headers: {
+            'content-type': 'image/jpeg', 'x-image-width': '1', 'x-image-height': '1',
+            'x-image-decorative': String(decorative),
+            [header]: header.endsWith('base64') ? btoa(text) : text,
+          },
+        });
+        const start = performance.now();
+        await expect(store.put(request, context)).rejects.toMatchObject({
+          // A valid description proceeds to the empty-body check; oversize text does not.
+          code: text.length > 500 ? 'ALTERNATIVE_TEXT_TOO_LONG' : 'IMAGE_TOO_LARGE',
+        });
+        expect(performance.now() - start).toBeLessThan(1_000);
+      }
+    }
+  });
+
   it('loads asset metadata without fetching the R2 object body', async () => {
     const bucketGet = vi.fn();
     const store = new CloudflareAssetStore(
