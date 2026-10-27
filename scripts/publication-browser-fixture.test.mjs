@@ -7,7 +7,8 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 
-test("publication fixture cleanup trusts only private, origin-bound state", async () => {
+// The fixture deliberately requires POSIX ownership and permission checks.
+test("publication fixture cleanup trusts only private, origin-bound state", { skip: process.platform === "win32" }, async () => {
   const root = await mkdtemp(resolve(tmpdir(), "tapplet-fixture-test-"));
   const requests = [];
   const server = createServer((request, response) => {
