@@ -161,7 +161,7 @@ test('landing page contains the logo, title, description, status, beta and conta
 test('privacy notice has its date, sections, contact and return link', () => {
   const document = documentFor('privacy/index.html');
   const body = text(document);
-  assert.match(document.querySelector('.updated')?.textContent ?? '', /6 October 2026/);
+  assert.match(document.querySelector('.updated')?.textContent ?? '', /28 October 2026/);
   assert.ok(document.querySelectorAll('h2').length >= 8);
   assert.ok([...document.querySelectorAll('a[href="/"]')].some((link) => /home/i.test(link.textContent)));
   assert.ok(document.querySelector('a[href="mailto:hello@tk.sg"]'));
@@ -176,6 +176,7 @@ test('privacy notice has its date, sections, contact and return link', () => {
     'not instant',
     'Cloudflare',
     'IP address',
+    'make their own copy',
   ])
     assert.ok(body.includes(phrase), `privacy notice should mention ${phrase}`);
   assert.doesNotMatch(body, /no personal (data|information)|do not collect any|never log|immediately (deleted|discarded)/i);

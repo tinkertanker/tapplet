@@ -111,7 +111,18 @@ export function createImageSafetyInspector(
 }
 
 export function injectPublicHtml(source: string, slug: string): string {
-  const report = `<script ${PUBLIC_REPORT_MARKER}>window.addEventListener('DOMContentLoaded',()=>{const b=document.createElement('button');b.textContent='Report this activity';b.setAttribute('aria-label','Report this activity');Object.assign(b.style,{position:'fixed',right:'12px',bottom:'12px',zIndex:'2147483647'});b.onclick=()=>{const reasons=['inappropriate','personal-data','copyright','accessibility','other'];const reason=prompt('Reason: inappropriate, personal-data, copyright, accessibility, or other','other');if(!reason||!reasons.includes(reason))return;fetch('/v1/publications/${slug}/reports',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reason})}).then(response=>{if(!response.ok)throw new Error();b.textContent='Report sent'}).catch(()=>{b.textContent='Report failed — try again'})};document.body.append(b)})</script>`;
+  // The report control lives in its own bar below the activity, so it never
+  // covers an answer, and offers plain-language choices instead of code words.
+  const reasons = [
+    ["inappropriate", "It is unkind, scary or not right for school"],
+    ["personal-data", "It shows someone's private information"],
+    ["copyright", "It copies someone else's work"],
+    ["accessibility", "I cannot see, hear or use it"],
+    ["other", "Something else is wrong"],
+  ]
+    .map(([value, label]) => `<label><input type="radio" name="reason" value="${value}"> ${label}</label>`)
+    .join("");
+  const report = `<footer class="report-bar"><button type="button" id="report-open" aria-haspopup="dialog">Report this activity</button></footer><dialog id="report-dialog" aria-labelledby="report-title"><form method="dialog" id="report-form"><h2 id="report-title">Report this activity</h2><p>Tell the Tapplet team about a problem. Your name is not sent.</p><fieldset><legend>What is wrong?</legend>${reasons}</fieldset><p id="report-status" role="status"></p><div class="report-actions"><button type="button" id="report-cancel">Cancel</button><button type="submit" id="report-send" disabled>Send report</button></div></form></dialog><script ${PUBLIC_REPORT_MARKER}>(()=>{const o=document.getElementById('report-open'),d=document.getElementById('report-dialog'),f=document.getElementById('report-form'),s=document.getElementById('report-send'),c=document.getElementById('report-cancel'),t=document.getElementById('report-status');let sent=false;o.onclick=()=>{if(!sent){t.textContent='';f.reset();s.disabled=true}d.showModal()};c.onclick=()=>d.close();f.onchange=()=>{s.disabled=sent||!f.reason.value};f.onsubmit=e=>{e.preventDefault();const reason=f.reason.value;if(!reason||sent)return;s.disabled=true;t.textContent='Sending…';fetch('/v1/publications/${slug}/reports',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reason})}).then(r=>{if(r.ok){sent=true;t.textContent='Thank you. Your report was sent to the Tapplet team.';c.textContent='Close';o.textContent='Report sent';return}s.disabled=false;t.textContent=r.status===429?'Too many reports were sent from this network today. Please tell your teacher instead.':r.status===404||r.status===410?'This activity is no longer shared, so it cannot be reported here. Please tell your teacher.':'The report was not sent. Please try again.'}).catch(()=>{s.disabled=false;t.textContent='The report was not sent. Check your internet connection and try again.'})}})()</script>`;
   const document = parseHtml(source, { sourceCodeLocationInfo: true });
   const root = document.childNodes.find(
     (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "html",
@@ -155,14 +166,15 @@ export function injectPublicHtml(source: string, slug: string): string {
   // An opaque top-level sandbox can still navigate itself. Keep untrusted HTML
   // in srcdoc: the parent's frame-src 'none' blocks its document navigations,
   // while sandbox prevents it from navigating or accessing the trusted parent.
-  return `<!doctype html><html lang="${escape(language)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(titleText)}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>html,body{margin:0;width:100%;height:100%}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title="Tapplet activity" sandbox="allow-scripts allow-modals" srcdoc="${escape(activity)}"></iframe>${report}</body></html>`;
+  return `<!doctype html><html lang="${escape(language)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(titleText)}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>html,body{margin:0;width:100%;height:100%}body{display:flex;flex-direction:column;font-family:system-ui,sans-serif}iframe{display:block;flex:1;min-height:0;width:100%;border:0}.report-bar{display:flex;justify-content:flex-end;padding:4px 8px;border-top:1px solid #ddd;background:#fafafa}.report-bar button{min-height:36px;padding:0 12px;font:inherit;font-size:14px;background:none;border:0;color:#444;text-decoration:underline}dialog{max-width:min(28rem,calc(100vw - 2rem));border:1px solid #ccc;border-radius:12px;padding:1.25rem}dialog h2{margin:0 0 .5rem;font-size:1.2rem}fieldset{border:0;padding:0;margin:0}legend{font-weight:600;margin-bottom:.5rem}fieldset label{display:flex;gap:.6rem;align-items:center;min-height:44px}.report-actions{display:flex;justify-content:flex-end;gap:.5rem}.report-actions button{min-height:44px;padding:0 1rem;font:inherit;border-radius:8px;border:1px solid #888;background:#fff}#report-send{background:#1d4ed8;border-color:#1d4ed8;color:#fff}#report-send:disabled{opacity:.5}#report-status:empty{display:none}</style></head><body><iframe title="Tapplet activity" sandbox="allow-scripts allow-modals" srcdoc="${escape(activity)}"></iframe>${report}</body></html>`;
 }
 
 async function servePublic(
   request: Request,
   env: StudioEnv,
 ): Promise<Response> {
-  if (request.method !== "GET")
+  // Link previews and classroom platforms check a link with HEAD first.
+  if (request.method !== "GET" && request.method !== "HEAD")
     return new Response("Not found.", { status: 404 });
   const pathname = new URL(request.url).pathname;
   if (pathname === "/favicon.svg" || pathname === "/favicon.ico")

@@ -98,6 +98,15 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
     return { context, page, external, assets, reports };
   }
 
+  async function sendReport(page: Page, choice: string) {
+    await page.getByRole("button", { name: "Report this activity", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Report this activity" });
+    await dialog.getByRole("radio", { name: choice }).check();
+    await dialog.getByRole("button", { name: "Send report" }).click();
+    await expect.poll(() => dialog.getByRole("status").textContent()).toBe("Thank you. Your report was sent to the Tapplet team.");
+    expect(await page.getByRole("button", { name: "Report sent", exact: true }).count()).toBe(1);
+  }
+
   function activity(page: Page) {
     const frame = page.frames().find((candidate) => candidate.url().split("#")[0] === "about:srcdoc");
     if (!frame) throw new Error("Sandboxed activity frame not found");
@@ -238,10 +247,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       await state.page.waitForTimeout(150);
       expect(state.reports).toEqual([]);
       await expect.poll(() => frame.evaluate("Number(document.body.dataset.blocked)")).toBeGreaterThanOrEqual(2);
-      state.page.once("dialog", (dialog) => { void dialog.accept("accessibility"); });
-      const report = state.page.getByRole("button", { name: "Report this activity", exact: true });
-      await report.click();
-      await expect.poll(() => report.textContent()).toBe("Report sent");
+      await sendReport(state.page, "I cannot see, hear or use it");
       expect(state.reports).toEqual([{ reason: "accessibility" }]);
     } finally { await state.context.close(); }
   });
@@ -254,12 +260,33 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(await frame.getByRole("button", { name: "Checked", exact: true }).count()).toBe(1);
       expect(await frame.evaluate("document.querySelector('img').naturalWidth")).toBe(20);
       expect(await frame.evaluate("innerWidth")).toBe(width);
-      state.page.once("dialog", (dialog) => { void dialog.accept("accessibility"); });
-      const report = state.page.getByRole("button", { name: "Report this activity", exact: true });
-      await report.click();
-      await expect.poll(() => report.textContent()).toBe("Report sent");
+      await sendReport(state.page, "I cannot see, hear or use it");
       expect(state.reports).toEqual([{ reason: "accessibility" }]);
       expect(state.external).toEqual([]);
     } finally { await state.context.close(); }
+  });
+  it("keeps the report control clear of the activity on a 375px phone", async () => {
+    const state = await open(source.replace("<body>", '<body style="margin:0"><div style="position:fixed;right:0;bottom:0;width:160px;height:60px" id="corner">Last answer</div>'), 375, 667);
+    try {
+      const frame = await state.page.locator("iframe").boundingBox();
+      const report = await state.page.getByRole("button", { name: "Report this activity", exact: true }).boundingBox();
+      if (!frame || !report) throw new Error("Missing frame or report control");
+      expect(report.y).toBeGreaterThanOrEqual(frame.y + frame.height);
+      expect(report.height).toBeGreaterThanOrEqual(36);
+      await activity(state.page).getByText("Last answer").click();
+      await sendReport(state.page, "Something else is wrong");
+      expect(state.reports).toEqual([{ reason: "other" }]);
+    } finally { await state.context.close(); }
+  });
+});
+
+describe("published link checks", () => {
+  it("answers HEAD like GET so link previews do not see a broken link", async () => {
+    const env = environment(source);
+    const head = await worker.fetch(new Request(`${origin}/${slug}`, { method: "HEAD" }), env);
+    expect(head.status).toBe(200);
+    expect(head.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const post = await worker.fetch(new Request(`${origin}/${slug}`, { method: "POST" }), env);
+    expect(post.status).toBe(404);
   });
 });

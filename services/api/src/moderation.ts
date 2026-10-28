@@ -105,35 +105,35 @@ export function inspectText(text: string): ModerationFinding[] {
     findings.push({
       code: "POSSIBLE_EMAIL",
       message:
-        "AI review flagged a possible email address. Check that it does not identify a pupil or another person.",
+        "An automatic check found a possible email address. Check that it does not identify a pupil or another person.",
     });
   }
   if (PHONE.test(text)) {
     findings.push({
       code: "POSSIBLE_PHONE",
       message:
-        "AI review flagged a possible phone number. Check that it does not identify a pupil or another person.",
+        "An automatic check found a possible phone number. Check that it does not identify a pupil or another person.",
     });
   }
   if (SINGAPORE_ID.test(text)) {
     findings.push({
       code: "POSSIBLE_STUDENT_IDENTIFIER",
       message:
-        "AI review flagged a possible identity number. Check that it does not identify a pupil or another person.",
+        "An automatic check found a possible identity number. Check that it does not identify a pupil or another person.",
     });
   }
   if (HARM_INSTRUCTION_PATTERNS.some((pattern) => pattern.test(text))) {
     findings.push({
       code: "UNSAFE_HARM_INSTRUCTION",
       message:
-        "AI review flagged possible instructions for serious harm. Check the content and re-prompt if that was not intended.",
+        "An automatic check found possible instructions for serious harm. Check the content and re-prompt if that was not intended.",
     });
   }
   if (SEXUAL_MINOR_CONTENT.test(text)) {
     findings.push({
       code: "SEXUAL_CONTENT_INVOLVING_MINORS",
       message:
-        "AI review flagged possible sexual content involving children. Check the content and re-prompt if that was not intended.",
+        "An automatic check found possible sexual content involving children. Check the content and re-prompt if that was not intended.",
     });
   }
   return findings;
