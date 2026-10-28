@@ -67,6 +67,12 @@ struct TappletRootView: View {
                     .foregroundStyle(TappletTheme.ink)
                     .accessibilityIdentifier("sidebar-feedback")
                     .accessibilityHint("Opens an email to the Tapplet Studio team with a screenshot and any open tapplet attached.")
+
+                    Link(destination: URL(string: "https://tapplet.tk.sg/privacy")!) {
+                        Label("Privacy notice", systemImage: "hand.raised")
+                    }
+                    .foregroundStyle(TappletTheme.ink)
+                    .accessibilityIdentifier("sidebar-privacy")
                 }
             }
             .scrollContentBackground(.hidden)

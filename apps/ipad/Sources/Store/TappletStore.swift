@@ -98,11 +98,11 @@ private enum RestoreFetch: Sendable {
             showsWorkshopAccess = true
             return TappletErrorPresentation(
                 title: "Tapplet Studio access needed",
-                message: "Enter your workshop code to continue.",
+                message: "Enter your class code to continue.",
                 requestsWorkshopAccess: true
             )
         }
-        return TappletErrorPresentation(title: "Tapplet Studio could not complete this action", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
+        return TappletErrorPresentation(title: "That did not work", message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription, requestsWorkshopAccess: false)
     }
     /// Runs a change to a project unless one is already running. The busy state
     /// and any failure stay in the store, so a reopened editor still shows them.
@@ -191,7 +191,7 @@ private enum RestoreFetch: Sendable {
                     AdvisoryWarning(
                         source: "prompt",
                         code: "POSSIBLE_EMAIL",
-                        message: "AI review flagged a possible email address. Check the content or re-prompt.",
+                        message: "An automatic check found a possible email address. Check the content or re-prompt.",
                         categories: ["personal information"]
                     )
                 ])

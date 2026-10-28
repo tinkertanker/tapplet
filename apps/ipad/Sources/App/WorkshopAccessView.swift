@@ -85,6 +85,8 @@ struct WorkshopAccessView: View {
                                 .padding(14)
                                 .background(TappletTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
                                 .focused($codeIsFocused)
+                                .submitLabel(.go)
+                                .onSubmit { register() }
                                 .accessibilityIdentifier("workshop-access-code")
                                 .disabled(isRegistering)
 
@@ -183,7 +185,7 @@ struct WorkshopAccessView: View {
         guard !cleanedAccessCode.isEmpty else {
             registrationError = TappletErrorPresentation(
                 title: "Enter your class code",
-                message: "Ask your workshop facilitator for the class code that activates Tapplet Studio on this iPad.",
+                message: "Ask your facilitator for the class code that activates Tapplet Studio on this iPad.",
                 requestsWorkshopAccess: false
             )
             codeIsFocused = true

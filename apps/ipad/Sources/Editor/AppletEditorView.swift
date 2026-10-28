@@ -20,15 +20,20 @@ struct AppletEditorView: View {
         if let project {
             let presentationID = sharePresentationID
             VStack(spacing: 0) {
+                // The buttons keep their natural size; a long title truncates instead.
                 HStack {
                     Button("Back", systemImage: "chevron.left") { store.closeEditor() }
-                    Text(project.artifact.title).font(.headline).lineLimit(2).minimumScaleFactor(0.8).layoutPriority(1)
-                    Spacer()
+                        .fixedSize()
+                    Text(project.artifact.title).font(.headline).lineLimit(2).truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     Button("Test as student") { showStudent = true }.disabled(previewLoadState != .ready)
+                        .fixedSize()
                     if !project.isExample {
                         Button("Share") { sharePresentationID = UUID(); showShare = true }.buttonStyle(.borderedProminent)
+                            .fixedSize()
                     }
                 }
+                .lineLimit(1)
                 .padding().background(TappletTheme.surface)
                 HStack(spacing: 0) {
                     AppletPreviewWebView(
@@ -68,7 +73,7 @@ struct AppletEditorView: View {
                 }
             }
             .alert(
-                "Tapplet Studio could not complete this action",
+                "That did not work",
                 isPresented: Binding(
                     get: { operationError != nil || refinementError != nil || previewError != nil },
                     set: { if !$0 { operationError = nil; store.refinementErrors[projectID] = nil; previewError = nil } }
@@ -99,7 +104,19 @@ struct AppletEditorView: View {
                     .font(.callout)
                     .accessibilityIdentifier("latest-revision-comment")
                 }
+                Text("What should change?")
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityHidden(true)
                 TextEditor(text: $prompt).frame(height: 90)
+                    .overlay(alignment: .topLeading) {
+                        if prompt.isEmpty {
+                            Text("For example: make the buttons bigger")
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 8).padding(.leading, 5)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
                     .accessibilityLabel("Change to make")
                     .accessibilityHint("Describe what Tapplet Studio should change in this tapplet.")
                 if ProcessInfo.processInfo.arguments.contains("--ui-testing-reset"),
@@ -124,6 +141,7 @@ struct AppletEditorView: View {
                         if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
                     }
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(working || isMovingHead || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Undo") {
                     isMovingHead = true
@@ -145,11 +163,15 @@ struct AppletEditorView: View {
                 ForEach(project.revisions.reversed()) { revision in
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(revision.instruction ?? revision.kind.rawValue.capitalized)
+                            Text(revision.instruction ?? revision.kind.historyTitle)
                             if let comment = revision.comment {
                                 Text(comment).font(.callout).foregroundStyle(TappletTheme.mutedInk)
                             }
-                            Text(revision.createdAt).font(.caption).foregroundStyle(.secondary)
+                            Text(parseAPITimestamp(revision.createdAt)?.formatted(date: .abbreviated, time: .shortened) ?? revision.createdAt)
+                                .font(.caption).foregroundStyle(.secondary)
+                            if revision.id == project.artifact.headRevisionId {
+                                Text("Current version").font(.caption.weight(.semibold)).foregroundStyle(TappletTheme.accent)
+                            }
                         }
                         Spacer()
                         if let url = revision.screenshotUrl {

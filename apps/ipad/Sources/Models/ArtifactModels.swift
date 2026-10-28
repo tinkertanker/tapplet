@@ -34,7 +34,17 @@ struct Artifact: Codable, Equatable, Identifiable, Sendable {
 }
 
 struct ArtifactRevision: Codable, Equatable, Identifiable, Sendable {
-    enum Kind: String, Codable, Sendable { case generate, revise, remix, seed }
+    enum Kind: String, Codable, Sendable {
+        case generate, revise, remix, seed
+        var historyTitle: String {
+            switch self {
+            case .generate: "First version"
+            case .revise: "Change"
+            case .remix: "Copied from an example"
+            case .seed: "Example"
+            }
+        }
+    }
     var id: String
     var artifactId: String
     var parentRevisionId: String? = nil

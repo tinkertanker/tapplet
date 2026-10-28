@@ -49,7 +49,7 @@ struct ExploreView: View {
             VStack(alignment: .leading, spacing: 28) {
                 PageHeader(
                     title: "Start with an example",
-                    subtitle: "Find a ready-made tapplet, preview it, then make a copy for your class.",
+                    subtitle: "A tapplet is a small interactive activity students open from a link. Preview an example, then make a copy or use its plan.",
                     sticker: .greetings
                 )
 

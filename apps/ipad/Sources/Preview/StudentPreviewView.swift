@@ -22,7 +22,7 @@ struct StudentPreviewView: View {
                     }
                     if onUsePlan != nil {
                         ToolbarItem(placement: .topBarLeading) {
-                            Button("Use this plan") {
+                            Button("Use this plan in Make") {
                                 onUsePlan?()
                                 dismiss()
                             }

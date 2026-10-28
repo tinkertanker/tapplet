@@ -32,7 +32,7 @@ struct MyAppletsView: View {
             .padding(32)
         }
         .alert(
-            "Tapplet Studio could not complete this action",
+            "That did not work",
             isPresented: Binding(
                 get: { error != nil },
                 set: { if !$0 { error = nil } }
@@ -90,6 +90,8 @@ struct MyAppletsView: View {
         Button("Make a tapplet") { store.openMake() }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .lineLimit(1)
+            .fixedSize()
             .accessibilityIdentifier("my-applets-make")
     }
 
@@ -103,7 +105,7 @@ struct MyAppletsView: View {
                         .controlSize(.small)
                         .accessibilityHidden(true)
                 }
-                Text(store.isRestoringFromTapplet ? "Restoring…" : "Restore tapplets")
+                Text(store.isRestoringFromTapplet ? "Restoring…" : "Restore tapplets saved online")
             }
         }
         .buttonStyle(.plain)

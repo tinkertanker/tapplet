@@ -418,10 +418,12 @@ enum TappletAPIError: LocalizedError, Equatable, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .registrationRequired: "Enter your workshop access code before using Tapplet Studio."
+        case .registrationRequired: "Enter your class code before using Tapplet Studio."
         case .server(_, _, let message): message
-        case .invalidURL, .invalidResponse, .transport, .decoding:
-            "Tapplet Studio could not complete this request. Check your connection and try again."
+        case .transport:
+            "Tapplet Studio could not reach its service. Check the internet connection, then try again. Your work on this iPad is kept."
+        case .invalidURL, .invalidResponse, .decoding:
+            "Tapplet Studio got an unexpected reply from its service. Try again in a moment. Your work on this iPad is kept."
         }
     }
     var requiresRegistration: Bool {

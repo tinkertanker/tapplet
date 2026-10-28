@@ -68,7 +68,7 @@ final class TappletUITests: XCTestCase {
 
         app.buttons["Share"].tap()
 
-        let warning = app.staticTexts["AI review flagged a possible email address. Check the content or re-prompt."]
+        let warning = app.staticTexts["An automatic check found a possible email address. Check the content or re-prompt."]
         XCTAssertTrue(warning.waitUntilExists(timeout: 3))
         XCTAssertTrue(app.buttons["Dismiss warning"].isHittable)
         app.buttons["Dismiss warning"].tap()

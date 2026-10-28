@@ -204,12 +204,12 @@ struct GuidedMakeView: View {
 
             if let plan = store.guidedMakePinnedPlan {
                 if store.guidedMakeEffectivePreferredExampleRevisionId != nil {
-                    Text("Based on \(plan.title). Change who you are teaching or the learning goal to unpin this example.")
+                    Text("Tapplet Studio will follow the example \(plan.title). To stop following it, change who you are teaching or the learning goal.")
                         .font(.footnote)
                         .foregroundStyle(TappletTheme.mutedInk)
                         .accessibilityIdentifier("pinned-example-plan")
                 } else {
-                    Text("This started from \(plan.title), but the students or learning goal no longer match, so Tapplet Studio will not pin that example.")
+                    Text("This started from \(plan.title), but the students or learning goal have changed, so Tapplet Studio will not follow that example.")
                         .font(.footnote)
                         .foregroundStyle(TappletTheme.mutedInk)
                         .accessibilityIdentifier("unpinned-example-plan")
@@ -338,7 +338,8 @@ struct GuidedMakeView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This usually takes one to two minutes.")
                     .font(.body.weight(.semibold))
-                Text("Your answers are still here and will be used to make your tapplet. There is nothing else you need to do right now.")
+                GenerationElapsedTime()
+                Text("Your answers are kept. You can use other parts of the app; the new tapplet opens when it is ready. If it takes longer than about two and a half minutes, Tapplet Studio stops and you can try again.")
                     .font(.callout)
                     .foregroundStyle(TappletTheme.mutedInk)
             }
@@ -472,5 +473,20 @@ struct GuidedMakeView: View {
                 store.guidedMakeCreationError = presentation.requestsWorkshopAccess ? nil : presentation
             }
         }
+    }
+}
+
+/// Shows how long the current generation has been running, so a long wait is visibly alive.
+private struct GenerationElapsedTime: View {
+    @State private var start = Date.now
+
+    var body: some View {
+        TimelineView(.periodic(from: start, by: 1)) { context in
+            let seconds = max(0, Int(context.date.timeIntervalSince(start)))
+            Text("Working for \(seconds / 60):\(String(format: "%02d", seconds % 60))")
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(TappletTheme.mutedInk)
+        }
+        .accessibilityHidden(true)
     }
 }

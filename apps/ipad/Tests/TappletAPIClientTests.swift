@@ -131,7 +131,7 @@ final class TappletAPIClientTests: XCTestCase {
         )
         XCTAssertEqual(
             TappletAPIError.transport("offline").errorDescription,
-            "Tapplet Studio could not complete this request. Check your connection and try again."
+            "Tapplet Studio could not reach its service. Check the internet connection, then try again. Your work on this iPad is kept."
         )
     }
 

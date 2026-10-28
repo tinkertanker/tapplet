@@ -40,7 +40,7 @@ struct ImageManagementView: View {
                 .disabled(isWorking || (!decorative && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
         }
         if let error { Text(error).foregroundStyle(TappletTheme.danger) }
-        Text("Images are prepared and checked on this iPad. AI review warnings do not block uploads; check flagged images before sharing.")
+        Text("Images are resized on this iPad, then uploaded and checked by an AI service for people, personal information and unsuitable content. Warnings do not block uploads; check flagged images before sharing.")
             .font(.footnote).foregroundStyle(.secondary)
         .onChange(of: photo) { _, item in
             guard let item else { return }

@@ -8,6 +8,9 @@ struct ShareArtifactView: View {
     @Environment(\.dismiss) var dismiss
     @State private var working = false
     @State private var error: String?
+    @State private var confirmsTurnOff = false
+    @State private var turnedOff = false
+    @State private var copied = false
 
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } }
     var body: some View {
@@ -31,7 +34,7 @@ struct ShareArtifactView: View {
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("advisory-warning")
                     }
-                    Text("Published tapplets can currently be used as examples for future generation. Turning off the student link also removes this revision from that example pool.")
+                    Text("Anyone with the link can open this tapplet. Students do not sign in. While the link is on, other teachers using Tapplet Studio can see this tapplet as an example and make their own copy. Turning off the link stops new copies; copies already made stay with those teachers.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -52,19 +55,41 @@ struct ShareArtifactView: View {
                                 .frame(width: 220, height: 220)
                                 .accessibilityLabel("QR code for student link")
                         }
-                        Text(publication.url.absoluteString).textSelection(.enabled)
-                        ShareLink(item: publication.url)
+                        Text(publication.url.absoluteString)
+                            .font(.body.monospaced())
+                            .textSelection(.enabled)
+                        HStack {
+                            Button(copied ? "Copied" : "Copy link", systemImage: copied ? "checkmark" : "doc.on.doc") {
+                                UIPasteboard.general.url = publication.url
+                                copied = true
+                            }
+                            .accessibilityIdentifier("copy-student-link")
+                            ShareLink(item: publication.url)
+                        }
                         Text("Expires \(publication.formattedExpirationDate())")
                         Button("Extend 90 days") { perform { try await store.extendPublication(projectID: projectID) } }
-                        Button("Turn off link", role: .destructive) { perform { try await store.unpublish(projectID: projectID) } }
+                        Button("Turn off link", role: .destructive) { confirmsTurnOff = true }
+                            .confirmationDialog("Turn off the student link?", isPresented: $confirmsTurnOff, titleVisibility: .visible) {
+                                Button("Turn off link", role: .destructive) {
+                                    perform {
+                                        try await store.unpublish(projectID: projectID)
+                                        turnedOff = true
+                                    }
+                                }
+                            } message: {
+                                Text("Students will no longer open it. A new link will have a different address, so links and QR codes you already shared will stop working.")
+                            }
                     } else {
                         PressedAppletMark(size: 72, rotation: .degrees(12))
-                        if let publication = project?.artifact.publication {
-                            Text(publication.revokedAt != nil ? "The student link is turned off." : "The student link has expired.")
+                        if turnedOff || project?.artifact.publication?.revokedAt != nil {
+                            Text("The student link is turned off.")
+                        } else if project?.artifact.publication != nil {
+                            Text("The student link has expired.")
                         }
                         Button("Create student link") { perform { _ = try await store.publish(projectID: projectID) } }
                             .buttonStyle(.borderedProminent)
                     }
+                    if working { ProgressView("Working…") }
                     if let error { Text(error).foregroundStyle(TappletTheme.danger) }
                 }
                 .disabled(working)
