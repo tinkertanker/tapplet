@@ -55,7 +55,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
   }, 30_000);
   afterAll(async () => { await browser.close(); });
 
-  async function open(html: string, width = 1024, height = 768) {
+  async function open(html: string, width = 1024, height = 768, reportDelay = 0) {
     const context = await browser.newContext({ viewport: { width, height } });
     const page = await context.newPage();
     const external: string[] = [];
@@ -72,7 +72,10 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       if (url.pathname === `/v1/publications/${slug}/reports`) {
         // Deliberately permissive: containment must stop activity requests even
         // if the server's independent CORS defense is accidentally relaxed.
-        if (request.method() === "POST") reports.push(request.postDataJSON());
+        if (request.method() === "POST") {
+          reports.push(request.postDataJSON());
+          await new Promise((resolve) => setTimeout(resolve, reportDelay));
+        }
         await route.fulfill({
           status: request.method() === "OPTIONS" ? 204 : 201,
           headers: {
@@ -275,6 +278,25 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(report.height).toBeGreaterThanOrEqual(36);
       await activity(state.page).getByText("Last answer").click();
       await sendReport(state.page, "Something else is wrong");
+      expect(state.reports).toEqual([{ reason: "other" }]);
+    } finally { await state.context.close(); }
+  });
+  it("sends one report when the dialog is closed and reopened mid-send", async () => {
+    const state = await open(source, 375, 667, 600);
+    try {
+      const page = state.page;
+      const dialog = page.getByRole("dialog", { name: "Report this activity" });
+      await page.getByRole("button", { name: "Report this activity", exact: true }).click();
+      await dialog.getByRole("radio", { name: "Something else is wrong" }).check();
+      await dialog.getByRole("button", { name: "Send report" }).click();
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await page.getByRole("button", { name: "Report this activity", exact: true }).click();
+      await dialog.getByRole("radio", { name: "It copies someone else's work" }).check();
+      expect(await dialog.getByRole("button", { name: "Send report" }).isDisabled()).toBe(true);
+      await expect.poll(() => dialog.getByRole("status").textContent()).toBe("Thank you. Your report was sent to the Tapplet team.");
+      expect(await dialog.getByRole("radio", { name: "It copies someone else's work" }).isDisabled()).toBe(true);
+      const box = await dialog.boundingBox();
+      expect(box && box.x).toBeGreaterThan(0);
       expect(state.reports).toEqual([{ reason: "other" }]);
     } finally { await state.context.close(); }
   });

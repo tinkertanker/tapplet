@@ -52,6 +52,8 @@ struct DetailsFields: View {
             if saved { Label("Details saved", systemImage: "checkmark.circle").foregroundStyle(TappletTheme.mutedInk) }
             if let error { Text(error).foregroundStyle(TappletTheme.danger) }
         }
+        // A later edit is not saved yet.
+        .onChange(of: draft) { saved = false }
     }
 
     private func labeled<Field: View>(_ label: String, @ViewBuilder field: () -> Field) -> some View {

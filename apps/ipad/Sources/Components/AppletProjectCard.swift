@@ -77,7 +77,7 @@ struct AppletProjectCard: View {
             Button("Delete tapplet", role: .destructive) { onDelete?() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This deletes the tapplet and its revision history, and turns off any student link. This cannot be undone.")
+            Text("This deletes the tapplet and all its earlier versions, and turns off any student link. This cannot be undone.")
         }
     }
 

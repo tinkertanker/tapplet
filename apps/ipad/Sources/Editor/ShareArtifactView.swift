@@ -10,7 +10,7 @@ struct ShareArtifactView: View {
     @State private var error: String?
     @State private var confirmsTurnOff = false
     @State private var turnedOff = false
-    @State private var copied = false
+    @State private var copiedURL: URL?
 
     var project: ArtifactProject? { store.projects.first { $0.id == projectID } }
     var body: some View {
@@ -59,9 +59,11 @@ struct ShareArtifactView: View {
                             .font(.body.monospaced())
                             .textSelection(.enabled)
                         HStack {
+                            // A new link is not copied yet, so "Copied" belongs to one URL.
+                            let copied = copiedURL == publication.url
                             Button(copied ? "Copied" : "Copy link", systemImage: copied ? "checkmark" : "doc.on.doc") {
                                 UIPasteboard.general.url = publication.url
-                                copied = true
+                                copiedURL = publication.url
                             }
                             .accessibilityIdentifier("copy-student-link")
                             ShareLink(item: publication.url)

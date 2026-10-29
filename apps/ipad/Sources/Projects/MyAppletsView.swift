@@ -58,13 +58,24 @@ struct MyAppletsView: View {
                 }
             }
         } else {
-            HStack(alignment: .top, spacing: 16) {
-                PageHeader(
-                    title: "My Tapplets",
-                    subtitle: "Copies and tapplets you make stay on this iPad so you can preview them offline."
-                )
-                Spacer(minLength: 12)
-                headerActions(expanded: false)
+            // Stack the actions under the title when they do not fit beside it,
+            // rather than squeezing either the title or the button labels.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    PageHeader(
+                        title: "My Tapplets",
+                        subtitle: "Copies and tapplets you make stay on this iPad so you can preview them offline."
+                    )
+                    Spacer(minLength: 12)
+                    headerActions(expanded: false)
+                }
+                VStack(alignment: .leading, spacing: 12) {
+                    PageHeader(
+                        title: "My Tapplets",
+                        subtitle: "Copies and tapplets you make stay on this iPad so you can preview them offline."
+                    )
+                    headerActions(expanded: false)
+                }
             }
         }
     }
@@ -105,14 +116,17 @@ struct MyAppletsView: View {
                         .controlSize(.small)
                         .accessibilityHidden(true)
                 }
-                Text(store.isRestoringFromTapplet ? "Restoring…" : "Restore tapplets saved online")
+                Text(store.isRestoringFromTapplet ? "Restoring…" : "Restore from online")
             }
         }
         .buttonStyle(.plain)
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(TappletTheme.accent)
+        .lineLimit(1)
+        .fixedSize()
         .frame(minHeight: 44)
         .disabled(store.isRestoringFromTapplet)
+        .accessibilityHint("Downloads tapplets this iPad saved online that are missing here.")
         .accessibilityIdentifier("restore-applets")
     }
 

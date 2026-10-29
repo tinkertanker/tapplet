@@ -79,7 +79,13 @@ struct AppletEditorView: View {
                     set: { if !$0 { operationError = nil; store.refinementErrors[projectID] = nil; previewError = nil } }
                 )
             ) {
-                Button("OK") {}
+                // A failed change keeps its text, so it can be sent again from here.
+                if refinementError != nil, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("Try again") { submitChange() }
+                    Button("Cancel", role: .cancel) {}
+                } else {
+                    Button("OK") {}
+                }
             } message: {
                 Text(operationError ?? refinementError ?? previewError ?? "")
             }
@@ -133,14 +139,7 @@ struct AppletEditorView: View {
                         .accessibilityIdentifier("refine-suggestion-\(suggestion.id)")
                     }
                 }
-                Button(working ? "Updating…" : "Make this change") {
-                    let submittedPrompt = prompt
-                    // The editor can close before the change finishes; the store keeps its state.
-                    store.runChange(to: projectID) {
-                        let warnings = try await store.refine(submittedPrompt, projectID: projectID)
-                        if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
-                    }
-                }
+                Button(working ? "Updating…" : "Make this change") { submitChange() }
                 .buttonStyle(.borderedProminent)
                 .disabled(working || isMovingHead || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Undo") {
@@ -193,6 +192,14 @@ struct AppletEditorView: View {
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("tapplet-editor-form")
+    }
+    private func submitChange() {
+        let submittedPrompt = prompt
+        // The editor can close before the change finishes; the store keeps its state.
+        store.runChange(to: projectID) {
+            let warnings = try await store.refine(submittedPrompt, projectID: projectID)
+            if warnings.isEmpty && prompt == submittedPrompt { prompt = "" }
+        }
     }
     private func showOperationError(_ error: Error) {
         operationError = store.errorMessage(for: error)
