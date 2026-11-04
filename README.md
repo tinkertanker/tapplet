@@ -122,6 +122,9 @@ npm run api:build
 ```
 
 `verify` runs root tooling tests, API tests and typechecking, canonical example validation, and artifact evaluation. It deliberately does not claim to compile Swift; native build and tests run separately on macOS CI.
+It runs at most two checks concurrently and reports individual timings. Use
+`npm run verify -- api:build` to include the dry-run build, as CI does. See
+[`docs/CI.md`](docs/CI.md) for measurements, coverage and native setup findings.
 
 Operational details: [`docs/TAPPLET_PILOT_RUNBOOK.md`](docs/TAPPLET_PILOT_RUNBOOK.md). Product contract: [`docs/TAPPLET_V1.md`](docs/TAPPLET_V1.md). Current first-party colour guidance: [`docs/DESIGN.md`](docs/DESIGN.md).
 
