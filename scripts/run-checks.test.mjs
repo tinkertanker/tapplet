@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 const runner = new URL('./run-checks.mjs', import.meta.url);
 
@@ -35,7 +36,7 @@ test('check runner completes every check, bounds concurrency, and propagates any
           process.exitCode = name === process.env.FAIL_CHECK ? 7 : 0;
         `);
         const summary = join(directory, 'summary');
-        const child = spawn(process.execPath, [runner.pathname, ...checks], {
+        const child = spawn(process.execPath, [fileURLToPath(runner), ...checks], {
           cwd: directory,
           env: { ...process.env, FAIL_CHECK: failed, GITHUB_STEP_SUMMARY: summary },
         });
