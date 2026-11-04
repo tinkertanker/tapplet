@@ -82,8 +82,9 @@ jobs:
             node_modules
             services/api/node_modules
       - run: npx playwright install --with-deps --only-shell chromium webkit
-      - run: npm run verify
-      - run: npm run api:build
+      # Same eight checks plus the dry-run build, at most two npm commands at
+      # once. Any failure fails this job; timings are in the job summary.
+      - run: npm run verify -- api:build
 
   # Native jobs run only when the iPad app or this workflow changes, and on
   # nightly or manual runs.

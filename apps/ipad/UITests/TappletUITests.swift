@@ -276,7 +276,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(delete.waitUntilExists(timeout: 5))
         delete.tap()
         XCTAssertTrue(app.buttons["Delete tapplet"].waitUntilExists(timeout: 3))
-        XCTAssertTrue(app.staticTexts["This deletes the tapplet and its revision history, and turns off any student link. This cannot be undone."].exists)
+        XCTAssertTrue(app.staticTexts["This deletes the tapplet and all its earlier versions, and turns off any student link. This cannot be undone."].exists)
         capture("Delete-confirmation", app: app)
         // iPad confirmation popovers cancel by tapping outside, not a Cancel row.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.8)).tap()
