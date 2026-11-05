@@ -19,4 +19,8 @@
   changing their source of truth.
 - For first-party product UI, follow the colour roles and accessibility
   constraints in [`docs/DESIGN.md`](docs/DESIGN.md).
+- Add or update focused tests for behaviour changes and run the narrowest useful
+  verification before finishing.
+- Do not discard unrelated worktree changes. Keep commits atomic and stage
+  files explicitly.
 - Keep topic-specific documentation in [`docs/`](docs/).
