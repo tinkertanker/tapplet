@@ -15,6 +15,8 @@
   and user-facing text stay British.
 - Keep state derived where possible. Reuse the shared hooks, components,
   styles and network infrastructure rather than duplicating them.
+- Use explicit types and avoid `any`. Do not edit generated files without
+  changing their source of truth.
 - For first-party product UI, follow the colour roles and accessibility
   constraints in [`docs/DESIGN.md`](docs/DESIGN.md).
 - Keep topic-specific documentation in [`docs/`](docs/).
