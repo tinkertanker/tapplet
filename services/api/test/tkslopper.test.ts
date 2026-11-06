@@ -594,6 +594,7 @@ describe("tkslopper errors", () => {
     [429, "rate_limit_exceeded", true],
     [500, "internal_error", true],
     [503, "provider_unavailable", true],
+    [504, "provider_unavailable", true],
   ] as const)("maps HTTP %i to retryable %s without retrying", async (status, code, retryable) => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const g = gateway([errorResponse(status, code)]);

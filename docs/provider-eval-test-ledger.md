@@ -16,7 +16,7 @@ the Node parent test in `run-checks.test.mjs`.
 
 | File | Disposition | Functions before → after | Cases before → after | Lines before → after |
 | --- | --- | ---: | ---: | ---: |
-| `services/api/test/tkslopper.test.ts` | Inspected, changed, passed | 54 → 53 | 100 → 94 | 1490 → 1473 |
+| `services/api/test/tkslopper.test.ts` | Inspected, changed, passed | 54 → 53 | 100 → 95 | 1490 → 1474 |
 | `services/api/test/createProvider.test.ts` | Inspected, changed, passed | 16 → 15 | 26 → 24 | 420 → 404 |
 | `services/api/test/anthropicProvider.test.ts` | Inspected, retained, passed | 6 → 6 | 12 → 12 | 248 → 248 |
 | `services/api/test/generation.test.ts` | Inspected, changed, passed | 61 → 61 | 120 → 117 | 1401 → 1399 |
@@ -29,9 +29,9 @@ the Node parent test in `run-checks.test.mjs`.
 | `evals/model/production-harness.test.ts` | Inspected, retained, passed | 7 → 7 | 7 → 7 | 402 → 402 |
 | `evals/model/run.test.ts` | Inspected, changed, passed | 5 → 5 | 5 → 5 | 111 → 113 |
 | `evals/model/validator-parity.test.ts` | Inspected, retained, passed | 1 → 1 | 1 → 1 | 174 → 174 |
-| **Total** | **13 inspected and executed; 6 changed** | **232 → 230** | **356 → 343** | **6121 → 6088** |
+| **Total** | **13 inspected and executed; 6 changed** | **232 → 230** | **356 → 344** | **6121 → 6089** |
 
-Vitest `it.each` rows: **151 → 142** (tkslopper 58 → 53, factory 14 → 13,
+Vitest `it.each` rows: **151 → 143** (tkslopper 58 → 54, factory 14 → 13,
 Anthropic 9 → 9, generation 70 → 67). Dynamically collected Node child rows:
 **4 → 2**, all in `run-checks.test.mjs`. Other loops and fixture matrices remain
 intact. The Kimi assertions were moved onto an existing identical operation;
@@ -43,16 +43,17 @@ Measured in the Linux orb, Node 22.23.4, npm 10.9.10, installed locked dependenc
 
 | Command | Before | After | Result |
 | --- | ---: | ---: | --- |
-| `npm run api:test -- test/tkslopper.test.ts test/createProvider.test.ts test/anthropicProvider.test.ts test/generation.test.ts` | 3.28 s | 2.98 s | 258 → 247 passed |
-| `node --import tsx --test scripts/*.test.mjs evals/**/*.test.ts` | 77.86 s | 72.24 s | 98 → 96 passed; no skips |
-| **Sequential scoped wall time** | **81.14 s** | **75.22 s** | **356 → 343 passed** |
+| `npm run api:test -- test/tkslopper.test.ts test/createProvider.test.ts test/anthropicProvider.test.ts test/generation.test.ts` | 3.28 s | 2.91 s | 258 → 248 passed |
+| `node --import tsx --test scripts/*.test.mjs evals/**/*.test.ts` | 77.86 s | 73.66 s | 98 → 96 passed; no skips |
+| **Sequential scoped wall time** | **81.14 s** | **76.57 s** | **356 → 344 passed** |
 
 These are single elapsed-time samples including startup, not a speed benchmark.
 Browser startup, cache warmth and scheduling can dominate such a small pruning.
+After measurements include the restored HTTP 504 row from independent review.
 The final JSONC fixture refinement was also checked with `eval:model:test`.
 
-Final `npm run verify`: **all eight checks passed**, 78.18 s elapsed. It ran
-75 root Node tests, 475 API cases in 18 files, 13 model-evaluation tests and
+Final `npm run verify`: **all eight checks passed**, 77.38 s elapsed. It ran
+75 root Node tests, 476 API cases in 18 files, 13 model-evaluation tests and
 20 browser-evaluation tests, plus both typechecks, corpus validation and artifact
 evaluations. No skipped tests were reported. `git diff --check` also passed.
 
@@ -77,7 +78,6 @@ No removal is justified by assumed upstream coverage or retired behaviour.
 | `tkslopper`: HTTP **413** row | Accepted risk | A payload-too-large-specific incorrect retry flag or extra attempt may escape. Local byte-limit/pre-network checks remain, but are not claimed as an equivalent HTTP witness. |
 | `tkslopper`: HTTP **415** row | Accepted risk | An unsupported-media-type-specific incorrect retry flag or extra attempt may escape. The retained 400 row checks the ordinary invalid-request path, not this exact status. |
 | `tkslopper`: HTTP **502** row | Accepted risk | A 502-specific incorrect retry flag or extra attempt may escape. 502 image-review unavailability/privacy and error trace checks remain; those do not replace the removed retry assertion. |
-| `tkslopper`: HTTP **504** row | Accepted risk | A gateway-timeout-specific incorrect retry flag or extra attempt may escape. Transport timeout handling and finite deadlines remain, but are distinct failure mechanisms. |
 | `createProvider`: `omits DeepSeek reasoning fields for other OpenCode chat models` | Redundant coverage, after moving its assertions | **None.** The retained `keeps other OpenCode Go models on chat completions: kimi-k3` row constructs the same environment/provider, invokes `generate`, and now also asserts absence of `thinking` and `reasoning_effort` in the captured request. It still checks the endpoint and absence of `reasoning`. |
 | `createProvider`: `glm-5.3` chat-fallback row | Accepted risk | GLM-specific wrong dialect or unwanted `reasoning` could escape. Kimi remains a representative unrelated family; bare `muse-spark` and `gpt-4o` preserve near-family boundaries. No credential or moderation assertion is removed. |
 | `generation`: design-card row `"card"` | Accepted risk | A scalar-string-only failure to discard optional metadata, or an unnecessary repair for that value, could escape. Null, array, invalid title, description and tags remain; HTML validation is unchanged. |
@@ -95,6 +95,11 @@ No removal is justified by assumed upstream coverage or retired behaviour.
   and image-review results; grant expiry/refresh/denial/concurrency; credential
   routing; service bindings; no-content traces/logs; metadata projection and
   deadlines. Keep all image-error and auth-status rows, even where retry code is shared.
+  **HTTP 504 is retained, not accepted risk:** its `retryable=true`, one gateway
+  call and one grant exchange assertions protect the shared generation/moderation
+  transport against timeout-specific replay. A proxy timeout can follow upstream
+  execution; fresh idempotency keys per send could then duplicate billed or
+  moderated work. Abort/deadline tests exercise a different failure mechanism.
 - **createProvider:** every provider's construction/credential path, native versus
   third-party headers, Responses/Chat family boundaries, moderation routing and
   explicit evaluation overrides. These are consumer wiring tests, not helper duplicates.
@@ -157,9 +162,17 @@ No removal is justified by assumed upstream coverage or retired behaviour.
    unused fixture/helper remains and only the unused prompt-version import was
    removed. All 13 files were executed, including unchanged files. No dependency
    ownership or retirement claims were used to justify a deletion.
+6. **Independent review cycle 1 — REQUEST_CHANGES:** the reviewer identified the
+   removed HTTP 504 row as protected moderation coverage (Required/P2). Restored
+   that single row with its existing retryable, call-count and exchange-count
+   assertions, and refined the policy to retain HTTP-timeout no-replay witnesses.
+   This is preventive coverage, not a claim that current runtime code replays 504.
+   The reviewer accepted the other removals; their classifications remain unchanged.
+   Re-review of this fix is pending and PM will arrange cycle 2.
 
-This is a fresh self-review, **not independent review**. No subagents or other
-threads were created. The modest reduction is deliberate, not a target shortfall.
+Steps 1–5 are self-review, **not independent review**; step 6 records the independent
+review arranged by PM. This implementation thread created no subagents or other
+threads. The modest reduction is deliberate, not a target shortfall.
 Ambiguous candidates (deadline construction and safe-image hash) were retained,
 not silently classified as harmless pins. PM arranges independent review; YJ
 alone approves merge. This work authorises neither merge nor deployment.

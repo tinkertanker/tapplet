@@ -29,6 +29,11 @@ publication cleanup own their filesystem, origin and remote-identity boundaries.
 - A MIME-type matrix can protect executable HTML, and an HTTP-error matrix can
   protect privacy or authorisation. Neither is automatically redundant because
   the implementation shares a branch. Keep protected rows intact.
+- Retain the HTTP 504 no-replay witness for the shared generation/moderation
+  transport. A proxy timeout can follow upstream execution, and each send uses
+  a fresh idempotency key: a future timeout-specific replay could duplicate
+  billed or moderated work. Transport abort/deadline tests do not replace this
+  HTTP-response witness, including its single-call and single-exchange assertions.
 - Remove chosen configuration snapshots only when boundary witnesses remain.
   Test evaluation configuration loading with synthetic settings rather than
   the currently deployed provider/model. External-input validation, including
