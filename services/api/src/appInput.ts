@@ -1,4 +1,5 @@
 import type { TeacherBrief } from "./ai/provider";
+import briefLimits from "./briefLimits.json";
 import { HttpError } from "./http";
 import type { ArtifactRecord } from "./storage/repository";
 
@@ -100,13 +101,13 @@ interface GuidedGeneration {
 }
 export function brief(b: Record<string, unknown>): GuidedGeneration {
   const guided = obj(b.brief);
-  const learnerContext = str(guided.learnerContext, "Learner context", 300);
+  const learnerContext = str(guided.learnerContext, "Learner context", briefLimits.learnerContext);
   const format = optionalForm(guided.format);
-  const sourceContent = optionalStr(guided.sourceContent, "Source content", 4000);
+  const sourceContent = optionalStr(guided.sourceContent, "Source content", briefLimits.sourceContent);
   const locale = optionalLocale(guided.locale);
   return {
     // Studio joins every answer (up to 7,500 characters) with its question.
-    creationBrief: str(b.creationBrief, "Creation brief", 8000),
+    creationBrief: str(b.creationBrief, "Creation brief", briefLimits.creationBrief),
     preferredExampleRevisionId:
       b.preferredExampleRevisionId == null
         ? null
@@ -118,12 +119,12 @@ export function brief(b: Record<string, unknown>): GuidedGeneration {
       learningObjective: str(
         guided.learningObjective,
         "Learning objective",
-        600,
+        briefLimits.learningObjective,
       ),
-      studentAction: str(guided.studentAction, "Student action", 600),
+      studentAction: str(guided.studentAction, "Student action", briefLimits.studentAction),
       ...(sourceContent ? { content: sourceContent, sourceContent } : {}),
-      feedback: str(guided.feedback, "Feedback", 1000),
-      classroomFit: str(guided.classroomFit, "Classroom fit", 1000),
+      feedback: str(guided.feedback, "Feedback", briefLimits.feedback),
+      classroomFit: str(guided.classroomFit, "Classroom fit", briefLimits.classroomFit),
       ...(format ? { format } : {}),
       ...(locale ? { locale } : {}),
     },

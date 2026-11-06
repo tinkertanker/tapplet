@@ -36,17 +36,66 @@ struct GuidedMakeView: View {
             .padding(32)
         }
         .scrollDismissesKeyboard(.interactively)
-        .toolbar {
-            if !store.guidedMakeShowsSummary {
-                ToolbarItemGroup(placement: .keyboard) {
+        .accessibilityIdentifier("make-screen")
+        .safeAreaInset(edge: .bottom, spacing: 0) { actionBar }
+    }
+
+    private var actionBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if store.isCreatingGuidedDraft {
+                HStack {
+                    ProgressView().accessibilityHidden(true)
+                    VStack(alignment: .leading) {
+                        Text("Making your tapplet…").font(.headline)
+                        if let start = store.generationStartedAt { GenerationElapsedTime(start: start) }
+                    }
+                    Spacer()
+                    Button("Cancel") { store.cancelGuidedGeneration() }
+                        .buttonStyle(TappletSecondaryButtonStyle())
+                        .accessibilityIdentifier("cancel-generation")
+                }
+            } else if store.guidedMakeShowsSummary {
+                if let message = store.guidedMakeDraft.lengthError {
+                    Text(message).font(.callout).foregroundStyle(TappletTheme.danger)
+                }
+                HStack {
+                    Spacer()
+                    Button("Make my tapplet") { store.startGuidedGeneration() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!store.guidedMakeDraft.isReadyForReview)
+                        .accessibilityIdentifier("approve-brief")
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(cleanResponse.utf16.count) / \(question.maximumLength) characters")
+                    if question.isTooLong(cleanResponse) {
+                        Text("Answer too long. Shorten it to continue; your text has been kept.")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(question.isTooLong(cleanResponse) ? TappletTheme.danger : TappletTheme.mutedInk)
+                .accessibilityElement(children: .combine)
+                .accessibilityHint("Some symbols, such as emoji, count as more than one character.")
+                .accessibilityIdentifier("brief-length-guidance")
+                HStack {
+                    Button("Back") { moveBack() }
+                        .buttonStyle(TappletSecondaryButtonStyle())
+                        .disabled(store.guidedMakeQuestionIndex == 0)
                     Spacer()
                     Button(continueTitle) { moveForward() }
-                        .disabled(!question.isOptional && cleanResponse.isEmpty)
-                        .accessibilityIdentifier("guided-continue-keyboard")
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!question.accepts(cleanResponse))
+                        .accessibilityIdentifier("guided-continue")
                 }
             }
         }
-        .accessibilityIdentifier("make-screen")
+        .controlSize(.large)
+        .frame(maxWidth: 760)
+        .padding(.horizontal, 32)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TappletTheme.surface)
+        .overlay(alignment: .top) { Divider() }
     }
 
     private var continueTitle: String {
@@ -140,23 +189,6 @@ struct GuidedMakeView: View {
                     }
                 }
             }
-
-            Divider()
-
-            HStack {
-                Button("Back") { moveBack() }
-                    .buttonStyle(TappletSecondaryButtonStyle())
-                    .controlSize(.large)
-                    .disabled(store.guidedMakeQuestionIndex == 0)
-                Spacer()
-                Button(continueTitle) {
-                    moveForward()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(!question.isOptional && cleanResponse.isEmpty)
-                .accessibilityIdentifier("guided-continue")
-            }
         }
         .padding(28)
         .tappletCard()
@@ -222,26 +254,6 @@ struct GuidedMakeView: View {
 
             if let creationError = store.guidedMakeCreationError {
                 ErrorBanner(presentation: creationError)
-            }
-
-            HStack {
-                Spacer()
-                Button {
-                    createDraft()
-                } label: {
-                    if store.isCreatingGuidedDraft {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("Making your tapplet…")
-                        }
-                    } else {
-                        Text("Make my tapplet")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(store.isCreatingGuidedDraft)
-                .accessibilityIdentifier("approve-brief")
             }
         }
         .padding(28)
@@ -338,8 +350,7 @@ struct GuidedMakeView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This usually takes one to two minutes.")
                     .font(.body.weight(.semibold))
-                GenerationElapsedTime()
-                Text("Your answers are kept. You can use other parts of the app; the new tapplet opens when it is ready. If it takes longer than about two and a half minutes, Tapplet Studio stops and you can try again.")
+                Text("Your answers are kept, even if you cancel. You can use other parts of the app; the new tapplet opens when it is ready. If it takes longer than about two and a half minutes, Tapplet Studio stops and you can try again. Cancelling stops waiting here; the server may still finish the request.")
                     .font(.callout)
                     .foregroundStyle(TappletTheme.mutedInk)
             }
@@ -415,13 +426,13 @@ struct GuidedMakeView: View {
     }
 
     private var cleanResponse: String {
-        store.guidedMakeResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.guidedMakeResponse.trimmingBriefWhitespace
     }
 
     private func moveForward() {
-        guard !store.isCreatingGuidedDraft else { return }
+        guard !store.isCreatingGuidedDraft, question.accepts(cleanResponse) else { return }
         store.guidedMakeDraft = answeredDraft
-        if store.guidedMakeDraft.isReadyForReview {
+        if store.guidedMakeDraft.isReadyForReview || store.guidedMakeQuestionIndex == BriefQuestion.all.count - 1 {
             store.guidedMakeShowsSummary = true
             responseIsFocused = false
         } else {
@@ -460,25 +471,11 @@ struct GuidedMakeView: View {
         store.guidedMakeResponse = store.guidedMakeDraft.answer(at: questionIndex)
         responseIsFocused = true
     }
-
-    private func createDraft() {
-        store.guidedMakeCreationError = nil
-        Task {
-            do {
-                _ = try await store.createApprovedBrief(store.guidedMakeDraft)
-                if store.advisoryNotice == nil { store.resetGuidedMake() }
-            } catch {
-                // Lost access opens the class-code sheet; a panel would outlive activation.
-                let presentation = store.present(error)
-                store.guidedMakeCreationError = presentation.requestsWorkshopAccess ? nil : presentation
-            }
-        }
-    }
 }
 
 /// Shows how long the current generation has been running, so a long wait is visibly alive.
-private struct GenerationElapsedTime: View {
-    @State private var start = Date.now
+struct GenerationElapsedTime: View {
+    let start: Date
 
     var body: some View {
         TimelineView(.periodic(from: start, by: 1)) { context in

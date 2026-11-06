@@ -2,6 +2,30 @@ import XCTest
 @testable import Tapplet
 
 final class GuidedBriefTests: XCTestCase {
+    func testReviewRejectsOverlongAnswersWithoutDiscardingThem() {
+        let limits = [300, 600, 600, 4000, 1000, 1000]
+        for (index, limit) in limits.enumerated() {
+            var draft = StarterPlan.all[0].draft
+            // The API counts UTF-16 units, not Swift grapheme clusters.
+            let boundary = String(repeating: "😀", count: limit / 2)
+            draft.setAnswer(boundary, at: index)
+            XCTAssertTrue(draft.isReadyForReview)
+            draft.setAnswer(boundary + "x", at: index)
+            XCTAssertFalse(draft.isReadyForReview, "Question \(index) must enforce the API limit")
+            XCTAssertEqual(draft.answer(at: index), boundary + "x")
+            draft.setAnswer("\u{FEFF} \n" + boundary + "\u{3000}", at: index)
+            XCTAssertTrue(draft.isReadyForReview, "Trim the same whitespace as the API")
+            draft.setAnswer(boundary + "\u{0085}", at: index)
+            XCTAssertFalse(draft.isReadyForReview, "JavaScript does not trim NEXT LINE")
+        }
+        var maximum = GuidedBriefDraft()
+        for (index, limit) in limits.enumerated() {
+            maximum.setAnswer(String(repeating: "中", count: limit), at: index)
+        }
+        XCTAssertTrue(maximum.isReadyForReview, "All six maximum-length answers must fit the combined brief")
+        XCTAssertLessThanOrEqual(maximum.creationBrief.utf16.count, 8000)
+    }
+
     func testReviewNeedsEveryRequiredAnswerButNotSourceContent() throws {
         XCTAssertFalse(GuidedBriefDraft().isReadyForReview)
         var draft = try XCTUnwrap(StarterPlan.all.first).draft

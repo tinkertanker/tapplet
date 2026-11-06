@@ -26,6 +26,9 @@ targets:
         buildPhase: resources
       - path: Resources/PrivacyInfo.xcprivacy
         buildPhase: resources
+      # Bundle the API's limits directly; do not maintain a second Swift copy.
+      - path: ../../services/api/src/briefLimits.json
+        buildPhase: resources
     info:
       path: Info.plist
       properties:
