@@ -158,8 +158,9 @@ private enum RestoreFetch: Sendable {
         }
         return plan.exampleRevisionID
     }
-    func startGuidedGeneration() {
-        guard generationTask == nil, !isCreatingGuidedDraft, guidedMakeDraft.isReadyForReview else { return }
+    @discardableResult
+    func startGuidedGeneration() -> Task<Void, Never>? {
+        guard generationTask == nil, !isCreatingGuidedDraft, guidedMakeDraft.isReadyForReview else { return nil }
         guidedMakeCreationError = nil
         let brief = guidedMakeDraft
         generationTask = Task {
@@ -173,6 +174,7 @@ private enum RestoreFetch: Sendable {
                 guidedMakeCreationError = presentation.requestsWorkshopAccess ? nil : presentation
             }
         }
+        return generationTask
     }
 
     func cancelGuidedGeneration() {

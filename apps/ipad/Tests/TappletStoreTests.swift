@@ -14,31 +14,30 @@ final class TappletStoreTests: XCTestCase {
         let plan = StarterPlan.all[0]
         store.applyStarterPlan(plan)
         await api.hold("generation")
-        let first = Task { try await store.createApprovedBrief(plan.draft) }
+        let first = try XCTUnwrap(store.startGuidedGeneration())
         await api.waitUntilHeld()
         store.selectedSection = .myApplets
         XCTAssertTrue(store.isCreatingGuidedDraft)
         XCTAssertNotNil(store.generationStartedAt)
-        first.cancel()
         store.cancelGuidedGeneration()
         XCTAssertFalse(store.isCreatingGuidedDraft)
         XCTAssertNil(store.generationStartedAt)
         XCTAssertEqual(store.guidedMakeDraft, plan.draft)
         // The collaborator deliberately ignores cancellation and returns success.
         await api.release()
-        do {
-            _ = try await first.value
-            XCTFail("A cancelled response must be discarded")
-        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        await first.value
         XCTAssertTrue(store.projects.isEmpty)
         XCTAssertNil(store.selectedProjectID)
         XCTAssertNil(store.guidedMakeCreationError)
+        XCTAssertEqual(store.guidedMakeDraft, plan.draft)
         XCTAssertTrue(TappletStore(api: api, storageDirectory: directory).projects.isEmpty)
 
-        _ = try await store.createApprovedBrief(plan.draft)
+        let retry = try XCTUnwrap(store.startGuidedGeneration())
+        await retry.value
         XCTAssertEqual(store.selectedProjectID, generated.id)
         XCTAssertEqual(store.projects.count, 1)
         XCTAssertFalse(store.isCreatingGuidedDraft)
+        XCTAssertEqual(store.guidedMakeDraft, GuidedBriefDraft())
     }
 
     @MainActor
