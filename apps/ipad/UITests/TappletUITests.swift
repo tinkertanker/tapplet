@@ -419,15 +419,19 @@ final class TappletUITests: XCTestCase {
         // Poll instead of a failing wait: a timed-out wait makes XCTest collect
         // a slow accessibility snapshot. Just after launch the sidebar can still
         // be animating open, so a tap may close it; tap again if it stays shut.
+        // The first accessibility query can be slow after launch. Resolve it
+        // before starting the reveal budget so it cannot prevent the first tap.
+        var itemExists = item.exists
         let deadline = Date().addingTimeInterval(12)
         var lastTap = Date.distantPast
-        while !item.exists && Date() < deadline {
+        while !itemExists && Date() < deadline {
             if showSidebar.exists && Date().timeIntervalSince(lastTap) > 1.5 {
                 showSidebar.tap()
                 lastTap = Date()
             } else {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.2))
             }
+            itemExists = item.exists
         }
         XCTAssertTrue(item.exists, "Sidebar item \(label) should be visible")
         item.tap()
