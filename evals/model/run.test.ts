@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { resolve } from "node:path";
 import {
@@ -70,19 +72,19 @@ test("evaluation plan rejects invalid or provenance-unsafe settings", () => {
   }), /Unsupported prompt boundary mode/);
 });
 
-test("production plan reads the deployed provider and model source of truth", async () => {
-  const environment = await productionEvaluationEnvironment(
-    resolve(import.meta.dirname, "../.."),
-    {},
-  );
-  assert.equal(environment.AI_PROVIDER, "openrouter");
-  assert.equal(environment.AI_MODEL, "openai/gpt-6-luna");
-  assert.equal(environment.AI_REASONING_EFFORT, "low");
+test("production plan reads configured settings without overriding another evaluation provider", async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), "tapplet-eval-settings-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(resolve(root, "services/api"), { recursive: true });
+  const vars = { AI_PROVIDER: "openrouter", AI_MODEL: "vendor/test-model", AI_REASONING_EFFORT: "high" };
+  await writeFile(resolve(root, "services/api/wrangler.jsonc"), `// Evaluation fixture\n${JSON.stringify({ vars })}`);
+  const environment = await productionEvaluationEnvironment(root, {});
+  assert.deepEqual(environment, vars);
   assert.deepEqual(parseEvaluationPlan({
     ...environment,
     OPENROUTER_API_KEY: "evaluation-secret",
     EVAL_BROWSER: "false",
-  }).reasoningEfforts, ["low"]);
+  }).reasoningEfforts, ["high"]);
   assert.deepEqual(parseEvaluationPlan({
     ...environment,
     EVAL_PROVIDER: "fixture",

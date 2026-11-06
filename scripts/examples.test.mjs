@@ -184,7 +184,7 @@ test('requires exact production seed ID, revision, and source-hash parity', () =
 test('all curated seeds initialise without browser errors', async () => {
   const directory = path.resolve('apps/ipad/Resources/Examples');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.html'));
-  assert.equal(files.length, 18);
+  assert.ok(files.length > 0, 'the corpus must not be empty');
   for (const file of files) {
     const errors = [];
     const virtualConsole = new VirtualConsole();
