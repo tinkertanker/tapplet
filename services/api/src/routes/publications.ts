@@ -16,13 +16,22 @@ export async function publicationRoutes(
     if (s[3] === "reports" && r.method === "POST") {
       if (!p || p.revokedAt || Date.parse(p.expiresAt) <= now().getTime())
         throw new HttpError(404, "PUBLICATION_NOT_FOUND", "Unavailable.");
-      const reason = obj(await readJson(r, 1000)).reason;
+      const { reason, reportId } = obj(await readJson(r, 1000));
       if (typeof reason !== "string" || !REASONS.has(reason))
         throw new HttpError(
           422,
           "INVALID_REPORT_REASON",
           "Choose a valid reason.",
         );
+      if (reportId !== undefined && (typeof reportId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(reportId)))
+        throw new HttpError(422, "INVALID_REPORT_ID", "Report ID must be a UUID.");
+      // Older, already-open pages send only a reason. New pages reuse a random
+      // ID per tapplet; scope it to the slug so it cannot identify a student
+      // across activities. Never replace the original report on a retry.
+      const id = reportId === undefined ? crypto.randomUUID() : `${p.slug}:${reportId.toLowerCase()}`;
+      if (await d.repository.hasContentReport(id, p.slug))
+        return new Response(null, { status: 204 });
       const timestamp = now(),
         date = timestamp.toISOString().slice(0, 10);
       if (
@@ -39,7 +48,7 @@ export async function publicationRoutes(
         );
       if (
         !(await d.repository.createContentReport({
-          id: crypto.randomUUID(),
+          id,
           publicationSlug: p.slug,
           reason: reason as ContentReportReason,
           now: timestamp.toISOString(),
