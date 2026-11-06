@@ -16,6 +16,7 @@ export class MemoryStudioRepository implements StudioRepository {
   readonly artifacts = new Map<string, ArtifactRecord>();
   readonly revisions = new Map<string, RevisionRecord>();
   readonly publications = new Map<string, PublicationRecord>();
+  readonly deletedPublications = new Set<string>();
   readonly retrieval = new Map<string, RetrievalEntry>();
   readonly contentReports: ContentReportInput[] = [];
   readonly classCodes = new Map<
@@ -168,7 +169,7 @@ export class MemoryStudioRepository implements StudioRepository {
       ),
     };
   }
-  async deleteArtifact(id: string, o: string) {
+  async deleteArtifact(id: string, o: string, teacherDeleted = true) {
     const a = this.artifacts.get(id);
     if (!a || a.ownerHash !== o) return false;
     this.artifacts.delete(id);
@@ -178,7 +179,10 @@ export class MemoryStudioRepository implements StudioRepository {
         this.revisionAssets.delete(k);
       }
     for (const [k, p] of this.publications)
-      if (p.artifactId === id) this.publications.delete(k);
+      if (p.artifactId === id) {
+        if (teacherDeleted) this.deletedPublications.add(k);
+        this.publications.delete(k);
+      }
     this.retrieval.delete(id);
     return true;
   }
@@ -199,7 +203,7 @@ export class MemoryStudioRepository implements StudioRepository {
         x.id,
         x.ownerHash,
       );
-      if (references && (await this.deleteArtifact(x.id, x.ownerHash)))
+      if (references && (await this.deleteArtifact(x.id, x.ownerHash, false)))
         deleted.push(references);
     }
     return deleted;
@@ -349,6 +353,9 @@ export class MemoryStudioRepository implements StudioRepository {
     const p = this.publications.get(s);
     return p ? structuredClone(p) : null;
   }
+  async isPublicationDeleted(s: string) {
+    return this.deletedPublications.has(s);
+  }
   async publicationReferencesAsset(s: string, id: string) {
     const p = this.publications.get(s);
     return !!p && !!this.revisionAssets.get(p.revisionId)?.has(id);
@@ -393,7 +400,12 @@ export class MemoryStudioRepository implements StudioRepository {
       this.retrieval.delete(p.artifactId);
     return true;
   }
+  async hasContentReport(id: string, slug: string) {
+    return this.contentReports.some((r) => r.id === id && r.publicationSlug === slug);
+  }
   async createContentReport(i: ContentReportInput) {
+    if (this.contentReports.some((r) => r.id === i.id))
+      return this.hasContentReport(i.id, i.publicationSlug);
     if (
       this.contentReports.filter((r) => r.publicationSlug === i.publicationSlug)
         .length >= i.maximumPerPublication

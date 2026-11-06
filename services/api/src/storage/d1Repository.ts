@@ -362,12 +362,15 @@ ON CONFLICT(artifact_id) DO UPDATE SET revision_id=?2,descriptor=?3,curated=1,up
     };
   }
   async deleteArtifact(id: string, o: string) {
-    const r = await this.p(
-      "DELETE FROM artifacts WHERE id=?1 AND owner_hash=?2 RETURNING id",
-      id,
-      o,
-    ).all<{ id: string }>();
-    return r.results.length === 1;
+    const results = await this.db.batch([
+      this.p(
+        "INSERT INTO deleted_publications(slug) SELECT p.slug FROM publications p JOIN artifacts a ON a.id=p.artifact_id WHERE a.id=?1 AND a.owner_hash=?2 ON CONFLICT(slug) DO NOTHING",
+        id,
+        o,
+      ),
+      this.p("DELETE FROM artifacts WHERE id=?1 AND owner_hash=?2 RETURNING id", id, o),
+    ]);
+    return results[1]?.results.length === 1;
   }
   async deleteExpiredArtifacts(b: string, n: string, l = 100) {
     const rows = (
@@ -622,6 +625,9 @@ RETURNING artifact_id,revision_id,descriptor,curated,updated_at`,
     ).first<Row>();
     return r ? pub(r) : null;
   }
+  async isPublicationDeleted(s: string) {
+    return !!(await this.p("SELECT 1 FROM deleted_publications WHERE slug=?1", s).first());
+  }
   async publicationReferencesAsset(s: string, id: string) {
     return !!(await this.p(
       "SELECT 1 ok FROM publications p JOIN revision_assets ra ON ra.revision_id=p.revision_id WHERE p.slug=?1 AND ra.asset_id=?2",
@@ -674,16 +680,21 @@ RETURNING artifact_id,revision_id,descriptor,curated,updated_at`,
     ]);
     return (r[0]?.meta.changes ?? 0) === 1;
   }
+  async hasContentReport(id: string, slug: string) {
+    return !!(await this.p(
+      "SELECT 1 FROM content_reports WHERE id=?1 AND publication_slug=?2", id, slug,
+    ).first());
+  }
   async createContentReport(i: ContentReportInput) {
     const r = await this.p(
-      "INSERT INTO content_reports(id,publication_slug,reason,created_at) SELECT ?1,?2,?3,?4 WHERE(SELECT count(*) FROM content_reports WHERE publication_slug=?2)<?5",
+      "INSERT INTO content_reports(id,publication_slug,reason,created_at) SELECT ?1,?2,?3,?4 WHERE(SELECT count(*) FROM content_reports WHERE publication_slug=?2)<?5 ON CONFLICT(id) DO NOTHING",
       i.id,
       i.publicationSlug,
       i.reason,
       i.now,
       i.maximumPerPublication,
     ).run();
-    return (r.meta.changes ?? 0) === 1;
+    return (r.meta.changes ?? 0) === 1 || this.hasContentReport(i.id, i.publicationSlug);
   }
   async deleteContentReports(b: string) {
     const r = await this.p(
