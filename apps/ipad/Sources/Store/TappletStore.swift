@@ -30,6 +30,9 @@ private enum RestoreFetch: Sendable {
     // Kept here so a failure is still shown after leaving Make mid-generation.
     var guidedMakeCreationError: TappletErrorPresentation?
     var isCreatingGuidedDraft = false
+    private(set) var generationStartedAt: Date?
+    private var generationID: UUID?
+    private var generationTask: Task<Void, Never>?
     // Kept here so a reopened editor shows a change still being made, and its failure.
     var refiningProjectIDs: Set<String> = []
     var refinementErrors: [String: String] = [:]
@@ -155,10 +158,54 @@ private enum RestoreFetch: Sendable {
         }
         return plan.exampleRevisionID
     }
+    @discardableResult
+    func startGuidedGeneration() -> Task<Void, Never>? {
+        guard generationTask == nil, !isCreatingGuidedDraft, guidedMakeDraft.isReadyForReview else { return nil }
+        guidedMakeCreationError = nil
+        let brief = guidedMakeDraft
+        generationTask = Task {
+            defer { if !Task.isCancelled { generationTask = nil } }
+            do {
+                _ = try await createApprovedBrief(brief)
+                if advisoryNotice == nil { resetGuidedMake() }
+            } catch {
+                guard !Task.isCancelled else { return }
+                let presentation = present(error)
+                guidedMakeCreationError = presentation.requestsWorkshopAccess ? nil : presentation
+            }
+        }
+        return generationTask
+    }
+
+    func cancelGuidedGeneration() {
+        generationTask?.cancel()
+        generationTask = nil
+        generationID = nil
+        generationStartedAt = nil
+        isCreatingGuidedDraft = false
+        guidedMakeCreationError = nil
+    }
+
     func createApprovedBrief(_ brief: GuidedBriefDraft) async throws -> ArtifactProject {
-        isCreatingGuidedDraft = true; defer { isCreatingGuidedDraft = false }
-        let text = brief.answers.enumerated().map { "\(BriefQuestion.all[$0.offset].prompt)\n\($0.element)" }.joined(separator: "\n\n")
+        try Task.checkCancellation()
+        if let message = brief.lengthError { throw TappletAPIError.server(422, "INVALID_INPUT", message) }
+        let id = UUID()
+        generationID = id
+        generationStartedAt = .now
+        isCreatingGuidedDraft = true
+        defer {
+            // A cancelled response must not clear a newer generation's state.
+            if generationID == id {
+                generationID = nil
+                generationStartedAt = nil
+                isCreatingGuidedDraft = false
+            }
+        }
+        let text = brief.creationBrief
         if isUITesting {
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing-delayed-generation") {
+                try await Task.sleep(for: .seconds(60))
+            }
             var project = Self.testingProject(brief: brief, creationBrief: text)
             let arguments = ProcessInfo.processInfo.arguments
             if arguments.contains("--ui-testing-history-images") {
@@ -206,9 +253,13 @@ private enum RestoreFetch: Sendable {
             feedback: brief.feedback, classroomFit: brief.classroomFit, format: brief.format?.rawValue
         ), preferredExampleRevisionId: guidedMakeEffectivePreferredExampleRevisionId)
         let result = try await api.generate(request: request)
-        presentAdvisories(result.warnings)
+        try Task.checkCancellation()
+        guard generationID == id else { throw CancellationError() }
         // A model can reuse an image from one of this device's own exemplars.
         let generated = await withMissingAssets(result.value)
+        try Task.checkCancellation()
+        guard generationID == id else { throw CancellationError() }
+        presentAdvisories(result.warnings)
         upsert(generated)
         open(generated)
         return generated

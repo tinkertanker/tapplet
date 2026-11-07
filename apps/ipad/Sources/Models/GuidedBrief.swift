@@ -29,10 +29,25 @@ struct GuidedBriefDraft: Equatable, Sendable {
         [learnerContext, learningObjective, studentAction, sourceContent, feedback, classroomFit]
     }
 
+    var creationBrief: String {
+        answers.enumerated().map {
+            "\(BriefQuestion.all[$0.offset].prompt)\n\($0.element.trimmingBriefWhitespace)"
+        }.joined(separator: "\n\n")
+    }
+
     var isReadyForReview: Bool {
-        BriefQuestion.all.filter { !$0.isOptional }.allSatisfy {
-            !answer(at: $0.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        BriefQuestion.all.allSatisfy {
+            $0.accepts(answer(at: $0.id))
+        } && creationBrief.utf16.count <= BriefLimits.api.creationBrief
+    }
+
+    var lengthError: String? {
+        for question in BriefQuestion.all where question.isTooLong(answer(at: question.id)) {
+            return "Shorten your answer to ‘\(question.prompt)’ to \(question.maximumLength) characters or fewer."
         }
+        return creationBrief.utf16.count > BriefLimits.api.creationBrief
+            ? "Shorten your answers to fit the \(BriefLimits.api.creationBrief)-character brief limit."
+            : nil
     }
 
     mutating func setAnswer(_ answer: String, at index: Int) {
@@ -75,6 +90,16 @@ struct BriefQuestion: Identifiable, Sendable {
     let placeholder: String
     let suggestions: [String]
     let isOptional: Bool
+
+    var maximumLength: Int { BriefLimits.api.answers[id] }
+
+    func isTooLong(_ answer: String) -> Bool {
+        answer.trimmingBriefWhitespace.utf16.count > maximumLength
+    }
+
+    func accepts(_ answer: String) -> Bool {
+        (isOptional || !answer.trimmingBriefWhitespace.isEmpty) && !isTooLong(answer)
+    }
 
     static let all: [BriefQuestion] = [
         BriefQuestion(
@@ -299,10 +324,30 @@ struct RefineSuggestion: Identifiable, Sendable {
 }
 
 extension String {
+    /// Match JavaScript String.trim() and String.length at the API boundary.
+    var trimmingBriefWhitespace: String {
+        trimmingCharacters(in: CharacterSet(charactersIn:
+            "\u{0009}\u{000A}\u{000B}\u{000C}\u{000D}\u{0020}\u{00A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}"
+        ))
+    }
+
     /// Adds a suggested phrase on its own line, or uses it alone when the text is blank.
     func addingSuggestion(_ suggestion: String) -> String {
         if trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return suggestion }
         if contains(suggestion) { return self }
         return self + (hasSuffix("\n") ? suggestion : "\n\(suggestion)")
     }
+}
+
+/// API-owned resource, bundled directly by project.yml.
+private struct BriefLimits: Decodable, Sendable {
+    let learnerContext, learningObjective, studentAction, sourceContent, feedback, classroomFit, creationBrief: Int
+    var answers: [Int] { [learnerContext, learningObjective, studentAction, sourceContent, feedback, classroomFit] }
+    static let api: BriefLimits = {
+        guard let url = Bundle.main.url(forResource: "briefLimits", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let limits = try? JSONDecoder().decode(BriefLimits.self, from: data)
+        else { preconditionFailure("Missing API brief limits resource") }
+        return limits
+    }()
 }
