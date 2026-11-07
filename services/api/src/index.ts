@@ -122,7 +122,25 @@ export function injectPublicHtml(source: string, slug: string): string {
   ]
     .map(([value, label]) => `<label><input type="radio" name="reason" value="${value}"> ${label}</label>`)
     .join("");
-  const report = `<footer class="report-bar"><button type="button" id="report-open" aria-haspopup="dialog">Report this activity</button></footer><dialog id="report-dialog" aria-labelledby="report-title"><form method="dialog" id="report-form"><h2 id="report-title">Report this activity</h2><p>Tell the Tapplet team about a problem. Your name is not sent.</p><fieldset><legend>What is wrong?</legend>${reasons}</fieldset><p id="report-status" role="status"></p><div class="report-actions"><button type="button" id="report-cancel">Cancel</button><button type="submit" id="report-send" disabled>Send report</button></div></form></dialog><script ${PUBLIC_REPORT_MARKER}>(()=>{const o=document.getElementById('report-open'),d=document.getElementById('report-dialog'),f=document.getElementById('report-form'),s=document.getElementById('report-send'),c=document.getElementById('report-cancel'),t=document.getElementById('report-status'),choices=()=>f.querySelectorAll('input');let sent=false,busy=false,gone=false;const update=()=>{s.disabled=sent||busy||gone||!f.reason.value};o.onclick=()=>{if(!sent&&!busy&&!gone){t.textContent='';f.reset();update()}d.showModal()};c.onclick=()=>d.close();f.onchange=update;f.onsubmit=e=>{e.preventDefault();const reason=f.reason.value;if(!reason||sent||busy||gone)return;busy=true;update();t.textContent='Sending…';const a=new AbortController(),timer=setTimeout(()=>a.abort(),20000);fetch('/v1/publications/${slug}/reports',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reason}),signal:a.signal}).then(r=>{if(r.ok){sent=true;choices().forEach(i=>i.disabled=true);t.textContent='Thank you. Your report was sent to the Tapplet team.';c.textContent='Close';o.textContent='Report sent';return}if(r.status===404||r.status===410){gone=true;choices().forEach(i=>i.disabled=true)}t.textContent=r.status===429?'Too many reports were sent from this network today. Please tell your teacher instead.':gone?'This activity is no longer shared, so it cannot be reported here. Please tell your teacher.':'The report was not sent. Please try again.'}).catch(()=>{t.textContent='The report was not sent. Check your internet connection and try again.'}).finally(()=>{clearTimeout(timer);busy=false;update()})}})()</script>`;
+  const report = `<style>fieldset label:has(input:disabled){color:#6F6D67;background:#F8F6F1;cursor:default}fieldset input:disabled{filter:grayscale(1);opacity:.55}#report-send:disabled{background:#ECE8DF;border-color:#DFDEDA;color:#6F6D67;opacity:1}</style><footer class="report-bar"><button type="button" id="report-open" aria-haspopup="dialog">Report this activity</button></footer><dialog id="report-dialog" aria-labelledby="report-title"><form method="dialog" id="report-form"><h2 id="report-title">Report this activity</h2><p>Tell the Tapplet team about a problem. Your name is not sent.</p><fieldset><legend>What is wrong?</legend>${reasons}</fieldset><p id="report-status" role="status"></p><div class="report-actions"><button type="button" id="report-cancel">Cancel</button><button type="submit" id="report-send" disabled>Send report</button></div></form></dialog><script ${PUBLIC_REPORT_MARKER}>(()=>{
+const o=document.getElementById('report-open'),d=document.getElementById('report-dialog'),f=document.getElementById('report-form'),s=document.getElementById('report-send'),c=document.getElementById('report-cancel'),t=document.getElementById('report-status'),choices=()=>f.querySelectorAll('input');
+let sent=false,busy=false,gone=false,reportId;
+const update=()=>{s.disabled=sent||busy||gone||!f.reason.value};
+o.onclick=()=>{if(!sent&&!busy&&!gone){t.textContent='';f.reset();update()}d.showModal()};
+c.onclick=()=>d.close();f.onchange=update;
+f.onsubmit=e=>{
+  e.preventDefault();const reason=f.reason.value;if(!reason||sent||busy||gone)return;
+  // Reuse an anonymous ID only for this tapplet, including after a reload or a
+  // lost response. Storage may be disabled; reporting must still be possible.
+  if(!reportId){try{const key='tapplet-report:${slug}';reportId=localStorage.getItem(key)||crypto.randomUUID();localStorage.setItem(key,reportId)}catch{reportId=crypto.randomUUID()}}
+  busy=true;update();t.textContent='Sending…';
+  const a=new AbortController(),timer=setTimeout(()=>a.abort(),20000);
+  fetch('/v1/publications/${slug}/reports',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reason,reportId}),signal:a.signal}).then(r=>{
+    if(r.ok){sent=true;choices().forEach(i=>i.disabled=true);t.textContent='Thank you. Your report was sent to the Tapplet team.';c.textContent='Close';o.textContent='Report sent';return}
+    if(r.status===404||r.status===410){gone=true;choices().forEach(i=>i.disabled=true)}
+    t.textContent=r.status===429?'Too many reports were sent from this network today. Please tell your teacher instead.':gone?'This activity is no longer shared, so it cannot be reported here. Please tell your teacher.':'The report was not sent. Please try again.'
+  }).catch(()=>{t.textContent='The report was not sent. Check your internet connection and try again.'}).finally(()=>{clearTimeout(timer);busy=false;update()})
+}})()</script>`;
   const document = parseHtml(source, { sourceCodeLocationInfo: true });
   const root = document.childNodes.find(
     (node): node is DefaultTreeAdapterTypes.Element => "tagName" in node && node.tagName === "html",
@@ -190,6 +208,12 @@ async function servePublic(
   const publication = parts[0]
     ? await repository.getPublication(parts[0])
     : null;
+  if (!publication && parts[0] && await repository.isPublicationDeleted(parts[0]))
+    return publicationErrorResponse(
+      410,
+      "This tapplet was removed by its teacher",
+      "It is no longer available. Ask your teacher for another activity.",
+    );
   if (!publication)
     return publicationErrorResponse(
       404,

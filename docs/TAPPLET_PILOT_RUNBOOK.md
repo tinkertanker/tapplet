@@ -383,6 +383,35 @@ Use `no-action` only after checking the live tapplet, or `teacher-contacted` whe
 follow-up is still required. Reports are retained for 180 days and then removed
 by the scheduled cleanup.
 
+Student pages store a random report UUID in browser local storage for each
+publication, and send it as the optional `reportId` alongside `reason`. The API
+scopes that ID to the publication and uses the existing report primary key to
+deduplicate retries, including reloads and lost responses. An accepted retry
+returns 204 without changing the first reason or adding a row. Sequential
+retries do not spend more network quota. Different browsers on the same school
+network remain separate reporters. No student name, new IP identifier or
+cross-tapplet browser identifier is stored. Clearing/blocking local storage or
+using another browser defeats this convenience protection; it is not an abuse
+identity system. Older pages without `reportId` retain their existing behaviour.
+Deduplication lasts while the report remains in the 180-day retention window.
+
+## Deleted student links
+
+Migration `0017_deleted_publications.sql` adds a table containing only deleted
+publication slugs. Apply it before deploying the matching Worker, through the
+normal approved migration process. Teacher deletion records every old slug in
+the same transaction as removing the artifact and its revisions/publications.
+Those student URLs then return a no-store 410 page saying “This tapplet was
+removed by its teacher”. No title, teacher identity, source or asset reference
+is retained in that table, and the player does not read R2 for deleted links.
+The existing source-storage cleanup policy is unchanged.
+
+Unknown links still return 404; revoked and expired links retain their existing
+messages. Automatic retention cleanup is not labelled as teacher deletion.
+Slugs deleted before this change cannot be reconstructed and still return 404.
+The additive table can remain if the Worker is rolled back; do not drop it as
+part of a rollback. This migration does not modify existing reports or content.
+
 ## Restore projects after reinstall or device replacement
 
 The signed device credential is stored in Keychain and is eligible for an

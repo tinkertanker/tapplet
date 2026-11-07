@@ -60,7 +60,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
     const page = await context.newPage();
     const external: string[] = [];
     const assets: string[] = [];
-    const reports: unknown[] = [];
+    const reports: Array<{ reason: string; reportId: string }> = [];
     const env = environment(html);
     await context.route("**/*", async (route) => {
       const request = route.request(), url = new URL(request.url());
@@ -108,6 +108,13 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
     await dialog.getByRole("button", { name: "Send report" }).click();
     await expect.poll(() => dialog.getByRole("status").textContent()).toBe("Thank you. Your report was sent to the Tapplet team.");
     expect(await page.getByRole("button", { name: "Report sent", exact: true }).count()).toBe(1);
+    for (const radio of await dialog.getByRole("radio").all())
+      expect(await radio.isDisabled()).toBe(true);
+    const selected = await dialog.locator("input:checked").inputValue();
+    const label = await dialog.locator("label").first().boundingBox();
+    if (!label) throw new Error("Missing report choice");
+    await page.mouse.click(label.x + label.width / 2, label.y + label.height / 2);
+    expect(await dialog.locator("input:checked").inputValue()).toBe(selected);
   }
 
   function activity(page: Page) {
@@ -251,7 +258,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(state.reports).toEqual([]);
       await expect.poll(() => frame.evaluate("Number(document.body.dataset.blocked)")).toBeGreaterThanOrEqual(2);
       await sendReport(state.page, "I cannot see, hear or use it");
-      expect(state.reports).toEqual([{ reason: "accessibility" }]);
+      expect(state.reports).toEqual([{ reason: "accessibility", reportId: expect.any(String) }]);
     } finally { await state.context.close(); }
   });
 
@@ -264,7 +271,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(await frame.evaluate("document.querySelector('img').naturalWidth")).toBe(20);
       expect(await frame.evaluate("innerWidth")).toBe(width);
       await sendReport(state.page, "I cannot see, hear or use it");
-      expect(state.reports).toEqual([{ reason: "accessibility" }]);
+      expect(state.reports).toEqual([{ reason: "accessibility", reportId: expect.any(String) }]);
       expect(state.external).toEqual([]);
     } finally { await state.context.close(); }
   });
@@ -278,7 +285,7 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(report.height).toBeGreaterThanOrEqual(36);
       await activity(state.page).getByText("Last answer").click();
       await sendReport(state.page, "Something else is wrong");
-      expect(state.reports).toEqual([{ reason: "other" }]);
+      expect(state.reports).toEqual([{ reason: "other", reportId: expect.any(String) }]);
     } finally { await state.context.close(); }
   });
   it("sends one report when the dialog is closed and reopened mid-send", async () => {
@@ -297,7 +304,19 @@ describe.each([["Chromium", chromium], ["WebKit", webkit]] as const)("published 
       expect(await dialog.getByRole("radio", { name: "It copies someone else's work" }).isDisabled()).toBe(true);
       const box = await dialog.boundingBox();
       expect(box && box.x).toBeGreaterThan(0);
-      expect(state.reports).toEqual([{ reason: "other" }]);
+      expect(state.reports).toEqual([{ reason: "other", reportId: expect.any(String) }]);
+    } finally { await state.context.close(); }
+  });
+
+  it("reuses the report ID after reloading the student page", async () => {
+    const state = await open(source);
+    try {
+      await sendReport(state.page, "Something else is wrong");
+      await state.page.reload();
+      await sendReport(state.page, "Something else is wrong");
+      expect(state.reports).toHaveLength(2);
+      expect(state.reports[0]?.reportId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(state.reports[1]).toEqual(state.reports[0]);
     } finally { await state.context.close(); }
   });
 });

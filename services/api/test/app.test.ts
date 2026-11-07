@@ -78,6 +78,33 @@ describe("Tapplet API registration and public HTML", () => {
     },
   };
 
+  it("deduplicates report retries without grouping students on the same network", async () => {
+    const slug = "ABCDEFGHIJKLMNOPQRSTUV";
+    repository.publications.set(slug, {
+      slug, artifactId: "artifact", revisionId: "revision", ownerHash: "owner",
+      title: "Private title", sourceHash: "source", createdAt: "2026-08-01T00:00:00Z",
+      expiresAt: "2099-01-01T00:00:00Z", revokedAt: null,
+    });
+    const reportId = crypto.randomUUID();
+    const send = (id: string = reportId, reason = "other") => app.fetch(new Request(
+      `https://api.test/v1/publications/${slug}/reports`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.1" },
+        body: JSON.stringify({ reason, reportId: id }),
+      },
+    ));
+    expect((await send()).status).toBe(204);
+    for (let n = 0; n < 22; n++) expect((await send()).status).toBe(204);
+    expect((await send(reportId, "copyright")).status).toBe(204);
+    expect(repository.contentReports).toHaveLength(1);
+    expect(repository.contentReports[0]?.reason).toBe("other");
+    expect((await send(crypto.randomUUID())).status).toBe(204);
+    expect(repository.contentReports).toHaveLength(2);
+    expect((await send("invalid")).status).toBe(422);
+    repository.publications.get(slug)!.revokedAt = "2026-08-02T00:00:00Z";
+    expect((await send()).status).toBe(404);
+  });
+
   function register(accessCode: string, address = "192.0.2.1") {
     return app.fetch(
       new Request("https://api.test/v1/devices/register", {
