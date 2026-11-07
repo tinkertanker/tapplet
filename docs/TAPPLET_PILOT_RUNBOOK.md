@@ -255,18 +255,30 @@ Before external distribution:
    agreements, and the configured development team. Local exports also require
    an automatic-distribution signing identity/profile on the release Mac;
    Xcode Cloud manages its own signing.
-2. For local uploads, generate the project with XcodeGen 2.44.1, create a signed
-   Release archive with Xcode 26, export with `ExportOptions.plist`, and run
-   Xcode's Validate App action. Set `CURRENT_PROJECT_VERSION` above both the
-   uploaded and reserved Cloud build numbers; automatic build-number management
-   is disabled for local exports. After a local upload, keep **Xcode Cloud →
-   Settings → Build Number → Next Build Number** above it. The 6 November audit
-   found both histories at `6`; the next qualifying merge automatically started
-   Cloud build `7`. Check current numbers rather than reusing those audit values.
-   The setting itself must be checked in App Store Connect. Alternatively,
-   use a separately approved manual App Store-eligible Cloud archive. After
-   upload, verify the exact archive/run's build has finished processing with
-   `processingState: VALID` and is App Store-eligible, not `INTERNAL_ONLY`.
+2. Before a local archive, the release owner must serialise build-number
+   allocation with all other uploaders and Cloud operators for this app:
+   - Record the TestFlight workflow's enabled state, then deactivate it in
+     **Xcode Cloud → Manage Workflows → TestFlight**. Hold all automatic and
+     manual Cloud starts, including other workflows for the app; a hold on
+     app-changing merges alone is insufficient.
+   - Let queued/running builds finish or cancel them and confirm they have
+     stopped. Check both upload and Cloud histories, including allocated numbers
+     from cancelled runs, then choose a local number above every uploaded or
+     reserved number. Do not reuse the historical audit values `6` or `7`.
+   - Set `CURRENT_PROJECT_VERSION` in `project.yml` before XcodeGen 2.44.1
+     generation, or override it when archiving. Create a signed Release archive
+     with Xcode 26 only after setting the number; recreate any archive made with
+     the wrong number. Export with `ExportOptions.plist` and run Xcode's Validate
+     App action; local exports do not automatically renumber an existing archive.
+   - Keep the hold until that exact upload reaches `processingState: VALID`.
+     Recheck all allocated numbers and set **Xcode Cloud → Settings → Build
+     Number → Next Build Number** above them, including the local upload, without
+     lowering an already-higher counter. Only then restore the previous workflow
+     state and release the hold. If processing fails or is still pending, keep
+     the hold and resolve it with the release owner; do not resume automatically.
+   Alternatively, use a separately approved manual App Store-eligible Cloud
+   archive. In either case, verify the exact archive/run's uploaded build is
+   `VALID` and App Store-eligible, not `INTERNAL_ONLY`, before distribution.
 3. Have the release owner confirm the export-compliance determination behind
    `ITSAppUsesNonExemptEncryption = NO`: native first-party use is limited to
    Apple-provided HTTPS/Keychain and SHA-256 hashing, and no bundled code adds

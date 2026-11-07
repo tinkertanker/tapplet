@@ -65,11 +65,17 @@ Xcode Cloud manages signing and monotonically increasing build numbers. On
 highest TestFlight upload were `6` (the upload was `VALID`). The subsequent
 [PR #55 merge](https://github.com/tinkertanker/tapplet/pull/55) automatically
 started Cloud build `7` with `startReason: GIT_REF_CHANGE`; no counter reset or
-synthetic trigger commit was needed. Before mixing Cloud and local uploads,
-check both histories and keep **Xcode Cloud → Settings → Build Number → Edit
-Next Build Number** above every uploaded or reserved build number. The public
-API exposes build history, but not this setting; confirm it in App Store Connect
-and never reset it to the old initial value of `2`.
+synthetic trigger commit was needed. Before a local archive, the release owner
+must serialise local uploads with automatic and manual Cloud starts: deactivate
+the TestFlight workflow, hold all other uploaders and Cloud starts for this app,
+and let queued/running builds settle before choosing an unused build number.
+Set the local number before archiving; recreate an archive made with the wrong
+number. Keep the hold until the local upload is `VALID` and **Xcode Cloud →
+Settings → Build Number → Edit Next Build Number** is above every uploaded or
+reserved number, including the local one, then restore the previous workflow
+state. Follow the [release gate](../../docs/TAPPLET_PILOT_RUNBOOK.md#testflight-release-gate)
+for the sequence. The public API exposes history, not this counter setting;
+confirm it in App Store Connect and never reset it to the old initial value of `2`.
 
 **Internal tester delivery still needs one-time setup by the release owner.**
 The 6 November API audit found no internal group; the existing external group
