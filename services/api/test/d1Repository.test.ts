@@ -1,6 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { CloudflareAssetStore } from "../src/assets";
+import worker from "../src/index";
+import type { StudioEnv } from "../src/env";
 import { D1StudioRepository } from "../src/storage/d1Repository";
 import {
   CURATED_SEED_OWNER,
@@ -44,6 +46,54 @@ const artifact: ArtifactRecord = {
 };
 
 describe("atomic storage admission with migrated SQLite", () => {
+  it("accepts concurrent report retries once, including at the publication cap", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      const report = { id: "report", publicationSlug: "slug", reason: "other" as const,
+        now: revision.createdAt, maximumPerPublication: 1 };
+      expect(await Promise.all([
+        repository.createContentReport(report), repository.createContentReport(report),
+      ])).toEqual([true, true]);
+      expect(await repository.createContentReport({ ...report, id: "another" })).toBe(false);
+      expect(sqlite.prepare("SELECT id,reason FROM content_reports").all()).toEqual([{ id: "report", reason: "other" }]);
+    } finally { sqlite.close(); }
+  });
+
+  it("keeps only deleted slugs and serves a private removed page, never the activity or assets", async () => {
+    const { database, sqlite } = migratedDatabase();
+    try {
+      const repository = new D1StudioRepository(database);
+      const firstRevision = { ...revision, parentRevisionId: null };
+      await repository.createArtifact({ artifact, revision: firstRevision, assetIds: [] });
+      const slug = "ABCDEFGHIJKLMNOPQRSTUV";
+      await repository.publish(slug, artifact, firstRevision, "2099-01-01T00:00:00Z", revision.createdAt, "descriptor");
+      expect(await repository.deleteArtifact(artifact.id, "wrong-owner")).toBe(false);
+      expect(await repository.getPublication(slug)).not.toBeNull();
+      expect(await repository.isPublicationDeleted(slug)).toBe(false);
+      await repository.revokePublication(slug, artifact.ownerHash, revision.createdAt);
+      const newSlug = "ZYXWVUTSRQPONMLKJIHGFE";
+      await repository.publish(newSlug, artifact, firstRevision, "2099-01-01T00:00:00Z", revision.createdAt, "descriptor");
+      expect(await repository.deleteArtifact(artifact.id, artifact.ownerHash)).toBe(true);
+      expect(await repository.getPublication(slug)).toBeNull();
+      expect(await repository.getRevision(revision.id)).toBeNull();
+      expect(sqlite.prepare("SELECT * FROM deleted_publications ORDER BY slug").all()).toEqual([{ slug }, { slug: newSlug }]);
+      const env = { DB: database, PUBLIC_PLAYER_ORIGIN: "https://player.test",
+        MEDIA: { get: () => { throw new Error("Deleted content must not be read"); } },
+      } as unknown as StudioEnv;
+      for (const path of [slug, newSlug, `${slug}/assets/private-image`]) {
+        const response = await worker.fetch(new Request(`https://player.test/${path}`), env);
+        expect(response.status).toBe(410);
+        expect(response.headers.get("cache-control")).toBe("no-store");
+        const html = await response.text();
+        expect(html).toContain("This tapplet was removed by its teacher");
+        expect(html).not.toContain(artifact.title);
+        expect(html).not.toContain("<iframe");
+      }
+      expect((await worker.fetch(new Request("https://player.test/unknown-link"), env)).status).toBe(404);
+    } finally { sqlite.close(); }
+  });
+
   it("keeps revision inserts working after an additive column migration", async () => {
     const { database, sqlite } = migratedDatabase();
     try {

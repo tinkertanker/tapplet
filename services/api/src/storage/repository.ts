@@ -205,6 +205,7 @@ export interface StudioRepository {
   ): Promise<PublicationRecord | null>;
   listActivePublicationsForOwner(owner: string): Promise<PublicationRecord[]>;
   getPublication(slug: string): Promise<PublicationRecord | null>;
+  isPublicationDeleted(slug: string): Promise<boolean>;
   publicationReferencesAsset(slug: string, assetId: string): Promise<boolean>;
   ownerReferencesAsset(owner: string, assetId: string): Promise<boolean>;
   extendPublication(
@@ -215,6 +216,7 @@ export interface StudioRepository {
     max: string,
   ): Promise<ExtendPublicationResult>;
   revokePublication(slug: string, owner: string, now: string): Promise<boolean>;
+  hasContentReport(id: string, slug: string): Promise<boolean>;
   createContentReport(input: ContentReportInput): Promise<boolean>;
   deleteContentReports(before: string): Promise<number>;
 }

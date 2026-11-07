@@ -4,6 +4,9 @@ Baseline: `29d98e3ef7b9ef8498d742eccf92d2413420f9d7` on `master`.
 Policy: [provider-eval-test-policy.md](provider-eval-test-policy.md).
 This pass changes tests and documentation only. It does not edit `apps/ipad`,
 API report/public-player/app-route/repository tests, runtime code or settings.
+The final candidate incorporates `master` at
+`b6095859915b12ee513d70924b7466d45c42276a` by a normal merge. Upstream changes,
+including the mean-and-median checks in `scripts/examples.test.mjs`, are preserved.
 
 ## Measurements and complete inventory
 
@@ -21,7 +24,7 @@ the Node parent test in `run-checks.test.mjs`.
 | `services/api/test/anthropicProvider.test.ts` | Inspected, retained, passed | 6 → 6 | 12 → 12 | 248 → 248 |
 | `services/api/test/generation.test.ts` | Inspected, changed, passed | 61 → 61 | 120 → 117 | 1401 → 1399 |
 | `scripts/class-access.test.mjs` | Inspected, retained, passed | 10 → 10 | 10 → 10 | 225 → 225 |
-| `scripts/examples.test.mjs` | Inspected, changed, passed | 48 → 48 | 48 → 48 | 1089 → 1089 |
+| `scripts/examples.test.mjs` | Inspected, changed, passed | 48 → 48 | 48 → 48 | 1089 → 1144 |
 | `scripts/live-image-fixture.test.mjs` | Inspected, retained, passed | 1 → 1 | 1 → 1 | 22 → 22 |
 | `scripts/publication-browser-fixture.test.mjs` | Inspected, retained, passed | 1 → 1 | 1 → 1 | 77 → 77 |
 | `scripts/run-checks.test.mjs` | Inspected, changed, passed | 2 → 2 | 5 → 3 | 71 → 71 |
@@ -29,7 +32,12 @@ the Node parent test in `run-checks.test.mjs`.
 | `evals/model/production-harness.test.ts` | Inspected, retained, passed | 7 → 7 | 7 → 7 | 402 → 402 |
 | `evals/model/run.test.ts` | Inspected, changed, passed | 5 → 5 | 5 → 5 | 111 → 113 |
 | `evals/model/validator-parity.test.ts` | Inspected, retained, passed | 1 → 1 | 1 → 1 | 174 → 174 |
-| **Total** | **13 inspected and executed; 6 changed** | **232 → 230** | **356 → 344** | **6121 → 6089** |
+| **Total** | **13 inspected and executed; 6 changed** | **232 → 230** | **356 → 344** | **6121 → 6144** |
+
+The table preserves the original baseline. The merge adds 55 upstream lines to
+`scripts/examples.test.mjs` without changing registrations or collected case counts.
+Against the integrated `master` base, scoped lines are **6176 → 6144**; the pruning
+still removes 32 lines. No upstream behavioural assertion was removed or weakened.
 
 Vitest `it.each` rows: **151 → 143** (tkslopper 58 → 54, factory 14 → 13,
 Anthropic 9 → 9, generation 70 → 67). Dynamically collected Node child rows:
@@ -43,17 +51,18 @@ Measured in the Linux orb, Node 22.23.4, npm 10.9.10, installed locked dependenc
 
 | Command | Before | After | Result |
 | --- | ---: | ---: | --- |
-| `npm run api:test -- test/tkslopper.test.ts test/createProvider.test.ts test/anthropicProvider.test.ts test/generation.test.ts` | 3.28 s | 2.91 s | 258 → 248 passed |
-| `node --import tsx --test scripts/*.test.mjs evals/**/*.test.ts` | 77.86 s | 73.66 s | 98 → 96 passed; no skips |
-| **Sequential scoped wall time** | **81.14 s** | **76.57 s** | **356 → 344 passed** |
+| `npm run api:test -- test/tkslopper.test.ts test/createProvider.test.ts test/anthropicProvider.test.ts test/generation.test.ts` | 3.28 s | 2.95 s | 258 → 248 passed |
+| `node --import tsx --test scripts/*.test.mjs evals/**/*.test.ts` | 77.86 s | 73.61 s | 98 → 96 passed; no skips |
+| **Sequential scoped wall time** | **81.14 s** | **76.56 s** | **356 → 344 passed** |
 
 These are single elapsed-time samples including startup, not a speed benchmark.
 Browser startup, cache warmth and scheduling can dominate such a small pruning.
-After measurements include the restored HTTP 504 row from independent review.
+After measurements include the restored HTTP 504 row and the integrated upstream
+checks, so the before/after samples also differ in upstream behavioural coverage.
 The final JSONC fixture refinement was also checked with `eval:model:test`.
 
-Final `npm run verify`: **all eight checks passed**, 77.38 s elapsed. It ran
-75 root Node tests, 476 API cases in 18 files, 13 model-evaluation tests and
+Final integrated `npm run verify`: **all eight checks passed**, 77.91 s elapsed. It ran
+75 root Node tests, 481 API cases in 18 files, 13 model-evaluation tests and
 20 browser-evaluation tests, plus both typechecks, corpus validation and artifact
 evaluations. No skipped tests were reported. `git diff --check` also passed.
 
@@ -168,11 +177,20 @@ No removal is justified by assumed upstream coverage or retired behaviour.
    assertions, and refined the policy to retain HTTP-timeout no-replay witnesses.
    This is preventive coverage, not a claim that current runtime code replays 504.
    The reviewer accepted the other removals; their classifications remain unchanged.
-   Re-review of this fix is pending and PM will arrange cycle 2.
+7. **Independent review cycle 2 — NO MATERIAL FINDINGS:** exact head
+   `02fbf0008b7d11c90a72f1e4942e79ff2f2a2d22` resolved the Required/P2 finding.
+   The reviewer independently verified all per-file counts and reran full and
+   scoped checks successfully. This review preceded integration of newer `master`.
+8. **Final integration:** merged `master` at `b609585` without conflicts or history
+   rewriting. The upstream mean-and-median checks remain intact; the only pruning
+   change to that file is still the fixed-size assertion becoming a nonempty check.
+   Updated line counts for the upstream additions. Independent review cycle 3 is
+   the final authorised cycle and must bind this integrated candidate before merge.
 
-Steps 1–5 are self-review, **not independent review**; step 6 records the independent
+Steps 1–5 are self-review, **not independent review**; steps 6–7 record the independent
 review arranged by PM. This implementation thread created no subagents or other
 threads. The modest reduction is deliberate, not a target shortfall.
 Ambiguous candidates (deadline construction and safe-image hash) were retained,
 not silently classified as harmless pins. PM arranges independent review; YJ
-alone approves merge. This work authorises neither merge nor deployment.
+alone approves merge. YJ's separate merge approval is conditional on clean
+cycle-3 review and exact-head CI; it does not authorise deployment.
