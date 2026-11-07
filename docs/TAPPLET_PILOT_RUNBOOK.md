@@ -234,21 +234,53 @@ them.
 
 ## TestFlight release gate
 
-The unsigned CI build is not a distribution check. Before distribution:
+The unsigned CI build is not a distribution check. The **TestFlight** Xcode Cloud
+workflow automatically archives app-affecting changes on `master` as **Internal
+Only** builds. Its path filter includes the bundled examples and is intended to
+exclude API-only and documentation-only changes. Suppression is not guaranteed:
+run `9` built the API-and-docs-only PR #62 master merge. The trigger's comparison
+behaviour is unconfirmed; an API-only merge may still consume an internal build.
+See the
+[iPad README](../apps/ipad/README.md#xcode-cloud-and-testflight) for the exact
+paths and one-time internal group/post-action setup still required as of
+6 November 2026. A successful upload alone does not confirm tester delivery.
+
+External testing, external group assignment, Beta App Review, and App Store
+release remain manual and require release-owner approval. Internal-only builds
+cannot be promoted to those audiences; create a separate App Store-eligible
+archive after approval, without widening the automatic workflow's audience.
+Before external distribution:
 
 1. Confirm App Store Connect ownership for `sg.tinkertanker.Tapplet`, active
    agreements, and the configured development team. Local exports also require
    an automatic-distribution signing identity/profile on the release Mac;
    Xcode Cloud manages its own signing.
-2. For local uploads, generate the project with XcodeGen 2.44.1, create a signed
-   Release archive with Xcode 26, export with `ExportOptions.plist`, and run
-   Xcode's Validate App action. Increment `CURRENT_PROJECT_VERSION` before any
-   upload after build 1; automatic build-number management is disabled for local
-   exports. Alternatively, use the manual **TestFlight** Xcode Cloud archive
-   workflow described in the
-   [iPad README](../apps/ipad/README.md#xcode-cloud-and-testflight), starting its
-   build counter above the existing build number. After upload, verify the exact
-   run's uploaded build has finished processing with `processingState: VALID`.
+2. Before a local archive, the release owner must serialise build-number
+   allocation with all other uploaders and Cloud operators for this app:
+   - Record the TestFlight workflow's enabled state, then deactivate it in
+     **Xcode Cloud → Manage Workflows → TestFlight**. Hold all automatic and
+     manual Cloud starts, including other workflows for the app; a hold on
+     app-changing merges alone is insufficient.
+   - Let queued/running builds finish or cancel them and confirm they have
+     stopped. Check both upload and Cloud histories, including allocated numbers
+     from cancelled runs, then choose a local number above every uploaded or
+     reserved number. Do not reuse the historical audit values `6` or `7`.
+   - Set `CURRENT_PROJECT_VERSION` in `project.yml` before XcodeGen 2.44.1
+     generation, or override it when archiving. Create a signed Release archive
+     with Xcode 26 only after setting the number; recreate any archive made with
+     the wrong number. Export with `ExportOptions.plist` and run Xcode's Validate
+     App action; local exports do not automatically renumber an existing archive.
+     Then upload that exported package to App Store Connect with Transporter,
+     preserving its build number; export and validation alone do not upload it.
+   - Keep the hold until that exact upload reaches `processingState: VALID`.
+     Recheck all allocated numbers and set **Xcode Cloud → Settings → Build
+     Number → Next Build Number** above them, including the local upload, without
+     lowering an already-higher counter. Only then restore the previous workflow
+     state and release the hold. If processing fails or is still pending, keep
+     the hold and resolve it with the release owner; do not resume automatically.
+   Alternatively, use a separately approved manual App Store-eligible Cloud
+   archive. In either case, verify the exact archive/run's uploaded build is
+   `VALID` and App Store-eligible, not `INTERNAL_ONLY`, before distribution.
 3. Have the release owner confirm the export-compliance determination behind
    `ITSAppUsesNonExemptEncryption = NO`: native first-party use is limited to
    Apple-provided HTTPS/Keychain and SHA-256 hashing, and no bundled code adds
@@ -259,6 +291,12 @@ The unsigned CI build is not a distribution check. Before distribution:
    actual API behavior, complete Apple's current age-rating questionnaire, and
    provide beta review contact details, concise testing instructions, and a
    still-valid review class code. Do not put the code in public metadata.
+
+For automatic internal builds, also confirm ownership/signing and the
+export-compliance determination above, verify the exact run's `VALID` upload
+with `buildAudienceType: INTERNAL_ONLY`, and confirm the selected internal group
+can install it. Do not treat internal delivery as approval to bypass this
+external release gate.
 
 Physical-iPad testing is recommended for workshop readiness, not required for
 TestFlight submission or distribution. Simulator checks, including Devin's iPad
