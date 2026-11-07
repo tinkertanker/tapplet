@@ -94,6 +94,28 @@ struct TappletRootView: View {
                 }
             }
             .background(TappletTheme.canvas)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if store.isCreatingGuidedDraft,
+                   store.selectedSection != .make || store.selectedProjectID != nil {
+                    HStack(spacing: 12) {
+                        ProgressView().accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Making your tapplet…").font(.headline)
+                            if let start = store.generationStartedAt { GenerationElapsedTime(start: start) }
+                        }
+                        Spacer()
+                        Button("View progress") { store.openMake() }
+                            .buttonStyle(TappletSecondaryButtonStyle())
+                            .controlSize(.large)
+                            .accessibilityIdentifier("view-generation-progress")
+                    }
+                    .padding(16)
+                    .background(TappletTheme.surface)
+                    .overlay(alignment: .bottom) { Divider() }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("generation-banner")
+                }
+            }
             .navigationTitle(detailTitle)
             .navigationBarTitleDisplayMode(.inline)
         }

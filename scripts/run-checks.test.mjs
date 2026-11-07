@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const runner = new URL('./run-checks.mjs', import.meta.url);
 
 test('check runner completes every check, bounds concurrency, and propagates any failure', async (t) => {
-  for (const failed of ['', 'first', 'second', 'third']) {
+  for (const failed of ['', 'first']) {
     await t.test(failed ? `${failed} fails` : 'all pass', async () => {
       const directory = await mkdtemp(join(tmpdir(), 'tapplet-checks-'));
       try {

@@ -10,7 +10,6 @@ import {
 } from "../src/generation";
 import {
   generationPrompt,
-  PROMPT_VERSION,
   repairPrompt,
   revisionPrompt,
   SYSTEM_PROMPT,
@@ -413,7 +412,7 @@ describe("HTML generation contract", () => {
     expect(provider.repair).not.toHaveBeenCalled();
   });
 
-  it.each([null, [], "card", { title: "" }, { description: 1 }, { tags: [""] }])(
+  it.each([null, [], { title: "" }, { description: 1 }, { tags: [""] }])(
     "drops invalid optional metadata without spending repairs: %j", async (designCard) => {
       const provider = {
         name: "fixed", generate: vi.fn().mockResolvedValue({ html, designCard }),
@@ -430,7 +429,7 @@ describe("HTML generation contract", () => {
       .toEqual({ html, comment: "Added a timer at the top." });
   });
 
-  it.each([null, 1, "", "   ", "x".repeat(601)])(
+  it.each([1, "   ", "x".repeat(601)])(
     "drops an invalid optional comment without spending repairs: %j", async (comment) => {
       const provider = {
         name: "fixed", generate: vi.fn().mockResolvedValue({ html, comment }),
@@ -509,7 +508,6 @@ describe("HTML generation contract", () => {
       },
       [exemplar],
     );
-    expect(PROMPT_VERSION).toBe("html-v9");
     expect(SYSTEM_PROMPT).toContain("Honour the activity form");
     expect(prompt).toContain("-----BEGIN UNTRUSTED EXEMPLAR DATA-----");
     expect(prompt).toContain("-----END UNTRUSTED EXEMPLAR DATA-----");

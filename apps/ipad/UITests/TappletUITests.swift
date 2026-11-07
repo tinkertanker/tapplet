@@ -3,6 +3,78 @@ import Vision
 
 final class TappletUITests: XCTestCase {
     @MainActor
+    func testGenerationActionsStayVisibleAndCancelPreservesAnswers() {
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
+            XCUIDevice.shared.orientation = orientation
+            let app = launchApp(extraArguments: [
+                "--ui-testing-delayed-generation", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXL"
+            ])
+            selectSidebarItem(label: "Make", in: app)
+            let plan = app.buttons["starter-plan-times-tables-lightning"]
+            XCTAssertTrue(plan.waitUntilExists(timeout: 5))
+            plan.tap()
+            let make = app.buttons["approve-brief"]
+            XCTAssertTrue(make.waitUntilExists(timeout: 5))
+            XCTAssertTrue(make.isHittable, "Generation must be available without scrolling the review")
+            capture("Review-\(name)", app: app)
+            make.tap()
+            let cancel = app.buttons["cancel-generation"]
+            XCTAssertTrue(cancel.waitUntilExists(timeout: 5))
+            XCTAssertTrue(cancel.isHittable)
+            capture("Generating-\(name)", app: app)
+            selectSidebarItem(label: "My Tapplets", in: app)
+            let progress = app.buttons["view-generation-progress"]
+            XCTAssertTrue(progress.waitUntilExists(timeout: 5))
+            XCTAssertTrue(progress.isHittable)
+            capture("Away-\(name)", app: app)
+            progress.tap()
+            XCTAssertTrue(cancel.waitUntilExists(timeout: 5))
+            cancel.tap()
+            XCTAssertTrue(make.waitUntilExists(timeout: 5))
+            XCTAssertTrue(make.isEnabled)
+            XCTAssertTrue(app.buttons["edit-brief-answer-0"].exists)
+            XCTAssertFalse(progress.exists)
+            XCTAssertFalse(app.staticTexts["That did not work"].exists)
+            capture("Cancelled-\(name)", app: app)
+            make.tap()
+            XCTAssertTrue(cancel.waitUntilExists(timeout: 5), "The same answers can be retried")
+            cancel.tap()
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testBriefLengthGuidanceKeepsTextAndBlocksContinue() {
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
+            XCUIDevice.shared.orientation = orientation
+            let app = launchApp()
+            selectSidebarItem(label: "Make", in: app)
+            app.buttons["skip-starter-plans"].tap()
+            let answer = app.textViews["guided-answer"]
+            XCTAssertTrue(answer.waitUntilExists(timeout: 5))
+            answer.tap()
+            let overlong = String(repeating: "a", count: 301)
+            answer.typeText(overlong)
+            let next = app.buttons["guided-continue"]
+            XCTAssertFalse(next.isEnabled)
+            XCTAssertEqual(answer.value as? String, overlong)
+            XCTAssertTrue(app.staticTexts["brief-length-guidance"].label.contains("Answer too long"))
+            XCTAssertTrue(app.staticTexts["brief-length-guidance"].isHittable)
+            XCTAssertFalse(app.buttons["guided-continue-keyboard"].exists)
+            capture("Limit-\(name)", app: app)
+            answer.typeText(XCUIKeyboardKey.delete.rawValue)
+            XCTAssertTrue(next.isEnabled)
+            XCTAssertEqual(answer.value as? String, String(repeating: "a", count: 300))
+            capture("Limit-corrected-\(name)", app: app)
+            next.tap()
+            XCTAssertTrue(app.staticTexts["What should they understand or be able to do?"].waitUntilExists(timeout: 5))
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testLaunchesIntoExploreWithoutABlankCanvas() {
         let app = launchApp()
         XCTAssertTrue(app.staticTexts["Start with an example"].waitUntilExists(timeout: 8))
@@ -226,12 +298,13 @@ final class TappletUITests: XCTestCase {
     func testGuidedSuggestionAddsToWrittenAnswerAndSummaryRowsReturnToTheirQuestion() {
         let app = launchApp()
         selectSidebarItem(label: "Make", in: app)
+        app.buttons["skip-starter-plans"].tap()
 
         let answer = app.textViews["guided-answer"]
         XCTAssertTrue(answer.waitUntilExists(timeout: 5))
-        answer.tap()
+        tapGuidedContent(answer, in: app)
         answer.typeText("Secondary 3 Physics")
-        app.buttons["Primary 5 Science"].tap()
+        tapGuidedContent(app.buttons["Primary 5 Science"], in: app)
         XCTAssertEqual(answer.value as? String, "Secondary 3 Physics\nPrimary 5 Science")
         advanceGuidedFlow(in: app)
         let answers = [
@@ -244,7 +317,7 @@ final class TappletUITests: XCTestCase {
         for response in answers {
             let currentAnswer = app.textViews["guided-answer"]
             XCTAssertTrue(currentAnswer.waitUntilExists(timeout: 3))
-            currentAnswer.tap()
+            tapGuidedContent(currentAnswer, in: app)
             currentAnswer.typeText(response)
             advanceGuidedFlow(in: app)
         }
@@ -252,7 +325,7 @@ final class TappletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 5))
         app.buttons["edit-brief-answer-1"].tap()
         XCTAssertTrue(app.staticTexts["What should they understand or be able to do?"].waitUntilExists(timeout: 3))
-        app.buttons["Recall key ideas"].tap()
+        tapGuidedContent(app.buttons["Recall key ideas"], in: app)
         advanceGuidedFlow(in: app)
         XCTAssertTrue(app.staticTexts["Check your answers"].waitUntilExists(timeout: 3))
         XCTAssertTrue(app.staticTexts["Explain projectile range\nRecall key ideas"].exists)
@@ -288,21 +361,33 @@ final class TappletUITests: XCTestCase {
 
     @MainActor
     func testOptionalBlankAnswerHasOneSkip() {
-        let app = launchApp()
-        selectSidebarItem(label: "Make", in: app)
-        for suggestion in ["Primary 5 Science", "Recall key ideas", "Beat a 60-second countdown"] {
-            XCTAssertTrue(app.buttons[suggestion].waitUntilExists(timeout: 5))
-            app.buttons[suggestion].tap()
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
+            XCUIDevice.shared.orientation = orientation
+            let app = launchApp()
+            selectSidebarItem(label: "Make", in: app)
+            app.buttons["skip-starter-plans"].tap()
+            for suggestion in ["Primary 5 Science", "Recall key ideas", "Beat a 60-second countdown"] {
+                tapGuidedContent(app.buttons[suggestion], in: app)
+                XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Continue'")).count, 1)
+                if suggestion == "Primary 5 Science" { capture("Continue-\(name)", app: app) }
+                advanceGuidedFlow(in: app)
+            }
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Skip'")).count, 1)
+            XCTAssertEqual(app.buttons["guided-continue"].label, "Skip")
+            XCTAssertFalse(app.buttons["guided-continue-keyboard"].exists)
+            capture("Skip-\(name)", app: app)
             advanceGuidedFlow(in: app)
+            tapGuidedContent(app.buttons["Immediate explanation"], in: app)
+            advanceGuidedFlow(in: app)
+            tapGuidedContent(app.buttons["5 minutes individually"], in: app)
+            XCTAssertEqual(app.buttons["guided-continue"].label, "Review answers")
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Review answers'")).count, 1)
+            capture("Review-action-\(name)", app: app)
+            advanceGuidedFlow(in: app)
+            XCTAssertTrue(app.buttons["approve-brief"].isHittable)
+            app.terminate()
         }
-        XCTAssertEqual(app.buttons.matching(identifier: "guided-continue").count, 1)
-        XCTAssertEqual(app.buttons["guided-continue"].label, "Skip")
-        let keyboardAction = app.buttons.matching(identifier: "guided-continue-keyboard")
-        if keyboardAction.firstMatch.exists {
-            XCTAssertEqual(keyboardAction.count, 1)
-            XCTAssertEqual(keyboardAction.firstMatch.label, "Skip")
-        }
-        capture("Optional-blank-one-Skip", app: app)
     }
 
     @MainActor
@@ -404,7 +489,7 @@ final class TappletUITests: XCTestCase {
 
     @MainActor
     private func capture(_ name: String, app: XCUIApplication) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
@@ -438,18 +523,28 @@ final class TappletUITests: XCTestCase {
     }
 
     @MainActor
-    private func advanceGuidedFlow(in app: XCUIApplication) {
-        let keyboardButton = app.buttons["guided-continue-keyboard"]
-        // Keep the full wait here: checking hittability while the keyboard is
-        // still animating in fails with an invalid activation point.
-        if keyboardButton.waitForExistence(timeout: 2), keyboardButton.isHittable {
-            keyboardButton.tap()
-            return
+    private func tapGuidedContent(_ element: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(element.waitUntilExists(timeout: 5))
+        // XCTest's automatic scroll-to-tap does not account for safe-area insets.
+        // Scroll in the content margin, outside the nested TextEditor.
+        for _ in 0..<6 {
+            let footerTop = app.staticTexts["brief-length-guidance"].frame.minY
+            if element.frame.maxY < footerTop - 12 { break }
+            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(
+                CGVector(dx: app.frame.maxX - 12, dy: footerTop - 24)
+            )
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
         }
+        XCTAssertTrue(element.isHittable)
+        element.tap()
+    }
 
+    @MainActor
+    private func advanceGuidedFlow(in app: XCUIApplication) {
         let bottomButton = app.buttons["guided-continue"]
         XCTAssertTrue(bottomButton.waitUntilExists(timeout: 3))
         XCTAssertTrue(bottomButton.isHittable)
+        XCTAssertTrue(bottomButton.isEnabled)
         bottomButton.tap()
     }
 

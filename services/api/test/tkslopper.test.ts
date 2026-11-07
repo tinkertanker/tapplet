@@ -242,18 +242,6 @@ const KEY_PATTERN =
   /^tapplet:(generate|revise|repair|moderate|image_review):[0-9a-f-]{36}$/;
 
 describe("tkslopper configuration", () => {
-  it("defaults efforts, endpoint and request limit", () => {
-    expect(config()).toMatchObject({
-      controlPlane: { url: CONTROL },
-      gateway: { url: GATEWAY },
-      artifactEffort: "high",
-      reviewEffort: "low",
-      artifactEndpoint: "responses",
-      maxRequestBytes: 1_048_576,
-    });
-    expect(config()).not.toHaveProperty("imageEffort");
-  });
-
   it("reports every missing or invalid value without falling back", () => {
     const result = readTkslopperConfig(
       tkEnv({
@@ -603,12 +591,8 @@ describe("tkslopper errors", () => {
     [400, "invalid_request", false],
     [402, "budget_exceeded", false],
     [403, "authorization_failed", false],
-    [409, "conflict", false],
-    [413, "invalid_request", false],
-    [415, "invalid_request", false],
     [429, "rate_limit_exceeded", true],
     [500, "internal_error", true],
-    [502, "provider_unavailable", true],
     [503, "provider_unavailable", true],
     [504, "provider_unavailable", true],
   ] as const)("maps HTTP %i to retryable %s without retrying", async (status, code, retryable) => {

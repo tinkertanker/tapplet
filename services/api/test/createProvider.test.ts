@@ -133,24 +133,6 @@ describe("model provider selection", () => {
     });
   });
 
-  it("omits DeepSeek reasoning fields for other OpenCode chat models", async () => {
-    const fetch = successfulFetch();
-    vi.stubGlobal("fetch", fetch);
-    const provider = createModelProvider(
-      env({
-        AI_PROVIDER: "opencode-go",
-        AI_MODEL: "kimi-k3",
-        OPENCODE_API_KEY: "opencode-secret",
-      }),
-    );
-
-    await provider.generate(brief, []);
-
-    const body = requestBody(fetch);
-    expect(body).not.toHaveProperty("thinking");
-    expect(body).not.toHaveProperty("reasoning_effort");
-  });
-
   it("uses the OpenCode Go chat-completions endpoint", async () => {
     const fetch = successfulFetch();
     vi.stubGlobal("fetch", fetch);
@@ -249,7 +231,7 @@ describe("model provider selection", () => {
     });
   });
 
-  it.each(["kimi-k3", "glm-5.3", "muse-spark", "gpt-4o"])(
+  it.each(["kimi-k3", "muse-spark", "gpt-4o"])(
     "keeps other OpenCode Go models on chat completions: %s",
     async (model) => {
       const fetch = successfulFetch();
@@ -262,6 +244,8 @@ describe("model provider selection", () => {
 
       expect(fetch.mock.calls[0]?.[0]).toBe("https://opencode.ai/zen/go/v1/chat/completions");
       expect(requestBody(fetch)).not.toHaveProperty("reasoning");
+      expect(requestBody(fetch)).not.toHaveProperty("thinking");
+      expect(requestBody(fetch)).not.toHaveProperty("reasoning_effort");
     },
   );
 

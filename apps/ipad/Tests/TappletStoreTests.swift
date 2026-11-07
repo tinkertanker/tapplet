@@ -5,6 +5,61 @@ import UIKit
 
 final class TappletStoreTests: XCTestCase {
     @MainActor
+    func testCancelledGenerationCannotOpenOrSaveALateResponseAndCanBeRetried() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let generated = makeProject(revisionID: "r1", html: "<html>Late response</html>")
+        let api = ArtifactAPIStub(generated: generated, revised: generated)
+        let store = TappletStore(api: api, storageDirectory: directory, bundle: Bundle(for: Self.self))
+        let plan = StarterPlan.all[0]
+        store.applyStarterPlan(plan)
+        await api.hold("generation")
+        let first = try XCTUnwrap(store.startGuidedGeneration())
+        await api.waitUntilHeld()
+        store.selectedSection = .myApplets
+        XCTAssertTrue(store.isCreatingGuidedDraft)
+        XCTAssertNotNil(store.generationStartedAt)
+        store.cancelGuidedGeneration()
+        XCTAssertFalse(store.isCreatingGuidedDraft)
+        XCTAssertNil(store.generationStartedAt)
+        XCTAssertEqual(store.guidedMakeDraft, plan.draft)
+        // The collaborator deliberately ignores cancellation and returns success.
+        await api.release()
+        await first.value
+        XCTAssertTrue(store.projects.isEmpty)
+        XCTAssertNil(store.selectedProjectID)
+        XCTAssertNil(store.guidedMakeCreationError)
+        XCTAssertEqual(store.guidedMakeDraft, plan.draft)
+        XCTAssertTrue(TappletStore(api: api, storageDirectory: directory).projects.isEmpty)
+
+        let retry = try XCTUnwrap(store.startGuidedGeneration())
+        await retry.value
+        XCTAssertEqual(store.selectedProjectID, generated.id)
+        XCTAssertEqual(store.projects.count, 1)
+        XCTAssertFalse(store.isCreatingGuidedDraft)
+        XCTAssertEqual(store.guidedMakeDraft, GuidedBriefDraft())
+    }
+
+    @MainActor
+    func testOverlongBriefIsRejectedBeforeGeneration() async throws {
+        let project = makeProject(revisionID: "r1", html: "<html></html>")
+        let api = ArtifactAPIStub(generated: project, revised: project)
+        let store = TappletStore(api: api, storageDirectory: temporaryDirectory())
+        var brief = StarterPlan.all[0].draft
+        brief.learnerContext = String(repeating: "x", count: 301)
+        do {
+            _ = try await store.createApprovedBrief(brief)
+            XCTFail("An overlong brief should fail locally")
+        } catch {
+            XCTAssertTrue(store.present(error).message.contains("300"))
+        }
+        let sent = await api.lastGenerationRequest
+        XCTAssertNil(sent)
+        XCTAssertFalse(store.isCreatingGuidedDraft)
+        XCTAssertTrue(store.projects.isEmpty)
+    }
+
+    @MainActor
     func testGenerationCachesCanonicalHeadSource() async throws {
         let directory = temporaryDirectory()
         let generated = makeProject(revisionID: "r1", html: "<html><h1>Generated</h1></html>")
@@ -1067,6 +1122,7 @@ private actor ArtifactAPIStub: TappletAPI {
     func registerDevice(accessCode: String) async throws {}
     func generate(request: GuidedGenerationRequest) async throws -> AdvisoryResult<ArtifactProject> {
         lastGenerationRequest = request
+        await suspendIfHeld("generation")
         return AdvisoryResult(value: generated, warnings: warnings)
     }
     func listArtifacts() async throws -> [Artifact] {
