@@ -55,6 +55,11 @@ Update the workflow's path list when adding
 app inputs outside these locations. These settings live in App Store Connect;
 editing this README does not change them.
 
+The app also bundles `services/api/src/briefLimits.json`, which is outside the
+eight configured matchers. Do not rely on a limits-only change starting a build;
+if testers need the new limits, verify a build includes that commit or start one
+manually.
+
 `ci_scripts/ci_post_clone.sh` downloads checksum-verified XcodeGen 2.44.1 and
 generates `Tapplet.xcodeproj` before the build. It needs no Node installation,
 `sudo`, signing certificates, or API secrets in Xcode Cloud. Keep `project.yml`

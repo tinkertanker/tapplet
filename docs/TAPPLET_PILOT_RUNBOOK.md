@@ -270,6 +270,8 @@ Before external distribution:
      with Xcode 26 only after setting the number; recreate any archive made with
      the wrong number. Export with `ExportOptions.plist` and run Xcode's Validate
      App action; local exports do not automatically renumber an existing archive.
+     Then upload that exported package to App Store Connect with Transporter,
+     preserving its build number; export and validation alone do not upload it.
    - Keep the hold until that exact upload reaches `processingState: VALID`.
      Recheck all allocated numbers and set **Xcode Cloud → Settings → Build
      Number → Next Build Number** above them, including the local upload, without
