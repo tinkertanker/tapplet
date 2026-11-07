@@ -45,8 +45,13 @@ Start a Build** (`START_IF_ANY_FILE_MATCHES`) for these paths:
   `apps/ipad`.
 
 `Resources/Examples` is the canonical bundled corpus, so example changes qualify
-without watching generated API fixtures. API-only changes, `docs/**`, and
-`apps/ipad/README.md` do not qualify. Update the workflow's path list when adding
+without watching generated API fixtures. The filter is intended to exclude
+API-only changes, `docs/**`, and `apps/ipad/README.md`, but suppression is not
+guaranteed: Cloud run `9` automatically built the API-and-docs-only
+[PR #62 master merge](https://github.com/tinkertanker/tapplet/pull/62) as an
+internal build. The trigger's comparison behaviour is unconfirmed, so an
+API-only merge may still consume an internal build.
+Update the workflow's path list when adding
 app inputs outside these locations. These settings live in App Store Connect;
 editing this README does not change them.
 

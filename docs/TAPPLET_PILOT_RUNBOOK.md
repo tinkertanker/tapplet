@@ -236,8 +236,11 @@ them.
 
 The unsigned CI build is not a distribution check. The **TestFlight** Xcode Cloud
 workflow automatically archives app-affecting changes on `master` as **Internal
-Only** builds. Its path filter includes the bundled examples and excludes
-API-only and documentation-only changes; see the
+Only** builds. Its path filter includes the bundled examples and is intended to
+exclude API-only and documentation-only changes. Suppression is not guaranteed:
+run `9` built the API-and-docs-only PR #62 master merge. The trigger's comparison
+behaviour is unconfirmed; an API-only merge may still consume an internal build.
+See the
 [iPad README](../apps/ipad/README.md#xcode-cloud-and-testflight) for the exact
 paths and one-time internal group/post-action setup still required as of
 6 November 2026. A successful upload alone does not confirm tester delivery.
